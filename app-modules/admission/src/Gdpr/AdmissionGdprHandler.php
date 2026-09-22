@@ -6,6 +6,7 @@ namespace Konventix\Admission\Gdpr;
 
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\AdmissionClaimLink;
+use Konventix\Admission\Models\EventPresence;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
 use Konventix\Compliance\Gdpr\SubjectRef;
@@ -27,6 +28,13 @@ use Konventix\Compliance\Gdpr\SubjectRef;
  * all (ADR-0050 §3): an invitee who never claimed a link has no
  * `holder_user_id` to look up, only the `intended_email` the link was
  * issued to.
+ *
+ * The presence row (D-HUB-01) is the other thing this module holds about
+ * the person rather than about the admission: when they first got in,
+ * where they last scanned, whether the live hub is still open to them. It
+ * is exported, and deleted in both modes — a presence without a person
+ * means nothing, and unlike the admission it records no obligation of
+ * the operator's.
  *
  * Both methods are idempotent.
  */
@@ -103,6 +111,18 @@ final class AdmissionGdprHandler implements GdprHandler
                     'claimed_at' => $link->claimed_at?->toIso8601String(),
                 ])
                 ->all(),
+            'event_presence' => EventPresence::withoutBrandScope()
+                ->where('user_id', $subjectId)
+                ->orderBy('first_admitted_at')
+                ->get()
+                ->map(fn (EventPresence $presence): array => [
+                    'event_id' => $presence->event_id,
+                    'first_admitted_at' => $presence->first_admitted_at->toIso8601String(),
+                    'last_check_in_at' => $presence->last_check_in_at->toIso8601String(),
+                    'last_direction' => $presence->last_direction,
+                    'hub_access' => $presence->hub_access,
+                ])
+                ->all(),
         ];
     }
 
@@ -135,5 +155,12 @@ final class AdmissionGdprHandler implements GdprHandler
         AdmissionClaimLink::withoutBrandScope()
             ->where('claimed_by_user_id', $subjectId)
             ->update(['claimed_by_user_id' => null]);
+
+        // Both modes (D-HUB-01): the row says where *this person* stood at
+        // the event, and there is nothing left to say once they are a
+        // tombstone. Platform's own hub_access read model is its concern.
+        EventPresence::withoutBrandScope()
+            ->where('user_id', $subjectId)
+            ->delete();
     }
 }

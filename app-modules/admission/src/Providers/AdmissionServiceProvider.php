@@ -19,6 +19,8 @@ use Konventix\Admission\Events\CheckInRejected;
 use Konventix\Admission\Events\ClaimLinkIssued;
 use Konventix\Admission\Events\ClaimLinkRevoked;
 use Konventix\Admission\Events\ClaimLinkSent;
+use Konventix\Admission\Events\ParticipantAdmitted;
+use Konventix\Admission\Events\ParticipantHubAccessEnded;
 use Konventix\Admission\Gdpr\AdmissionGdprHandler;
 use Konventix\Admission\Listeners\EndHubAccessOnAdmissionRevoked;
 use Konventix\Admission\Listeners\EndHubAccessOnEventClosed;
@@ -28,6 +30,7 @@ use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
 use Konventix\Admission\Listeners\IssueCrewAdmissionOnAssignmentAccepted;
 use Konventix\Admission\Listeners\Metrics\RecordAdmissionTokenMetrics;
 use Konventix\Admission\Listeners\Metrics\RecordHolderMetrics;
+use Konventix\Admission\Listeners\Metrics\RecordPresenceMetrics;
 use Konventix\Admission\Listeners\MintEntranceSigningKeyOnBrandCreated;
 use Konventix\Admission\Listeners\ProjectAdmissionSeat;
 use Konventix\Admission\Listeners\ProjectEventDaysOnEventDaysChanged;
@@ -273,6 +276,10 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         Event::listen(EventConcluded::class, [EndHubAccessOnEventClosed::class, 'handleConcluded']);
         Event::listen(EventCancelled::class, [EndHubAccessOnEventClosed::class, 'handleCancelled']);
         Event::listen(AdmissionRevoked::class, EndHubAccessOnAdmissionRevoked::class);
+
+        // ADR-0059, D-HUB-01: hub admissions and endings, by outcome.
+        Event::listen(ParticipantAdmitted::class, [RecordPresenceMetrics::class, 'handleAdmitted']);
+        Event::listen(ParticipantHubAccessEnded::class, [RecordPresenceMetrics::class, 'handleEnded']);
 
         // Admission's own metric (ADR-0059, design doc §9): the one
         // rejection reason among CheckInRejected's nine that answers

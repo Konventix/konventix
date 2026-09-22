@@ -55,6 +55,16 @@ final class AdmissionMetrics
                 'Claim-link invitations by outcome.',
                 ['brand', 'outcome'],
             ),
+            // D-HUB-01: who got into the live hub and how access ended.
+            // `admitted` from ParticipantAdmitted, the rest are
+            // HubAccessEndReason's values off ParticipantHubAccessEnded;
+            // recorded by Listeners\Metrics\RecordPresenceMetrics.
+            new MetricDefinition(
+                'admission_hub_access_total',
+                MetricKind::Counter,
+                'Live-hub admissions and access endings, by outcome.',
+                ['brand', 'outcome'],
+            ),
         ];
     }
 }

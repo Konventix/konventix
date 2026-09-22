@@ -158,6 +158,16 @@
 
 ## Done
 
+- [x] Presence and hub access (D-HUB-01/02): `Models\EventPresence`
+      (`admission_event_presence`) projected off an accepted scan by
+      `ProjectPresenceOnAdmissionCheckedIn` (queued after commit);
+      `ParticipantAdmitted`, `ParticipantPresenceChanged` and
+      `ParticipantHubAccessEnded` as the public contract; access ended by
+      `EndHubAccessOnEventClosed`, `EndHubAccessOnAdmissionRevoked` and
+      the `admission:close-expired-presence-windows` sweep. Presence rows
+      are exported and deleted in both modes by `AdmissionGdprHandler`,
+      and counted on `admission_hub_access_total{brand, outcome}`
+      (`RecordPresenceMetrics`).
 - [x] The ticket's event band links to the event (2026-09-21 bugfix round,
       task 8): `components/TicketEventBand.vue` takes `eventSlug` from
       `pages/admission/tickets/Show.vue` (`TicketPageData::$eventSlug`,

@@ -2153,11 +2153,66 @@
     },
     {
       "type": "stat",
-      "title": "Tickets taken back",
+      "title": "Hub admissions",
       "gridPos": {
         "w": 4,
         "h": 4,
         "x": 8,
+        "y": 107
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(increase(konventix_admission_hub_access_total{job=\"$release\", outcome=\"admitted\"}[$__range]))",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "Participants who got into the live hub (D-HUB-01).",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 44
+    },
+    {
+      "type": "stat",
+      "title": "Tickets taken back",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 12,
         "y": 107
       },
       "targets": [
@@ -2203,7 +2258,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 44
+      "id": 45
     },
     {
       "type": "stat",
@@ -2211,7 +2266,7 @@
       "gridPos": {
         "w": 4,
         "h": 4,
-        "x": 12,
+        "x": 16,
         "y": 107
       },
       "targets": [
@@ -2257,7 +2312,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 45
+      "id": 46
     },
     {
       "type": "stat",
@@ -2265,7 +2320,7 @@
       "gridPos": {
         "w": 4,
         "h": 4,
-        "x": 16,
+        "x": 20,
         "y": 107
       },
       "targets": [
@@ -2316,7 +2371,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 46
+      "id": 47
     },
     {
       "type": "timeseries",
@@ -2370,7 +2425,7 @@
           "sort": "desc"
         }
       },
-      "id": 47
+      "id": 48
     },
     {
       "type": "timeseries",
@@ -2424,16 +2479,70 @@
           "sort": "desc"
         }
       },
-      "id": 48
+      "id": 49
     },
     {
-      "id": 49,
+      "type": "timeseries",
+      "title": "Hub access endings per hour",
+      "gridPos": {
+        "w": 8,
+        "h": 8,
+        "x": 0,
+        "y": 119
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (brand, outcome) (increase(konventix_admission_hub_access_total{job=\"$release\", outcome!=\"admitted\"}[1h]))",
+          "legendFormat": "{{brand}} {{outcome}}",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 50
+    },
+    {
+      "id": 51,
       "type": "row",
       "title": "Tickets and calendars",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 119,
+        "y": 127,
         "w": 24,
         "h": 1
       },
@@ -2446,7 +2555,7 @@
         "w": 4,
         "h": 4,
         "x": 0,
-        "y": 120
+        "y": 128
       },
       "targets": [
         {
@@ -2492,7 +2601,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 50
+      "id": 52
     },
     {
       "type": "stat",
@@ -2501,7 +2610,7 @@
         "w": 4,
         "h": 4,
         "x": 4,
-        "y": 120
+        "y": 128
       },
       "targets": [
         {
@@ -2546,7 +2655,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 51
+      "id": 53
     },
     {
       "type": "stat",
@@ -2555,7 +2664,7 @@
         "w": 4,
         "h": 4,
         "x": 8,
-        "y": 120
+        "y": 128
       },
       "targets": [
         {
@@ -2601,7 +2710,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 52
+      "id": 54
     },
     {
       "type": "timeseries",
@@ -2610,7 +2719,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 120
+        "y": 128
       },
       "targets": [
         {
@@ -2665,7 +2774,7 @@
           "sort": "desc"
         }
       },
-      "id": 53
+      "id": 55
     },
     {
       "type": "timeseries",
@@ -2674,7 +2783,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 128
+        "y": 136
       },
       "targets": [
         {
@@ -2719,7 +2828,7 @@
           "sort": "desc"
         }
       },
-      "id": 54
+      "id": 56
     }
   ]
 }

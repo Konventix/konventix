@@ -6,6 +6,8 @@ use Illuminate\Support\Str;
 use Konventix\Admission\Gdpr\AdmissionGdprHandler;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\AdmissionClaimLink;
+use Konventix\Admission\Models\EntranceEventProfile;
+use Konventix\Admission\Models\EventPresence;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\SubjectRef;
 
@@ -71,4 +73,40 @@ it('exports the tickets a person bought for others, and forgets who claimed a li
 
     expect($link->fresh()->claimed_by_user_id)->toBeNull()
         ->and($link->fresh()->claimed_at)->not->toBeNull();
+});
+
+// D-HUB-01: the presence row is attendance data this module collected
+// about the person and holds itself, so it is exported — and deleted in
+// both modes, since a presence without a person means nothing.
+it('exports and erases presence rows', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId);
+    EntranceEventProfile::factory()->create(['event_id' => $eventId]);
+    $holder = ticketPerson();
+    event(presenceScan(Admission::factory()->create(['event_id' => $eventId, 'holder_user_id' => $holder->id])));
+
+    $handler = new AdmissionGdprHandler;
+    $export = $handler->exportFor(SubjectRef::forUser($holder->id));
+    expect($export['event_presence'])->toHaveCount(1)
+        ->and($export['event_presence'][0]['event_id'])->toBe($eventId);
+
+    $handler->delete(SubjectRef::forUser($holder->id), DeletionMode::Anonymize);
+    expect(EventPresence::query()->where('user_id', $holder->id)->count())->toBe(0);
+});
+
+it('erases presence rows on a full erasure too', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId);
+    EntranceEventProfile::factory()->create(['event_id' => $eventId]);
+    $holder = ticketPerson();
+    $other = ticketPerson();
+    event(presenceScan(Admission::factory()->create(['event_id' => $eventId, 'holder_user_id' => $holder->id])));
+    event(presenceScan(Admission::factory()->create(['event_id' => $eventId, 'holder_user_id' => $other->id])));
+
+    (new AdmissionGdprHandler)->delete(SubjectRef::forUser($holder->id), DeletionMode::Erase);
+
+    expect(EventPresence::query()->where('user_id', $holder->id)->count())->toBe(0)
+        ->and(EventPresence::query()->where('user_id', $other->id)->count())->toBe(1);
 });

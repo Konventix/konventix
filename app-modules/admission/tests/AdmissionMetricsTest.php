@@ -14,6 +14,8 @@ use Konventix\Admission\Actions\UnassignHolder;
 use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Http\Middleware\RecordTicketRenderMetrics;
 use Konventix\Admission\Models\Admission;
+use Konventix\Admission\Models\EntranceEventProfile;
+use Konventix\Event\Events\EventConcluded;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Brands\BrandSlugs;
 use Prometheus\CollectorRegistry;
@@ -106,4 +108,27 @@ it('counts holder changes and invitations by outcome', function (): void {
         ->toContain('konventix_admission_claim_invites_total{brand="'.$slug.'",outcome="revoked"} 1')
         ->toContain('konventix_admission_holder_changes_total{brand="'.$slug.'",outcome="assigned"} 1')
         ->toContain('konventix_admission_holder_changes_total{brand="'.$slug.'",outcome="unassigned"} 1');
+});
+
+// D-HUB-01: who got into the live hub and how access ended, one outcome
+// word per increment — the enum's backing string travels on the event.
+it('counts hub admissions and endings by outcome', function (): void {
+    $brand = $this->withBrand();
+    $slug = BrandSlugs::of($brand->getKey());
+    $eventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId);
+    EntranceEventProfile::factory()->create(['event_id' => $eventId]);
+    $admission = Admission::factory()->create(['event_id' => $eventId, 'holder_user_id' => ticketPerson()->id]);
+
+    // The first accepted scan admits; a second scan on the same day is a
+    // presence change, not another admission.
+    event(presenceScan($admission));
+    event(presenceScan($admission, 'out', '2026-10-16T21:00:00+02:00'));
+    event(new EventConcluded(eventId: $eventId, brandId: $brand->id, concludedAt: now()->toIso8601String()));
+
+    $rendered = metricsRendered();
+
+    expect($rendered)
+        ->toContain('konventix_admission_hub_access_total{brand="'.$slug.'",outcome="admitted"} 1')
+        ->toContain('konventix_admission_hub_access_total{brand="'.$slug.'",outcome="concluded"} 1');
 });

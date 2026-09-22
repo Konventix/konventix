@@ -63,11 +63,13 @@ export default dashboard({
         row('Holders and invites', [
             stat('Tickets claimed', [prom(`sum(increase(konventix_admission_holder_changes_total{${J}, outcome="claimed"}[$__range]))`)], { description: 'Holders named through a claim link (#292).' }),
             stat('Tickets assigned', [prom(`sum(increase(konventix_admission_holder_changes_total{${J}, outcome="assigned"}[$__range]))`)], { description: 'Holders named directly: the buyer for themselves, or the desk.' }),
+            stat('Hub admissions', [prom(`sum(increase(konventix_admission_hub_access_total{${J}, outcome="admitted"}[$__range]))`)], { description: 'Participants who got into the live hub (D-HUB-01).' }),
             stat('Tickets taken back', [prom(`sum(increase(konventix_admission_holder_changes_total{${J}, outcome="unassigned"}[$__range]))`)]),
             stat('Invites sent', [prom(`sum(increase(konventix_admission_claim_invites_total{${J}, outcome="sent"}[$__range]))`)]),
             stat('Invite mails failed', [prom(`sum(increase(konventix_admission_claim_invites_total{${J}, outcome="send_failed"}[$__range]))`)], { description: 'Messaging refused the mail; the link exists and the buyer was told to copy it. KonventixClaimInviteMailFailing pages when these outrun the sent ones.', thresholds: thresholds('green', [1, 'orange']) }),
             timeseries('Holder changes per hour by outcome', [prom(`sum by (brand, outcome) (increase(konventix_admission_holder_changes_total{${J}}[1h]))`, '{{brand}} {{outcome}}')], { w: 12 }),
             timeseries('Invites per hour by outcome', [prom(`sum by (brand, outcome) (increase(konventix_admission_claim_invites_total{${J}}[1h]))`, '{{brand}} {{outcome}}')], { w: 12 }),
+            timeseries('Hub access endings per hour', [prom(`sum by (brand, outcome) (increase(konventix_admission_hub_access_total{${J}, outcome!="admitted"}[1h]))`, '{{brand}} {{outcome}}')], { w: 8 }),
         ]),
         row('Tickets and calendars', [
             stat('Tickets rendered', [prom(`sum(increase(konventix_admission_tickets_rendered_total{${J}}[$__range]))`)], { description: 'Ticket PDF pages served in the selected range.' }),

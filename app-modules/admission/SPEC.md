@@ -163,6 +163,18 @@ reading either.
   facts a door needs with no network: the event-day calendar and the re-entry
   policy. Projected from `EventDaysChanged` and `EventReentryPolicyChanged`
   (ADR-0004 forbids reading Event's models).
+- **`EventPresence`** (`admission_event_presence`) — one person's standing at
+  one event (D-HUB-01/02): when they were first admitted, where they last
+  scanned (`last_direction`), and whether the live hub is open to them
+  (`hub_access`, derived but stored so no consumer does date math;
+  `window_ends_at` null means "until the event concludes"). Written only by
+  `Actions\ProjectEventPresence` off an accepted scan; closed by the event
+  ending, the admission being revoked, or the once-per-day window passing
+  (`admission:close-expired-presence-windows`, every minute). Nobody outside
+  Admission reads the table — Platform and Community learn of it through
+  `ParticipantAdmitted` and its siblings. Exported and deleted (both modes)
+  by the GDPR handler: a presence without a person means nothing. Counted
+  on `admission_hub_access_total{brand, outcome}`.
 - **Validity evaluation** — the single authority that decides whether a
   presented token grants entry right now.
 - **Revocation and blocking** — including house bans and lost-badge
@@ -212,6 +224,9 @@ firm up while the first flow is built.
 | `CheckInRejected` | A presented token is refused. A first-class event, not a swallowed error — the audit trail records why | `check_in_id`, `admission_id` (nullable — a bad signature never resolves to one), `event_id`, `brand_id`, `checkpoint_id` (nullable), `reason_code`, `scanned_at` | implemented |
 | `CheckInBatchSynchronized` | A device delivered its buffered scans. `duplicates` counts scans already recorded — the normal shape of a reconnection replay, not a fault | `device_id`, `event_id`, `brand_id`, `accepted`, `rejected`, `duplicates`, `synchronized_at` | implemented |
 | `AdmissionCheckedOut` (proposed) | A holder is scanned out. Recorded today as a `direction: out` check-in; a distinct event only if a consumer needs one | `admission_id`, `checkpoint_id`, `device_id`, `checked_out_at` |
+| `ParticipantAdmitted` | A signed-in participant's hub access went false→true (D-HUB-01): their first accepted scan at the event, or the first scan of a new day on a `once_per_day` event. This is what opens `/live` for them — Platform projects it into its own read model and never reads `admission_event_presence` (ADR-0004). `window_ends_at` null means open until the event concludes; the display fields are nullable because an event may have no day calendar and the summary may not be projected yet | `user_id`, `event_id`, `brand_id`, `admission_id`, `admitted_at`, `window_ends_at` (nullable), `day_label` (nullable), `event_name` (nullable), `event_slug` (nullable) | implemented |
+| `ParticipantPresenceChanged` | A participant's `last_direction` changed — scanned in, or checked out at the desk (D-HUB-02). "On site" is a badge, never a gate: this event does not touch hub access and consumers must not derive it from here. Community's Checked-In presence (D-HUB-03) reads this | `user_id`, `event_id`, `brand_id`, `direction` (`in`\|`out`), `changed_at` | implemented |
+| `ParticipantHubAccessEnded` | A participant's hub access went true→false. `reason` is `HubAccessEndReason`'s backing string — `day_ended` (a once-per-day window closed; the next day's accepted scan re-admits them), `concluded`/`cancelled` (the event did), `revoked` (the admission that let them in was — unless another admission of theirs still stands, in which case the row moves over and nothing is emitted) | `user_id`, `event_id`, `brand_id`, `reason`, `ended_at` | implemented |
 
 ## Consumes
 
@@ -232,6 +247,7 @@ maintains from them.
 | `RegistrationOwnershipAnnounced` | Registration | Backfills `admissions.buyer_user_id` for rows that predate the column — the replay-safe counterpart to `RegistrationConfirmed`/`RegistrationAmended`, which already carry `registrantUserId` going forward |
 | `UserAnonymizationRequested` (proposed) | Compliance | Hand the request to this module's `src/Gdpr/` handler; check-in records are attendance data and need an explicit answer |
 | `ResourceBookingConfirmed`, `ResourceBookingReleased` | Resources | `ProjectAdmissionSeat` (#292 §5): maintain `Models\AdmissionSeat` (`admission_seats`) — the place bound to an admission, for the ticket page and the ticket PDF — from a *confirmed* booking that names an `admissionId`, deleted again when that booking is released. A hold never reaches a ticket; a booking naming no admission is nobody's seat here |
+| `EventConcluded`, `EventCancelled` | Event | `EndHubAccessOnEventClosed` (D-HUB-01, design §4.2): a closed event has nobody inside it any more, so every `EventPresence` row of it loses `hub_access` — `concluded` or `cancelled` by which door it left through — and one `ParticipantHubAccessEnded` fires per row. Queued after commit, like the presence projection: both events fire inside the admin's transaction and a big event's sweep is thousands of rows |
 
 ## Capabilities
 
