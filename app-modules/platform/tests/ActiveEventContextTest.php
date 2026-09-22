@@ -12,6 +12,7 @@ use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Gdpr\HubAccessGdprHandler;
 use Konventix\Platform\Hub\ActiveEventContext;
+use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\HubAccess;
 
 it('resolves the admitted event for the signed-in user from one cached read', function (): void {
@@ -131,4 +132,34 @@ it('exports and erases hub access rows for a subject', function (): void {
 
     $handler->delete(SubjectRef::forUser($user->id), DeletionMode::Anonymize);
     expect(HubAccess::query()->count())->toBe(0);
+});
+
+// The rows are only half of it: `hub-access:{brand}:{user}` carries the
+// event's name, the admission id and the instant they were admitted for ten
+// minutes, so an erasure that leaves the key behind keeps serving all three.
+it('forgets the cached answer on erasure, on every brand the subject was admitted on', function (): void {
+    $brand = $this->withBrand();
+    $second = Brand::factory()->create();
+    $user = User::factory()->create();
+
+    foreach ([$brand, $second] as $on) {
+        event(hubAdmitted($on->id, $user->id, (string) Str::ulid()));
+
+        // The brand context is scoped, so it has to be set *after* the
+        // forget, not before — otherwise the context resolves for a guest
+        // on no brand and caches nothing.
+        $this->app->forgetScopedInstances();
+        $this->withBrand($on);
+        $this->actingAs($user);
+
+        expect(app(ActiveEventContext::class)->current())->not->toBeNull();
+    }
+
+    expect(Cache::has(ActiveEventContext::key($brand->id, $user->id)))->toBeTrue()
+        ->and(Cache::has(ActiveEventContext::key($second->id, $user->id)))->toBeTrue();
+
+    (new HubAccessGdprHandler)->delete(SubjectRef::forUser($user->id), DeletionMode::Erase);
+
+    expect(Cache::has(ActiveEventContext::key($brand->id, $user->id)))->toBeFalse()
+        ->and(Cache::has(ActiveEventContext::key($second->id, $user->id)))->toBeFalse();
 });
