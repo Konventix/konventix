@@ -419,11 +419,14 @@ it('answers a report that lost the race with the report already on file', functi
         'message_id' => $message->id,
         'reporter_user_id' => $reporterId,
         'note' => 'Zuerst',
-        'state' => ReportState::Open,
     ]);
     // A real brand: `brand_id` is a foreign key onto `brands`, and an
     // invented ULID fails that constraint before the scenario is staged.
-    $onFile->forceFill(['brand_id' => Brand::factory()->create()->getKey()])->save();
+    // `state` is off `$fillable` with the rest of the resolve triple.
+    $onFile->forceFill([
+        'brand_id' => Brand::factory()->create()->getKey(),
+        'state' => ReportState::Open,
+    ])->save();
 
     $answer = app(ReportMessage::class)->handle($message, $reporterId, new ReportData('Gleichzeitig'));
 

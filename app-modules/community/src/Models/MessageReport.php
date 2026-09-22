@@ -44,13 +44,22 @@ class MessageReport extends Model
 
     protected $table = 'community_message_reports';
 
+    /**
+     * The resolve triple — `state`, `resolved_by_user_id`, `resolved_at` —
+     * is deliberately **not** here, for the reason `Message` keeps its
+     * tombstone triple out: no database CHECK ties the three together, and
+     * `ResolveReport` writing all of them in one `forceFill` is the only
+     * thing that does. Off `$fillable`, an ordinary `update()` from an
+     * eraser, a sweep or an admin quick-action cannot resolve a report in
+     * passing, or leave one resolved by nobody. `ReportMessage` sets the
+     * opening `state` through `forceFill` for the same reason.
+     *
+     * @var list<string>
+     */
     protected $fillable = [
         'message_id',
         'reporter_user_id',
         'note',
-        'state',
-        'resolved_by_user_id',
-        'resolved_at',
     ];
 
     /**

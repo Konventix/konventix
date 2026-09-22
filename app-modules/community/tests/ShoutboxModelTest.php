@@ -6,6 +6,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Konventix\Community\Enums\ReportState;
 use Konventix\Community\Enums\RoomSubject;
 use Konventix\Community\Models\Message;
 use Konventix\Community\Models\MessageReport;
@@ -93,4 +94,24 @@ it('keeps the tombstone and the lock triple out of mass assignment', function ()
     expect($message->deleted_at)->toBeNull()
         ->and($message->isRemoved())->toBeFalse()
         ->and($room->locked_at)->toBeNull();
+});
+
+// The same hole on the desk's queue: `state`, `resolved_by_user_id` and
+// `resolved_at` are tied together by nothing but `ResolveReport`'s one
+// `forceFill`, so none of the three may arrive through `fill()` — a report
+// resolved by nobody, or resolved with no state, is a row the desk cannot
+// attribute.
+it('keeps the report\'s resolve triple out of mass assignment', function (): void {
+    $this->withBrand();
+
+    $report = MessageReport::factory()->create();
+
+    rescue(fn () => $report->fill(['state' => ReportState::Resolved]), report: false);
+    rescue(fn () => $report->fill(['resolved_by_user_id' => (string) Str::ulid()]), report: false);
+    rescue(fn () => $report->fill(['resolved_at' => CarbonImmutable::now()->utc()]), report: false);
+
+    expect($report->state)->toBe(ReportState::Open)
+        ->and($report->resolved_by_user_id)->toBeNull()
+        ->and($report->resolved_at)->toBeNull()
+        ->and($report->getFillable())->toBe(['message_id', 'reporter_user_id', 'note']);
 });

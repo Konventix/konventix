@@ -73,11 +73,17 @@ final class ReportMessage
                     'message_id' => $message->id,
                     'reporter_user_id' => $reporterUserId,
                     'note' => $note,
-                    'state' => ReportState::Open,
                 ]);
 
                 // The message's brand, never ambient context (ADR-0010).
-                $report->forceFill(['brand_id' => $message->brand_id]);
+                // `state` is the resolve triple's first member and off
+                // `$fillable` with the other two, so it is set here too —
+                // and set at all, rather than left to the column default,
+                // so the returned model says `Open` without a refresh.
+                $report->forceFill([
+                    'brand_id' => $message->brand_id,
+                    'state' => ReportState::Open,
+                ]);
                 $report->save();
 
                 return ['report' => $report, 'created' => true];
