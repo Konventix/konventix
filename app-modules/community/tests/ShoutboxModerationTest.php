@@ -25,6 +25,7 @@ use Konventix\Community\Models\Message;
 use Konventix\Community\Models\MessageReport;
 use Konventix\Community\Models\Room;
 use Konventix\Community\Models\RoomMute;
+use Konventix\Platform\Models\Brand;
 
 /**
  * The three moderation verbs and the report queue (design §4.2–§4.4, §6,
@@ -420,7 +421,9 @@ it('answers a report that lost the race with the report already on file', functi
         'note' => 'Zuerst',
         'state' => ReportState::Open,
     ]);
-    $onFile->forceFill(['brand_id' => (string) Str::ulid()])->save();
+    // A real brand: `brand_id` is a foreign key onto `brands`, and an
+    // invented ULID fails that constraint before the scenario is staged.
+    $onFile->forceFill(['brand_id' => Brand::factory()->create()->getKey()])->save();
 
     $answer = app(ReportMessage::class)->handle($message, $reporterId, new ReportData('Gleichzeitig'));
 
