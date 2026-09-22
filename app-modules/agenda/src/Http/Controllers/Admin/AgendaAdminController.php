@@ -23,7 +23,9 @@ use Konventix\Agenda\Models\AgendaItem;
 use Konventix\Agenda\Models\EventSummary;
 use Konventix\Agenda\Models\Location;
 use Konventix\Agenda\Models\Track;
+use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Modules\ModuleGate;
+use Konventix\Platform\Operators\OperatorContext;
 
 /**
  * Operator console: the programme editor (design §6, ADR-0029).
@@ -231,12 +233,27 @@ final class AgendaAdminController
 
     /**
      * The event as this module knows it, or a 404 — for an event nobody
-     * projected, and for one whose brand has Agenda switched off.
+     * projected, for one on a brand of another operator, and for one whose
+     * brand has Agenda switched off.
+     *
+     * The summary is found by event id across the whole installation, so
+     * the operator check is what keeps this editor to the admin host's own
+     * brands: the capability was checked against that operator's team, and
+     * without it a programme editor of operator Y who knew an event id of
+     * operator X could rewrite X's programme. Platform's own consoles scope
+     * the same way (`BrandMenuAdminController`).
      */
     private function summary(string $event): EventSummary
     {
         /** @var EventSummary $summary */
         $summary = EventSummary::withoutBrandScope()->where('event_id', $event)->firstOrFail();
+
+        $operator = app(OperatorContext::class)->current() ?? abort(404);
+
+        abort_unless(
+            Brand::query()->whereKey($summary->brand_id)->where('operator_id', $operator->getKey())->exists(),
+            404,
+        );
 
         abort_unless(
             app(ModuleGate::class)->isActiveForBrand('agenda', $summary->brand_id),

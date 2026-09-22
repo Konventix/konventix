@@ -118,21 +118,26 @@ function agendaPublishedItem(string $eventId, string $title, string $startsAt, ?
 }
 
 /**
- * An operator with an admin host and a user holding the given capabilities
- * on it, granted the way `permissions:sync` materialises them (a role
- * scoped to the operator plus the assignment) — `eventsAdminOperator()`'s
- * shape, with Agenda's own capability as the default. The host is fixed and
- * distinct from every other module's: `operators.admin_host` is unique.
+ * The operator that owns `$brand`, given an admin host and a user holding
+ * the given capabilities on it, granted the way `permissions:sync`
+ * materialises them (a role scoped to the operator plus the assignment) —
+ * `eventsAdminOperator()`'s shape, with Agenda's own capability as the
+ * default.
+ *
+ * The brand's own operator, not a fresh one: the editor serves only events
+ * whose brand belongs to the admin host's operator. Pass `$operator` for
+ * somebody else's installation. The host defaults to one distinct from
+ * every other module's: `operators.admin_host` is unique.
  *
  * @param  list<string>  $permissions
  * @return array{0: Operator, 1: User}
  */
-function agendaAdminOperator(?array $permissions = null): array
+function agendaAdminOperator(Brand $brand, ?array $permissions = null, ?Operator $operator = null, string $host = 'admin.agendaadmin.test'): array
 {
     $permissions ??= ['platform.access-admin', AgendaPermission::ManageAgenda->value];
 
-    $operator = Operator::factory()->create();
-    $operator->forceFill(['admin_host' => 'admin.agendaadmin.test'])->save();
+    $operator ??= Operator::query()->findOrFail($brand->operator_id);
+    $operator->forceFill(['admin_host' => $host])->save();
 
     $registrar = app(PermissionRegistrar::class);
     $registrar->setPermissionsTeamId($operator->getKey());

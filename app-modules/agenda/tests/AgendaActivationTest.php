@@ -39,7 +39,7 @@ function agendaMetricsRendered(): string
 it('disappears entirely when the brand has not activated it', function (): void {
     $brand = $this->withBrand();
     $event = agendaPublishedEvent($brand);
-    [$operator, $admin] = agendaAdminOperator();
+    [$operator, $admin] = agendaAdminOperator($brand);
 
     $this->get("/events/{$event->slug}/programm")->assertNotFound();
 

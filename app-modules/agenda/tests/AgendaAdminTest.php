@@ -6,6 +6,7 @@ use Konventix\Agenda\Enums\ItemState;
 use Konventix\Agenda\Models\AgendaItem;
 use Konventix\Agenda\Models\Location;
 use Konventix\Agenda\Models\Track;
+use Konventix\Platform\Models\Operator;
 
 /**
  * The programme editor (design §6): the surface that *does* need a
@@ -27,7 +28,7 @@ it('refuses the editor without the capability and serves it with', function (): 
     $brand = $this->withBrand();
     $this->activateModule('agenda');
     $event = agendaPublishedEvent($brand);
-    [$operator, $admin] = agendaAdminOperator();
+    [$operator, $admin] = agendaAdminOperator($brand);
 
     $this->actingAs($admin)
         ->get("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda")
@@ -44,7 +45,7 @@ it('serves the editor for an event that is still a draft', function (): void {
     $brand = $this->withBrand();
     $this->activateModule('agenda');
     $event = agendaPublishedEvent($brand, publish: false);
-    [$operator, $admin] = agendaAdminOperator();
+    [$operator, $admin] = agendaAdminOperator($brand);
 
     $this->actingAs($admin)
         ->get("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda")
@@ -56,7 +57,7 @@ it('refuses the editor to an admin without ManageAgenda', function (): void {
     $brand = $this->withBrand();
     $this->activateModule('agenda');
     $event = agendaPublishedEvent($brand);
-    [$operator, $admin] = agendaAdminOperator(['platform.access-admin']);
+    [$operator, $admin] = agendaAdminOperator($brand, ['platform.access-admin']);
 
     $this->actingAs($admin)
         ->get("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda")
@@ -67,7 +68,7 @@ it('saves tracks, locations and an item in one submit', function (): void {
     $brand = $this->withBrand();
     $this->activateModule('agenda');
     $event = agendaPublishedEvent($brand);
-    [$operator, $admin] = agendaAdminOperator();
+    [$operator, $admin] = agendaAdminOperator($brand);
 
     $this->actingAs($admin)
         ->put("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda", [
@@ -91,7 +92,7 @@ it('refuses two tracks or two places with the same name in one submit', function
     $brand = $this->withBrand();
     $this->activateModule('agenda');
     $event = agendaPublishedEvent($brand);
-    [$operator, $admin] = agendaAdminOperator();
+    [$operator, $admin] = agendaAdminOperator($brand);
 
     $this->actingAs($admin)
         ->put("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda", [
@@ -120,7 +121,7 @@ it('adds, publishes and cancels one item through their own endpoints', function 
     $brand = $this->withBrand();
     $this->activateModule('agenda');
     $event = agendaPublishedEvent($brand);
-    [$operator, $admin] = agendaAdminOperator();
+    [$operator, $admin] = agendaAdminOperator($brand);
 
     $console = $this->actingAs($admin);
 
@@ -160,7 +161,7 @@ it('refuses an item with neither a start nor an end', function (): void {
     $brand = $this->withBrand();
     $this->activateModule('agenda');
     $event = agendaPublishedEvent($brand);
-    [$operator, $admin] = agendaAdminOperator();
+    [$operator, $admin] = agendaAdminOperator($brand);
 
     $this->actingAs($admin)
         ->post("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda/items", [
@@ -180,9 +181,40 @@ it('will not publish an item belonging to another event', function (): void {
     $this->activateModule('agenda');
     $event = agendaPublishedEvent($brand);
     $stranger = AgendaItem::factory()->create(['title' => 'Fremd']);
-    [$operator, $admin] = agendaAdminOperator();
+    [$operator, $admin] = agendaAdminOperator($brand);
 
     $this->actingAs($admin)
         ->post("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda/items/{$stranger->getKey()}/publish")
         ->assertNotFound();
+});
+
+/**
+ * The summary is found by event id across the whole installation, so the
+ * editor itself refuses an event whose brand belongs to another operator:
+ * a programme editor on operator Y's admin host must not read or rewrite
+ * operator X's programme, even holding `ManageAgenda` and knowing the id.
+ */
+it('hides another operator\'s programme from an editor holding ManageAgenda', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('agenda');
+    $event = agendaPublishedEvent($brand);
+    $item = agendaPublishedItem($event->getKey(), 'Lötkurs', '2026-11-20T15:00:00+01:00');
+
+    [$elsewhere, $stranger] = agendaAdminOperator(
+        $brand,
+        operator: Operator::factory()->create(),
+        host: 'admin.agendaadmin-elsewhere.test',
+    );
+
+    expect($elsewhere->getKey())->not->toBe($brand->operator_id);
+
+    $this->actingAs($stranger)
+        ->get("http://{$elsewhere->admin_host}/admin/events/{$event->getKey()}/agenda")
+        ->assertNotFound();
+
+    $this->actingAs($stranger)
+        ->delete("http://{$elsewhere->admin_host}/admin/events/{$event->getKey()}/agenda/items/{$item->getKey()}")
+        ->assertNotFound();
+
+    expect(AgendaItem::withoutBrandScope()->whereKey($item->getKey())->exists())->toBeTrue();
 });
