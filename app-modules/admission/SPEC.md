@@ -170,7 +170,7 @@ reading either.
   `window_ends_at` null means "until the event concludes"). Written only by
   `Actions\ProjectEventPresence` off an accepted scan; closed by the event
   ending, the admission being revoked, or the once-per-day window passing
-  (`admission:close-expired-presence-windows`, every minute). Nobody outside
+  (`admission:close-presence-windows`, every minute). Nobody outside
   Admission reads the table — Platform and Community learn of it through
   `ParticipantAdmitted` and its siblings. Exported and deleted (both modes)
   by the GDPR handler: a presence without a person means nothing. Counted

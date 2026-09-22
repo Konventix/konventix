@@ -164,7 +164,7 @@
       `ParticipantAdmitted`, `ParticipantPresenceChanged` and
       `ParticipantHubAccessEnded` as the public contract; access ended by
       `EndHubAccessOnEventClosed`, `EndHubAccessOnAdmissionRevoked` and
-      the `admission:close-expired-presence-windows` sweep. Presence rows
+      the `admission:close-presence-windows` sweep. Presence rows
       are exported and deleted in both modes by `AdmissionGdprHandler`,
       and counted on `admission_hub_access_total{brand, outcome}`
       (`RecordPresenceMetrics`).
