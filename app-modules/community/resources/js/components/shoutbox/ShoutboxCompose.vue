@@ -105,9 +105,17 @@ function onEnter(event: KeyboardEvent): void {
                 role="status"
             >
                 {{ refusal }}
-                <span v-if="remaining !== null" role="timer">
-                    (noch {{ remaining }} s)
-                </span>
+            </p>
+            <!-- Outside the status paragraph on purpose: a live region
+                 re-announces its whole content on every change, and this
+                 number changes every second. `timer` is not live by
+                 itself, so the sentence above is read once and the
+                 countdown is there for whoever looks (.ai/rules/js.md). -->
+            <p
+                v-if="refusal && remaining !== null"
+                class="text-xs text-text-muted"
+            >
+                <span role="timer">Noch {{ remaining }} s</span>
             </p>
         </form>
     </div>
