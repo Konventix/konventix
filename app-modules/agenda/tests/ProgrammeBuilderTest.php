@@ -75,6 +75,51 @@ it('gives two back-to-back items in one track a row each', function (): void {
         ->and($day->rows[2]->cells[0])->toBe([]);
 });
 
+it('gives an untracked item no span, because the band has no rows to span', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    // 13:00 → 15:00 local, with somebody else's 14:00 row lying in between.
+    AgendaItem::factory()->create(['event_id' => $eventId, 'state' => ItemState::Published,
+        'title' => 'Einlass', 'starts_at' => '2026-11-20T12:00:00Z', 'ends_at' => '2026-11-20T14:00:00Z']);
+    AgendaItem::factory()->create(['event_id' => $eventId, 'state' => ItemState::Published,
+        'title' => 'Begrüßung', 'starts_at' => '2026-11-20T13:00:00Z', 'ends_at' => null]);
+
+    $day = app(ProgrammeBuilder::class)
+        ->forEvent($eventId, $brand->id, [agendaDay('2026-11-20')], 'Europe/Berlin')[0];
+
+    // In a track, Einlass would span the 13:00 and 14:00 rows. In the
+    // full-width band there are no rows, so it must come out as 1.
+    expect(collect($day->rows)->pluck('time')->all())->toBe(['13:00', '14:00', '15:00'])
+        ->and(collect($day->untracked)->pluck('title')->all())->toBe(['Einlass', 'Begrüßung'])
+        ->and($day->untracked[0]->rowSpan)->toBe(1)
+        ->and($day->untracked[0]->endsAt)->toBe('15:00')
+        ->and($day->untracked[1]->rowSpan)->toBe(1);
+});
+
+it('serializes a row as a list of cell lists, one per track', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    $stage = Track::factory()->create(['event_id' => $eventId, 'name' => 'Bühne', 'position' => 1]);
+    AgendaItem::factory()->create(['event_id' => $eventId, 'track_id' => $stage->id, 'state' => ItemState::Published,
+        'title' => 'Eröffnung', 'starts_at' => '2026-11-20T13:00:00Z', 'ends_at' => '2026-11-20T14:00:00Z']);
+
+    $day = app(ProgrammeBuilder::class)
+        ->forEvent($eventId, $brand->id, [agendaDay('2026-11-20')], 'Europe/Berlin')[0];
+
+    // `cells` is a list of lists — `ProgrammeCellData[][]` in the generated
+    // types — and it carries no `DataCollectionOf`, because that attribute
+    // marks a collection *of Data objects* and laravel-data would try to
+    // transform each track's inner list as if the list were a cell. What
+    // that leaves on the wire is worth pinning rather than reasoning about,
+    // so this walks the JSON a browser actually receives.
+    $wire = json_decode(json_encode($day) ?: '', true);
+
+    expect(data_get($wire, 'rows.0.cells.0.0.title'))->toBe('Eröffnung')
+        ->and(data_get($wire, 'rows.0.cells.0.0.rowSpan'))->toBe(1)
+        ->and(data_get($wire, 'untracked'))->toBe([])
+        ->and(data_get($day->toArray(), 'rows.0.cells.0.0.title'))->toBe('Eröffnung');
+});
+
 it('hides drafts, keeps cancelled items visible with their reason', function (): void {
     $brand = $this->withBrand();
     $eventId = (string) Str::ulid();

@@ -58,9 +58,11 @@ use Konventix\Agenda\Models\Track;
  * caller passes together with the days: Agenda reads no table of Event's
  * (ADR-0004), so it learns neither the days nor the timezone by itself.
  *
- * Two queries, both constant — the items of the event with their track and
- * place eager-loaded, and the event's tracks — and all the grouping in PHP.
- * A query per row or per day is what makes a programme page slow.
+ * Two queries, both constant — the items of the event with their place
+ * eager-loaded, and the event's tracks — and all the grouping in PHP. A
+ * query per row or per day is what makes a programme page slow. The track
+ * is deliberately *not* eager-loaded: the columns come from the tracks
+ * query, and an item only ever needs its `track_id` to find its column.
  */
 final class ProgrammeBuilder
 {
@@ -74,7 +76,7 @@ final class ProgrammeBuilder
             ->visible()
             ->forBrand($brandId)
             ->where('event_id', $eventId)
-            ->with(['track', 'location'])
+            ->with(['location'])
             ->orderBy('starts_at')
             ->get();
 
@@ -166,18 +168,24 @@ final class ProgrammeBuilder
         $untracked = [];
 
         foreach ($dayItems as ['item' => $item, 'anchor' => $anchor]) {
-            $startRow = $rowOf[$anchor->setTimezone($timezone)->format('H:i')];
-            $closingRow = $this->closingRowOf($item, $anchor, $startRow, $rowOf, count($times), $date, $timezone);
-
-            $cell = ProgrammeCellData::ofItem($item, $timezone, max(1, $closingRow - $startRow));
-
             if ($item->track_id === null || ! isset($columnOf[$item->track_id])) {
-                $untracked[] = $cell;
+                // The band is a list, not a grid. It has no rows to span, so
+                // the cell keeps the default span of 1 — computing the grid
+                // span here would hand the band a number that means nothing
+                // in it, and break what `ProgrammeCellData` promises.
+                $untracked[] = ProgrammeCellData::ofItem($item, $timezone);
 
                 continue;
             }
 
-            $grid[$startRow][$columnOf[$item->track_id]][] = $cell;
+            $startRow = $rowOf[$anchor->setTimezone($timezone)->format('H:i')];
+            $closingRow = $this->closingRowOf($item, $anchor, $startRow, $rowOf, count($times), $date, $timezone);
+
+            $grid[$startRow][$columnOf[$item->track_id]][] = ProgrammeCellData::ofItem(
+                $item,
+                $timezone,
+                max(1, $closingRow - $startRow),
+            );
         }
 
         $rows = [];
@@ -255,8 +263,10 @@ final class ProgrammeBuilder
      *   boundary is one past the last row and the item spans through it.
      * - An end *before* the item's anchor is data the editor's
      *   `after:startsAt` rule refuses — the check constraint only demands
-     *   one of the two times, not their order. It closes on the next row
-     *   rather than producing a zero or negative span.
+     *   one of the two times, not their order. Lying on another day, it
+     *   closes on the next row; lying on this one, this method returns the
+     *   earlier row it genuinely points at, and the `max(1, …)` clamp at
+     *   the call site is what keeps the span off zero and below.
      *
      * @param  array<string, int>  $rowOf  wall-clock time to row index
      * @param  int  $rowCount  one past the day's last row
