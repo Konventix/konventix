@@ -19,7 +19,6 @@ use Konventix\Admission\Models\CheckIn;
 use Konventix\Admission\Models\Person;
 use Konventix\Messaging\Actions\ResolveBrandTimezone;
 use Konventix\Platform\Operators\OperatorDateTimeFormat;
-use Spatie\LaravelData\DataCollection;
 
 /**
  * The ticket manager's rows for one registration (#292 §4.4), built for
@@ -111,7 +110,7 @@ final class BuildTicketManager
             registrationId: $registrationId,
             ticketCount: count($rows),
             holdsOne: $admissions->contains(fn (Admission $admission): bool => $admission->holder_user_id === $viewerUserId),
-            admissions: new DataCollection(ManagedAdmissionData::class, $rows),
+            admissions: $rows,
         );
     }
 }

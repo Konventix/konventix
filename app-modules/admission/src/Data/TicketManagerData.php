@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Konventix\Admission\Data;
 
+use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Data;
-use Spatie\LaravelData\DataCollection;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
@@ -19,12 +19,20 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 final class TicketManagerData extends Data
 {
     /**
-     * @param  DataCollection<int, ManagedAdmissionData>  $admissions
+     * `admissions` is a typed array rather than a `DataCollection`, the way
+     * every other `#[TypeScript]` Data class types its rows
+     * (`ShoutboxRoomData::$presence`): the transformer cannot read a
+     * `DataCollection<int, X>` annotation and wrote `undefined<number, X>`
+     * into `generated.d.ts`, which prettier then refused to parse.
+     *
+     * @param  array<int, ManagedAdmissionData>  $admissions
      */
     public function __construct(
         public readonly string $registrationId,
         public readonly int $ticketCount,
         public readonly bool $holdsOne,
-        public readonly DataCollection $admissions,
+        /** @var array<int, ManagedAdmissionData> */
+        #[DataCollectionOf(ManagedAdmissionData::class)]
+        public readonly array $admissions,
     ) {}
 }
