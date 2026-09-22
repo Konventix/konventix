@@ -23,11 +23,6 @@ type Product = Konventix.Commerce.Data.ShopProductData;
 
 const props = defineProps<{
     product: Product;
-    /**
-     * The operator's §19 UStG election (ADR-0030): under it the price
-     * contains no VAT and the label must say so (branch review finding 12).
-     */
-    smallBusinessScheme: boolean;
     /** The brand's currency (#234) — never a hardcoded symbol. */
     currency: string;
 }>();
@@ -114,7 +109,7 @@ function addToCart(): void {
                     {{
                         taxNote(
                             props.product.priceDisplay,
-                            !props.smallBusinessScheme,
+                            props.product.smallBusinessScheme,
                         )
                     }}
                 </span>
@@ -148,7 +143,7 @@ function addToCart(): void {
                             {{
                                 taxNote(
                                     props.product.priceDisplay,
-                                    !props.smallBusinessScheme,
+                                    props.product.smallBusinessScheme,
                                 )
                             }}
                         </template>

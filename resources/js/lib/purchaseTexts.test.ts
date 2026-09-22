@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    NO_VAT_SMALL_BUSINESS,
     ORDER_WITH_OBLIGATION_TO_PAY,
     displayUnitAmount,
     fulfilmentNote,
@@ -50,11 +51,24 @@ describe('purchase path wording', () => {
 
 describe('taxNote under the small-business scheme', () => {
     it('states the absence rather than claiming a tax that is not there', () => {
-        // ADR-0030: the §19 election zeroes VAT on every line, so gross
-        // equals net and both ordinary labels would be false (finding 12).
-        expect(taxNote('gross', false)).toBe('no VAT (§ 19 UStG)');
-        expect(taxNote('net', false)).toBe('no VAT (§ 19 UStG)');
+        // ADR-0030, GitLab #244: the §19 election zeroes VAT on every line,
+        // so gross equals net and both ordinary labels would be false.
+        expect(taxNote('gross', true)).toBe('no VAT charged (§ 19 UStG)');
+        expect(taxNote('net', true)).toBe('no VAT charged (§ 19 UStG)');
+    });
+
+    it('keeps the ordinary labels for every brand that does charge VAT', () => {
+        expect(taxNote('gross', false)).toBe('incl. VAT');
+        expect(taxNote('net', false)).toBe('excl. VAT');
+    });
+
+    it('never prints the §19 note by accident', () => {
+        // The default is "not a Kleinunternehmer": the note is a positive
+        // legal claim, so a surface that has not been told stays on the
+        // ordinary wording rather than asserting an election it knows
+        // nothing about.
         expect(taxNote('gross')).toBe('incl. VAT');
         expect(taxNote('net')).toBe('excl. VAT');
+        expect(NO_VAT_SMALL_BUSINESS).toBe('no VAT charged (§ 19 UStG)');
     });
 });

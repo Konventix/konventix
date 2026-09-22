@@ -1055,12 +1055,14 @@ class CommerceServiceProvider extends ModuleServiceProvider
 
                 return [
                     // Whether the amounts below carry any VAT at all
-                    // (branch review NEW-4): under the §19 election they do
-                    // not, and a card labelled "incl. VAT" on a public
-                    // consumer page is the PAngV problem #3 exists for. The
-                    // flag is already in hand here, so the card is told.
-                    'smallBusinessScheme' => $smallBusinessScheme,
-                    // And in which currency (#234): the brand's own, read
+                    // (branch review NEW-4) now travels on each priced
+                    // product, as the treatment the calculation resolved
+                    // (`ShopProductData::$smallBusinessScheme`, #244) — the
+                    // election below only feeds that calculation, so the
+                    // card and `/shop` cannot label the same product
+                    // differently.
+                    //
+                    // In which currency (#234): the brand's own, read
                     // off the same row, so no public card hardcodes a
                     // symbol. Empty where there is nothing to price — the
                     // card renders nothing at all then.

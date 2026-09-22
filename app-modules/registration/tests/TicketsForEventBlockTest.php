@@ -221,5 +221,5 @@ it('carries the Commerce-computed end price through the static-page pipeline', f
             ->where('blocks.0.props.offers.0.endPrice.unitAmountNet', '19.00')
             ->where('blocks.0.props.offers.0.endPrice.unitAmountGross', '22.61')
             ->where('blocks.0.props.offers.0.endPrice.currency', 'EUR')
-            ->where('blocks.0.props.offers.0.endPrice.includesTax', true));
+            ->where('blocks.0.props.offers.0.endPrice.smallBusinessScheme', false));
 });

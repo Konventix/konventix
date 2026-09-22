@@ -31,6 +31,12 @@ import type { ConfirmationSlot } from '../pay/confirmation';
 const props = defineProps<{
     summary: {
         currency: string;
+        /**
+         * The §19 UStG election this step's own calculation resolved
+         * (#244) — the page carrying the §312j (3) BGB button may not
+         * label a total "incl. VAT" when no VAT is being charged.
+         */
+        smallBusinessScheme: boolean;
         totalNet: string;
         totalTax: string;
         totalGross: string;
@@ -101,7 +107,9 @@ function checkout(): void {
                     <span
                         >{{ props.summary.totalGross }}
                         {{ props.summary.currency }}
-                        {{ taxNote('gross') }}</span
+                        {{
+                            taxNote('gross', props.summary.smallBusinessScheme)
+                        }}</span
                     >
                 </div>
                 <p class="text-xs text-text-muted">

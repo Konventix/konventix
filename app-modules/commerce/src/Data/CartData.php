@@ -48,6 +48,16 @@ final class CartData extends Data
          * still change between this render and the submit.
          */
         public readonly bool $billingAddressRequired,
+        /**
+         * The operator's §19 UStG election as this preview's own
+         * calculation resolved it (#244). The cart names no billing party
+         * — `CartController` passes `billingVatId: null` — so the election
+         * is the only thing that can move this total's VAT, and under it
+         * "incl. VAT" beside the total claims a tax checkout will not
+         * charge. The treatment, never `totalTax === '0.00'`: an empty
+         * cart has no tax either and is no Kleinunternehmer.
+         */
+        public readonly bool $smallBusinessScheme,
     ) {}
 
     /**
@@ -67,6 +77,7 @@ final class CartData extends Data
         string $currency,
         array $accounts,
         bool $billingAddressRequired,
+        bool $smallBusinessScheme,
     ): self {
         return new self(
             lines: $lines,
@@ -78,6 +89,7 @@ final class CartData extends Data
             expiresAt: $cart?->expires_at->toIso8601String(),
             accounts: $accounts,
             billingAddressRequired: $billingAddressRequired,
+            smallBusinessScheme: $smallBusinessScheme,
         );
     }
 }

@@ -54,7 +54,7 @@ it('computes the end price of a batch in order, with the rate and the brand curr
         ->and($endPrices[0]->unitAmountGross)->toBe('22.61')
         ->and($endPrices[0]->taxRate)->toBe('19.00')
         ->and($endPrices[0]->currency)->toBe('EUR')
-        ->and($endPrices[0]->includesTax)->toBeTrue()
+        ->and($endPrices[0]->smallBusinessScheme)->toBeFalse()
         ->and($endPrices[1]->unitAmountGross)->toBe('10.70')
         ->and($endPrices[1]->taxRate)->toBe('7.00');
 });
@@ -73,7 +73,7 @@ it('carries no tax at all under the operator\'s small-business election', functi
 
     expect($endPrice->unitAmountGross)->toBe('19.00')
         ->and($endPrice->taxRate)->toBe('0.00')
-        ->and($endPrice->includesTax)->toBeFalse();
+        ->and($endPrice->smallBusinessScheme)->toBeTrue();
 });
 
 /**

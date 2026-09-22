@@ -23,11 +23,15 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * "7.00", or "0.00" where none applies), not the one the offer declared —
  * ADR-0017's "the declared rate is an intention, not a guarantee".
  *
- * `includesTax` is false under the operator's §19 UStG election
- * (ADR-0030), where the amount contains no VAT at all: "incl. VAT" would
- * claim a tax the invoice does not carry, and §19 (1) sentence 4 UStG
- * wants the absence stated. `taxNote()` in `resources/js/lib/purchaseTexts.ts`
- * is the one place that wording lives.
+ * `smallBusinessScheme` is the operator's §19 UStG election as the
+ * computing module resolved it (ADR-0030, GitLab #244) — the *status*, not
+ * the amount: under it the price carries no VAT at all, so "incl. VAT"
+ * would claim a tax the invoice does not carry and §19 (1) sentence 4 UStG
+ * wants the absence stated instead. It is carried beside `taxRate` rather
+ * than derived from it on the page, because a rate of "0.00" can also come
+ * from a zero-rated line or a reverse charge, neither of which makes the
+ * seller a Kleinunternehmer. `taxNote()` in
+ * `resources/js/lib/purchaseTexts.ts` is the one place that wording lives.
  *
  * `currency` is the brand's (ADR-0001 — fixed per brand), so a public page
  * never hardcodes a symbol.
@@ -40,6 +44,6 @@ final class EndPriceData extends Data
         public readonly string $unitAmountGross,
         public readonly string $taxRate,
         public readonly string $currency,
-        public readonly bool $includesTax,
+        public readonly bool $smallBusinessScheme,
     ) {}
 }

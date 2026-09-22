@@ -18,6 +18,7 @@ use Konventix\Commerce\Data\MyOrderLineData;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Enums\TaxTreatment;
 use Konventix\Commerce\Events\CheckoutConsentGiven;
 use Konventix\Commerce\Http\Controllers\Concerns\ChoosesSettlementAccount;
 use Konventix\Commerce\Models\Cart;
@@ -144,6 +145,11 @@ class CheckoutController
                 'id' => $order->id,
                 'status' => $order->status->value,
                 'currency' => $order->currency,
+                // #244: an order carries the treatment settlement
+                // resolved for it, and under the §19 election there is no
+                // VAT in this total at all — the label says so instead of
+                // claiming one. The snapshot, never `total_tax === '0.00'`.
+                'smallBusinessScheme' => $order->tax_treatment === TaxTreatment::SmallBusiness,
                 'totalNet' => $order->total_net,
                 'totalTax' => $order->total_tax,
                 'totalGross' => $order->total_gross,
@@ -418,6 +424,11 @@ class CheckoutController
                 'id' => $model->getKey(),
                 'status' => $model->status->value,
                 'currency' => $model->currency,
+                // #244: an order carries the treatment settlement
+                // resolved for it, and under the §19 election there is no
+                // VAT in this total at all — the label says so instead of
+                // claiming one. The snapshot, never `total_tax === '0.00'`.
+                'smallBusinessScheme' => $model->tax_treatment === TaxTreatment::SmallBusiness,
                 'totalNet' => $model->total_net,
                 'totalTax' => $model->total_tax,
                 'totalGross' => $model->total_gross,
@@ -653,6 +664,11 @@ class CheckoutController
                 'id' => $order->getKey(),
                 'status' => $order->status->value,
                 'currency' => $order->currency,
+                // #244: an order carries the treatment settlement
+                // resolved for it, and under the §19 election there is no
+                // VAT in this total at all — the label says so instead of
+                // claiming one. The snapshot, never `total_tax === '0.00'`.
+                'smallBusinessScheme' => $order->tax_treatment === TaxTreatment::SmallBusiness,
                 'totalNet' => $order->total_net,
                 'totalTax' => $order->total_tax,
                 'totalGross' => $order->total_gross,

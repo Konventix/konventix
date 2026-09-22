@@ -180,7 +180,7 @@ const expiresInMinutes = computed<number | null>(() => {
                         }}</span>
                         <span class="text-sm text-text-muted">
                             {{ line.unitAmountGross }} {{ cart.currency }} each
-                            {{ taxNote('gross') }}
+                            {{ taxNote('gross', cart.smallBusinessScheme) }}
                         </span>
                     </div>
 
@@ -265,7 +265,7 @@ const expiresInMinutes = computed<number | null>(() => {
                     <span>
                         {{ cart.totalGross }} {{ cart.currency }}
                         <span class="font-normal text-text-muted">
-                            {{ taxNote('gross') }}
+                            {{ taxNote('gross', cart.smallBusinessScheme) }}
                         </span>
                     </span>
                 </div>

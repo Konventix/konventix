@@ -30,12 +30,6 @@ const props = defineProps<{
     products: Product[];
     slots: SlotContribution[];
     /**
-     * The operator's §19 UStG election (ADR-0030): under it the prices
-     * contain no VAT at all, and the label has to say so rather than claim
-     * one (branch review finding 12).
-     */
-    smallBusinessScheme: boolean;
-    /**
      * The brand's currency (#234): a public price names it rather than
      * assuming a symbol, the same way every order, cart and invoice line
      * on this instance already does.
@@ -103,7 +97,7 @@ const props = defineProps<{
                             {{
                                 taxNote(
                                     product.priceDisplay,
-                                    !props.smallBusinessScheme,
+                                    product.smallBusinessScheme,
                                 )
                             }}
                         </span>

@@ -143,6 +143,55 @@ it('shows the same per-unit gross in the cart as in the shop', function (): void
 });
 
 /**
+ * #244: the cart is a price surface too, and the §312j (3) BGB button sits
+ * one step behind it. `CartController` passes no billing party, so the
+ * operator's §19 election is the only thing that can move this total's VAT
+ * — and the page is handed the treatment its own preview resolved rather
+ * than left to read a zero off `totalTax`.
+ */
+it('tells the cart and its confirmation that no VAT is being charged under the scheme', function (): void {
+    grossPricesOperator(smallBusinessScheme: true);
+    $this->actingAs(User::factory()->create());
+
+    $product = Product::factory()->published()->create([
+        'tax_class' => TaxClass::Standard,
+        'unit_amount_net' => '19.00',
+    ]);
+    $variant = ProductVariant::factory()->create(['product_id' => $product->getKey()]);
+
+    $this->post('/cart/lines', ['variantId' => $variant->getKey(), 'quantity' => 1])
+        ->assertRedirect();
+
+    $this->get('/cart')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('cart/Show')
+            // Gross equals net, and the label may not claim otherwise.
+            ->where('cart.totalGross', '19.00')
+            ->where('cart.smallBusinessScheme', true));
+});
+
+it('leaves the cart claiming the VAT it does charge for an ordinary operator', function (): void {
+    grossPricesOperator();
+    $this->actingAs(User::factory()->create());
+
+    $product = Product::factory()->published()->create([
+        'tax_class' => TaxClass::Standard,
+        'unit_amount_net' => '19.00',
+    ]);
+    $variant = ProductVariant::factory()->create(['product_id' => $product->getKey()]);
+
+    $this->post('/cart/lines', ['variantId' => $variant->getKey(), 'quantity' => 1])
+        ->assertRedirect();
+
+    $this->get('/cart')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('cart.totalGross', '22.61')
+            ->where('cart.smallBusinessScheme', false));
+});
+
+/**
  * #234 (D-COM-20): one calculator, one answer. A registration type that
  * declares the same net amount as a product must print the same end price —
  * and the defect was exactly this pair disagreeing on one page, the
@@ -195,8 +244,9 @@ it('gives a contributed registration offer the same end price as a product of th
             expect($props['products'][0]['unitAmountGross'])->toBe('22.61')
                 ->and($offer['endPrice']['unitAmountGross'])->toBe($props['products'][0]['unitAmountGross'])
                 ->and($offer['endPrice']['currency'])->toBe($props['currency'])
-                // And the same answer to "does this amount contain VAT?",
-                // which is what the note beside each of them claims.
-                ->and($offer['endPrice']['includesTax'])->toBe(! $props['smallBusinessScheme']);
+                // And the same answer to "is this brand charging VAT at
+                // all?", which is what the note beside each of them claims
+                // (#244).
+                ->and($offer['endPrice']['smallBusinessScheme'])->toBe($props['products'][0]['smallBusinessScheme']);
         });
 });

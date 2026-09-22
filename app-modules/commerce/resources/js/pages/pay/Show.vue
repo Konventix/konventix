@@ -34,6 +34,12 @@ type Props = {
         id: string;
         status: string;
         currency: string;
+        /**
+         * The §19 UStG election as settlement resolved it for this order
+         * (#244): no VAT is charged at all then, and the total's label says
+         * so rather than claiming one.
+         */
+        smallBusinessScheme: boolean;
         totalNet: string;
         totalTax: string;
         totalGross: string;
@@ -146,7 +152,9 @@ const lastAttemptFailed = computed(
                     <span>Total</span>
                     <span
                         >{{ props.order.totalGross }} {{ props.order.currency }}
-                        {{ taxNote('gross') }}</span
+                        {{
+                            taxNote('gross', props.order.smallBusinessScheme)
+                        }}</span
                     >
                 </div>
                 <p class="text-xs text-text-muted">

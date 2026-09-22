@@ -128,10 +128,13 @@ final class TaxCalculatorEndPrices implements EndPriceCalculator
                 unitAmountGross: $calculated->lineGross,
                 taxRate: $calculated->taxRate,
                 currency: $currency,
-                // What the label may claim (ADR-0030): under the §19
+                // What the label may claim (ADR-0030, #244): under the §19
                 // election there is no VAT in this amount at all, and the
-                // surface has to say so instead of "incl. VAT".
-                includesTax: $calculation->treatment === TaxTreatment::Standard,
+                // surface has to say so instead of "incl. VAT". Keyed on the
+                // resolved treatment, never on a zero rate — the rate is an
+                // amount, the election is a status, and only the status
+                // makes the §19 sentence true.
+                smallBusinessScheme: $calculation->treatment === TaxTreatment::SmallBusiness,
             );
         }
 

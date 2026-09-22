@@ -8,6 +8,7 @@ use Konventix\Commerce\Models\ProductVariant;
 use Konventix\Event\Models\Event;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\Operator;
 
 /**
  * The public shop (ADR-0047, Task 8): `/shop` and `/shop/{slug}`, resolved
@@ -223,12 +224,14 @@ it('carries the shop.index slot bag for other modules to hang offers off', funct
 });
 
 /**
- * ADR-0030 / branch review finding 12: under the operator's §19 election the
- * calculator puts no VAT on any line, so the card may not label the amount
- * "incl. VAT". The page is told which case it is in; the wording itself is
- * `purchaseTexts::taxNote()`'s, pinned in its own unit test.
+ * ADR-0030 / GitLab #244: under the operator's §19 election the calculator
+ * puts no VAT on any line, so no shop surface may label the amount "incl.
+ * VAT". The fact travels *with the priced product* rather than as a page
+ * prop beside it, so the listing, the product page and the landing card
+ * cannot disagree; the wording itself is `purchaseTexts::taxNote()`'s,
+ * pinned in its own unit test.
  */
-it('tells the shop pages whether the price contains any VAT at all', function (): void {
+it('leaves an ordinary operator\'s products claiming the VAT they do carry', function (): void {
     $brand = $this->withBrand();
     $this->activateFeature('commerce:shop', $brand);
 
@@ -237,9 +240,38 @@ it('tells the shop pages whether the price contains any VAT at all', function ()
 
     $this->get('/shop')
         ->assertOk()
-        ->assertInertia(fn (AssertableInertia $page) => $page->where('smallBusinessScheme', false));
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('products.0.smallBusinessScheme', false));
 
     $this->get('/shop/'.$product->slug)
         ->assertOk()
-        ->assertInertia(fn (AssertableInertia $page) => $page->where('smallBusinessScheme', false));
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('product.smallBusinessScheme', false));
+});
+
+it('marks every shop surface as charging no VAT under the small-business scheme', function (): void {
+    $brand = $this->withBrand();
+    $brand->operator()->associate(Operator::factory()->smallBusinessScheme()->create())->save();
+    $this->activateFeature('commerce:shop', $brand);
+
+    $event = Event::factory()->published()->create();
+    $product = Product::factory()->published()->create([
+        'name' => 'Event T-Shirt',
+        'event_id' => $event->getKey(),
+    ]);
+    ProductVariant::factory()->create(['product_id' => $product->getKey()]);
+
+    $this->get('/shop')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('products.0.smallBusinessScheme', true));
+
+    $this->get('/shop/'.$product->slug)
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('product.smallBusinessScheme', true));
+
+    // And the landing card, which reads the same field off the same payload
+    // rather than a flag of its own (#244).
+    $this->get('/events/'.$event->slug)
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page): void {
+            expect(shopLandingSlot($page)['props']['products'][0]['smallBusinessScheme'])->toBeTrue();
+        });
 });

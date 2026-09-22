@@ -14,6 +14,11 @@ import { displayUnitAmount, taxNote } from '@/lib/purchaseTexts';
  * about, so there is one implementation of it now and the surfaces only
  * choose where to put it.
  *
+ * The one exception to that pair of labels is the operator's §19 UStG
+ * election, which `EndPriceData` carries as the treatment Commerce resolved
+ * (#244): no VAT is charged at all then, so neither "incl." nor "excl."
+ * is a true sentence and `taxNote()` prints the statutory note instead.
+ *
  * ADR-0006 is unchanged and deliberate: the net-versus-gross *display*
  * hangs on the registration type. A `gross` type (the B2C default) prints
  * the end price and says "incl. VAT"; a type the organizer deliberately set
@@ -56,7 +61,7 @@ const amount = computed<string | null>(() => {
 const note = computed<string>(() =>
     props.price === null || props.endPrice === null
         ? taxNote('net')
-        : taxNote(props.price.display, props.endPrice.includesTax),
+        : taxNote(props.price.display, props.endPrice.smallBusinessScheme),
 );
 </script>
 

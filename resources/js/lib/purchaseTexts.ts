@@ -28,24 +28,38 @@
 /** §312j (3) BGB: the label of the button that concludes the contract. */
 export const ORDER_WITH_OBLIGATION_TO_PAY = 'Order with obligation to pay';
 
+/** §19 (1) sentence 4 UStG: the absence of VAT, stated. */
+export const NO_VAT_SMALL_BUSINESS = 'no VAT charged (§ 19 UStG)';
+
 /**
  * PAngV: a consumer price is the end price, and it has to say so. The
  * `net` case is the B2B display a brand may choose for its own audience,
  * where the net amount is the honest one and the label says which it is.
  *
- * `includesTax` is false where the operator elected the §19 UStG
- * small-business scheme (ADR-0030): the calculator then puts no VAT on any
- * line, gross equals net, and both "incl. VAT" and "excl. VAT" claim a tax
- * that does not exist — §19 (1) sentence 4 UStG in fact requires the
- * absence to be stated. Defaults to true so a surface that has not been
- * told keeps its current wording (branch review finding 12).
+ * `smallBusinessScheme` is the operator's §19 UStG election as
+ * `GermanVat::treatmentFor()` resolved it — `TaxTreatment::SmallBusiness`,
+ * carried to the page as that one fact (GitLab #244). Under it the
+ * calculator puts no VAT on any line at all, gross equals net, and both
+ * "incl. VAT" and "excl. VAT" claim a tax that is not being charged, while
+ * §19 (1) sentence 4 UStG in fact requires the absence to be stated.
+ *
+ * Deliberately *not* keyed on a zero rate: a rate of "0.00" is an amount,
+ * the §19 election is a status, and the two are not the same fact — a
+ * zero-rated line under an ordinary operator, or the reverse charge a
+ * billing party with a foreign VAT ID triggers, both produce no VAT on the
+ * line without making this brand a Kleinunternehmer. Only the resolved
+ * treatment says which sentence is true.
+ *
+ * Defaults to false so a surface that has not been told keeps the ordinary
+ * wording: the §19 note is a positive claim and is never printed by
+ * accident.
  */
 export function taxNote(
     priceDisplay: 'gross' | 'net',
-    includesTax = true,
+    smallBusinessScheme = false,
 ): string {
-    if (!includesTax) {
-        return 'no VAT (§ 19 UStG)';
+    if (smallBusinessScheme) {
+        return NO_VAT_SMALL_BUSINESS;
     }
 
     return priceDisplay === 'gross' ? 'incl. VAT' : 'excl. VAT';

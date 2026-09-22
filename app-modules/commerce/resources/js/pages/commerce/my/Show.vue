@@ -205,7 +205,9 @@ const billingLines = computed(() => {
                     <span>Total</span>
                     <span
                         >{{ props.order.totalGross }} {{ props.order.currency }}
-                        {{ taxNote('gross') }}</span
+                        {{
+                            taxNote('gross', props.order.smallBusinessScheme)
+                        }}</span
                     >
                 </div>
                 <p class="text-xs text-text-muted">

@@ -27,6 +27,7 @@ use Konventix\Commerce\Data\CheckoutAccountData;
 use Konventix\Commerce\Data\RemovedCartLineData;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\CartStatus;
+use Konventix\Commerce\Enums\TaxTreatment;
 use Konventix\Commerce\Events\CheckoutConsentGiven;
 use Konventix\Commerce\Exceptions\CartCheckoutRefusedException;
 use Konventix\Commerce\Exceptions\StockExhaustedException;
@@ -177,6 +178,11 @@ final class CartController
                 // submit time, shown here so the page can ask for the
                 // address up front rather than only after a 422.
                 GermanVat::requiresBillingAddress($totalGross),
+                // What the price label may claim (#244): the treatment this
+                // very preview resolved, not a zero total. `billingVatId`
+                // is null above, so §19 is the only thing that can move it
+                // here — and an empty cart is no Kleinunternehmer.
+                $calculation !== null && $calculation->treatment === TaxTreatment::SmallBusiness,
             )->toArray(),
         ]);
     }
@@ -345,6 +351,10 @@ final class CartController
         return Inertia::render('cart/Confirm', [
             'summary' => [
                 'currency' => $this->operatorSettings->currencyForBrand($brand->id),
+                // #244, as on step one: the resolved treatment decides
+                // whether the total may be labelled "incl. VAT" at all —
+                // and this is the page carrying the §312j (3) BGB button.
+                'smallBusinessScheme' => $calculation->treatment === TaxTreatment::SmallBusiness,
                 'totalNet' => $calculation->totalNet,
                 'totalTax' => $calculation->totalTax,
                 'totalGross' => $calculation->totalGross,

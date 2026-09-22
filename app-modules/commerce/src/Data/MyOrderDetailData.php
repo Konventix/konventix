@@ -6,6 +6,7 @@ namespace Konventix\Commerce\Data;
 
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Enums\TaxTreatment;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
@@ -55,6 +56,14 @@ final class MyOrderDetailData extends Data
         public readonly string $totalNet,
         public readonly string $totalTax,
         public readonly string $totalGross,
+        /**
+         * The §19 UStG election as settlement resolved it for this order
+         * (#244): under it the total carries no VAT at all and the page
+         * owes the statutory note rather than "incl. VAT". Read off the
+         * order's own `tax_treatment` snapshot — the treatment, never a
+         * zero tax total, and never recomputed here (ADR-0031).
+         */
+        public readonly bool $smallBusinessScheme,
         public readonly ?string $invoiceNumber,
         public readonly bool $invoicePaid,
         public readonly ?string $payUrl,
@@ -95,6 +104,7 @@ final class MyOrderDetailData extends Data
             totalNet: $order->total_net,
             totalTax: $order->total_tax,
             totalGross: $summary->totalGross,
+            smallBusinessScheme: $order->tax_treatment === TaxTreatment::SmallBusiness,
             invoiceNumber: $summary->invoiceNumber,
             invoicePaid: $summary->invoicePaid,
             payUrl: $summary->payUrl,

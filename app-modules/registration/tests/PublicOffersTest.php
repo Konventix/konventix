@@ -173,8 +173,8 @@ it('carries the Commerce-computed end price of every priced offer on the landing
                     'unitAmountGross' => '22.61',
                     'taxRate' => '19.00',
                     'currency' => 'EUR',
-                    // What the note may claim: this amount does contain VAT.
-                    'includesTax' => true,
+                    // What the note may claim: this brand charges VAT.
+                    'smallBusinessScheme' => false,
                 ])
                 ->and($offers['Exhibitor Pass']['price']['display'])->toBe('net')
                 ->and($offers['Exhibitor Pass']['endPrice'])->toMatchArray([
@@ -188,8 +188,10 @@ it('carries the Commerce-computed end price of every priced offer on the landing
 /**
  * ADR-0030: under the operator's §19 UStG election the calculator puts no
  * VAT on any line, so the end price equals the net amount and the card must
- * say "no VAT (§ 19 UStG)" rather than "incl. VAT" — §19 (1) sentence 4
- * UStG wants the absence stated, and `taxNote()` owns the wording.
+ * say "no VAT charged (§ 19 UStG)" rather than "incl. VAT" — §19 (1)
+ * sentence 4 UStG wants the absence stated, and `taxNote()` owns the
+ * wording. The page is told the *treatment*, never left to infer it from a
+ * zero rate (#244).
  */
 it('shows an end price with no VAT in it for an operator on the small-business scheme', function (): void {
     $brand = $this->withBrand();
@@ -206,7 +208,7 @@ it('shows an end price with no VAT in it for an operator on the small-business s
             expect(landingOffers($page)[0]['endPrice'])->toMatchArray([
                 'unitAmountGross' => '19.00',
                 'taxRate' => '0.00',
-                'includesTax' => false,
+                'smallBusinessScheme' => true,
             ]);
         });
 });
@@ -641,7 +643,7 @@ it('carries a Commerce-computed gross amount for every priced offer on the shop'
             expect($offers['Weekend Ticket']['price'])
                 ->toMatchArray(['unitAmountNet' => '19.00', 'display' => 'gross'])
                 ->and($offers['Weekend Ticket']['endPrice'])
-                ->toMatchArray(['unitAmountGross' => '22.61', 'currency' => 'EUR', 'includesTax' => true])
+                ->toMatchArray(['unitAmountGross' => '22.61', 'currency' => 'EUR', 'smallBusinessScheme' => false])
                 ->and($offers['Reduced Ticket']['price'])
                 ->toMatchArray(['unitAmountNet' => '10.00', 'display' => 'net'])
                 ->and($offers['Reduced Ticket']['endPrice'])

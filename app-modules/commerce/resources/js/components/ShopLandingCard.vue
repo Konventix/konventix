@@ -21,13 +21,6 @@ type Product = Konventix.Commerce.Data.ShopProductData;
 const props = defineProps<{
     products: Product[];
     /**
-     * The operator's §19 UStG election (ADR-0030): under it these amounts
-     * carry no VAT, and "incl. VAT" on a public consumer page would claim
-     * one (branch review NEW-4). Optional so the component still renders if
-     * an older payload reaches it; the slot always sends it.
-     */
-    smallBusinessScheme?: boolean;
-    /**
      * The brand's currency (#234). Optional for the same reason, and the
      * card simply prints the amount without one if an older payload
      * reaches it — never a symbol nobody chose.
@@ -69,7 +62,7 @@ const props = defineProps<{
                         {{
                             taxNote(
                                 product.priceDisplay,
-                                !props.smallBusinessScheme,
+                                product.smallBusinessScheme,
                             )
                         }}
                     </span>

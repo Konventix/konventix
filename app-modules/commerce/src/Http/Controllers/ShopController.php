@@ -43,10 +43,6 @@ final class ShopController
         $smallBusinessScheme = $this->smallBusinessScheme($brandContext);
 
         return Inertia::render('shop/Index', [
-            // ADR-0030 / branch review finding 12: under the §19 election
-            // the calculator puts no VAT on any line, so a card that said
-            // "incl. VAT" would claim a tax the invoice does not carry.
-            'smallBusinessScheme' => $smallBusinessScheme,
             // The brand's own (#234): a public page prints no hardcoded
             // currency symbol, here or in a contributed offer's end price.
             'currency' => $this->operatorSettings->currencyForBrand($this->brandId($brandContext)),
@@ -97,7 +93,6 @@ final class ShopController
         $smallBusinessScheme = $this->smallBusinessScheme($brandContext);
 
         return Inertia::render('shop/Show', [
-            'smallBusinessScheme' => $smallBusinessScheme,
             'currency' => $this->operatorSettings->currencyForBrand($this->brandId($brandContext)),
             'product' => ShopProductData::ofModel(
                 $product,
@@ -114,6 +109,12 @@ final class ShopController
      * surface, so reverse charge cannot apply. Read through Platform's
      * `OperatorSettings` doorway rather than any foreign Eloquent model,
      * exactly as `CartController` reads it for the cart's own preview.
+     *
+     * It goes into the calculation only. What the *label* may claim travels
+     * back out on `ShopProductData::$smallBusinessScheme`, the treatment the
+     * calculation actually resolved (#244) — a page prop beside the products
+     * was a second copy of the same fact, and the landing card had to be
+     * handed it separately to stay in step.
      */
     private function smallBusinessScheme(BrandContext $brandContext): bool
     {

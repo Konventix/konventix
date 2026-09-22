@@ -138,6 +138,7 @@ declare namespace Konventix {
                 readonly expiresAt: string | null;
                 readonly accounts: Konventix.Commerce.Data.CheckoutAccountData[];
                 readonly billingAddressRequired: boolean;
+                readonly smallBusinessScheme: boolean;
             };
             export type CartLineData = {
                 readonly id: string;
@@ -207,6 +208,7 @@ declare namespace Konventix {
                 readonly totalNet: string;
                 readonly totalTax: string;
                 readonly totalGross: string;
+                readonly smallBusinessScheme: boolean;
                 readonly invoiceNumber: string | null;
                 readonly invoicePaid: boolean;
                 readonly payUrl: string | null;
@@ -372,6 +374,7 @@ declare namespace Konventix {
                 readonly unitAmountNet: string;
                 readonly unitAmountGross: string;
                 readonly priceDisplay: Konventix.Commerce.Enums.PriceDisplay;
+                readonly smallBusinessScheme: boolean;
                 readonly soldOut: boolean;
                 readonly variants: Konventix.Commerce.Data.ShopVariantData[];
             };
@@ -1057,7 +1060,7 @@ declare namespace Konventix {
                 readonly unitAmountGross: string;
                 readonly taxRate: string;
                 readonly currency: string;
-                readonly includesTax: boolean;
+                readonly smallBusinessScheme: boolean;
             };
             export type EnvironmentRibbonData = {
                 name: string;

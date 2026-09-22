@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Data;
 
 use Konventix\Commerce\Enums\PriceDisplay;
+use Konventix\Commerce\Enums\TaxTreatment;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\ProductVariant;
 use Konventix\Commerce\Tax\TaxCalculator;
@@ -35,6 +36,15 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * all under the product's declared tax class (a variant overrides the
  * price, never the class).
  *
+ * `smallBusinessScheme` is the resolved `TaxTreatment` reduced to the one
+ * fact a price label needs (#244): whether the operator's §19 UStG election
+ * applies, in which case neither "incl. VAT" nor "excl. VAT" is true and
+ * the page owes the statutory note instead. It travels with the priced
+ * product rather than as a page prop beside it, so the landing card, the
+ * listing and the product page cannot disagree — and it is the treatment,
+ * not `unitAmountGross === unitAmountNet`, because a zero rate is an amount
+ * and the election is a status.
+ *
  * `$product->variants` must be eager-loaded before this runs:
  * `Product::isSoldOut()` and the variant list both read the loaded
  * relation, and an unloaded one would N+1 across every product on the
@@ -55,6 +65,7 @@ final class ShopProductData extends Data
         public readonly string $unitAmountNet,
         public readonly string $unitAmountGross,
         public readonly PriceDisplay $priceDisplay,
+        public readonly bool $smallBusinessScheme,
         public readonly bool $soldOut,
         public readonly array $variants,
     ) {}
@@ -114,6 +125,7 @@ final class ShopProductData extends Data
             unitAmountNet: $product->unit_amount_net,
             unitAmountGross: $calculation->lines[0]->lineGross,
             priceDisplay: $product->price_display,
+            smallBusinessScheme: $calculation->treatment === TaxTreatment::SmallBusiness,
             soldOut: $product->isSoldOut(),
             variants: array_map(
                 fn (ProductVariant $variant, int $index): ShopVariantData => ShopVariantData::ofModel(
