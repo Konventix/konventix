@@ -309,6 +309,26 @@
 
 ## Done
 
+- [x] #219 — removing a cart line no longer cancels anything: an undo
+      window, not a confirmation dialog (operator decision 2026-09-22). A
+      registration line is soft-removed (`cart_lines.removed_at`, new
+      migration) and keeps holding everything it held; `Cart::lines()`
+      filters it out so the page, the totals, the cart badge, the checkout
+      and the line lookups behave exactly as they did with a delete, while
+      `Cart::removedLines()` feeds the undo banner
+      (`components/CartRemovedLines.vue`) and
+      `POST /cart/lines/{line}/restore` → `RestoreCartLine`. A product line
+      still deletes on the click and releases its stock — there is nothing
+      irreversible to protect there, and holding stock open for an undo
+      would refuse it to the next buyer. The window rides the cart's own
+      `expires_at` and no second sweep was added: `ExpireCarts` emits
+      `CartLineRemoved` for a line still removed when the hold runs out, and
+      `ResolveRemovedCartLines` (called from `PlaceOrderFromCart` before the
+      order's transaction, its own `carts`-first lock per #233) closes it at
+      checkout — without that a paid cart, which the sweep never selects
+      again, would hold its registration for ever. `cart/Show.vue` stayed
+      under the ~300-line limit by extracting `CartBillingFields.vue` too.
+
 - [x] #234 / D-COM-20 — one end price on every public surface (round 4,
       Task 21): `Pricing\TaxCalculatorEndPrices` answers Platform's
       `Pricing\EndPriceCalculator` (bound beside `WaitingRoomGate`), one

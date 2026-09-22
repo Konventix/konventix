@@ -20,7 +20,9 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * moment the recipient's locale is `en`. `nextStep` (`approval`/`pay`/
  * `invoice`/`confirmed`), `reason` (the raw rejection `reasonCode`, mapped
  * with a fallback to itself) and `cancelReason`
- * (`cart_expired`/`registrant`/`operator`) are codes the templates branch
+ * (`cart_expired`/`cart_line_removed`/`registrant`/`operator` — #220 split
+ * the first two apart, because a line the buyer removed from a still-valid
+ * cart never expired) are codes the templates branch
  * on with whitespace-safe `@if`/`@elseif` (`.ai/rules/app-modules-src.md`)
  * — the one place a registration mail template is not branch-free.
  * `holderName` stands in for a precomputed greeting too: every body opens

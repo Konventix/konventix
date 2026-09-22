@@ -5,8 +5,6 @@ import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { fulfilmentNote, taxNote } from '@/lib/purchaseTexts';
 import { choose as chooseCartAccount } from '@/routes/commerce/cart';
 import {
@@ -14,6 +12,8 @@ import {
     update as updateLine,
 } from '@/routes/commerce/cart/lines';
 import { index as shopIndex } from '@/routes/commerce/shop';
+import CartBillingFields from '../../components/CartBillingFields.vue';
+import CartRemovedLines from '../../components/CartRemovedLines.vue';
 
 /**
  * The person-owned cart (ADR-0047, Task 11): line list with quantity
@@ -31,6 +31,12 @@ import { index as shopIndex } from '@/routes/commerce/shop';
  * with the single accept control. Unlike the pay page this step is never
  * skipped: step one here *is* the cart, which the payer has to see whatever
  * the provider situation is.
+ *
+ * #219: the trash button is still one click — the operator chose an undo
+ * window over a confirmation dialog — and `CartRemovedLines` is that window.
+ * A removed registration line leaves the list and the totals but is not
+ * cancelled; it waits in `cart.removedLines` until the buyer puts it back or
+ * the cart's own hold runs out.
  */
 type CartLine = Konventix.Commerce.Data.CartLineData;
 type Cart = Konventix.Commerce.Data.CartData;
@@ -63,17 +69,6 @@ const billingPostalCode = ref('');
 const billingCity = ref('');
 const billingCountryCode = ref('DE');
 
-const billingAddressLineError = computed(
-    () => page.props.errors.billingAddressLine,
-);
-const billingPostalCodeError = computed(
-    () => page.props.errors.billingPostalCode,
-);
-const billingCityError = computed(() => page.props.errors.billingCity);
-const billingCountryCodeError = computed(
-    () => page.props.errors.billingCountryCode,
-);
-
 function changeQuantity(line: CartLine, quantity: number): void {
     if (
         quantity < 1 ||
@@ -90,6 +85,12 @@ function changeQuantity(line: CartLine, quantity: number): void {
     );
 }
 
+/**
+ * Still one click and still a bare `router.delete()` — #219 was not fixed
+ * by asking first. The change is behind it: a registration line is
+ * soft-removed and nothing is cancelled, and `CartRemovedLines` appears
+ * with the way back.
+ */
 function removeLine(line: CartLine): void {
     busyLineId.value = line.id;
     router.delete(destroyLine(line.id).url, {
@@ -135,6 +136,11 @@ const expiresInMinutes = computed<number | null>(() => {
         class="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6 text-text lg:p-8"
     >
         <Heading as="h1" title="Your cart" />
+
+        <CartRemovedLines
+            v-if="cart.removedLines.length > 0"
+            :lines="cart.removedLines"
+        />
 
         <p v-if="cart.lines.length === 0" class="text-sm text-text-muted">
             Your cart is empty.
@@ -272,96 +278,14 @@ const expiresInMinutes = computed<number | null>(() => {
                 after checkout refuses it (`billingAddressRequired` mirrors
                 `PlaceOrderFromCart::guardBillingAddress()`'s own check).
             -->
-            <div
+            <CartBillingFields
                 v-if="cart.billingAddressRequired"
-                class="flex flex-col gap-4 border-t border-border pt-4"
-            >
-                <p class="text-sm text-text-muted">
-                    Orders over 250 € need a billing address on the invoice.
-                </p>
-                <div class="grid gap-2">
-                    <Label for="billingAddressLine">Street and number</Label>
-                    <Input
-                        id="billingAddressLine"
-                        v-model="billingAddressLine"
-                        autocomplete="street-address"
-                        :aria-invalid="
-                            billingAddressLineError ? true : undefined
-                        "
-                        :aria-describedby="
-                            billingAddressLineError
-                                ? 'billingAddressLine-error'
-                                : undefined
-                        "
-                    />
-                    <InputError
-                        id="billingAddressLine-error"
-                        :message="billingAddressLineError"
-                    />
-                </div>
-                <div class="grid grid-cols-3 gap-2">
-                    <div class="grid gap-2">
-                        <Label for="billingPostalCode">Postal code</Label>
-                        <Input
-                            id="billingPostalCode"
-                            v-model="billingPostalCode"
-                            autocomplete="postal-code"
-                            :aria-invalid="
-                                billingPostalCodeError ? true : undefined
-                            "
-                            :aria-describedby="
-                                billingPostalCodeError
-                                    ? 'billingPostalCode-error'
-                                    : undefined
-                            "
-                        />
-                        <InputError
-                            id="billingPostalCode-error"
-                            :message="billingPostalCodeError"
-                        />
-                    </div>
-                    <div class="col-span-2 grid gap-2">
-                        <Label for="billingCity">City</Label>
-                        <Input
-                            id="billingCity"
-                            v-model="billingCity"
-                            autocomplete="address-level2"
-                            :aria-invalid="billingCityError ? true : undefined"
-                            :aria-describedby="
-                                billingCityError
-                                    ? 'billingCity-error'
-                                    : undefined
-                            "
-                        />
-                        <InputError
-                            id="billingCity-error"
-                            :message="billingCityError"
-                        />
-                    </div>
-                </div>
-                <div class="grid gap-2">
-                    <Label for="billingCountryCode">Country code</Label>
-                    <Input
-                        id="billingCountryCode"
-                        v-model="billingCountryCode"
-                        autocomplete="country"
-                        maxlength="2"
-                        class="max-w-24 uppercase"
-                        :aria-invalid="
-                            billingCountryCodeError ? true : undefined
-                        "
-                        :aria-describedby="
-                            billingCountryCodeError
-                                ? 'billingCountryCode-error'
-                                : undefined
-                        "
-                    />
-                    <InputError
-                        id="billingCountryCode-error"
-                        :message="billingCountryCodeError"
-                    />
-                </div>
-            </div>
+                v-model:address-line="billingAddressLine"
+                v-model:postal-code="billingPostalCode"
+                v-model:city="billingCity"
+                v-model:country-code="billingCountryCode"
+                :errors="page.props.errors"
+            />
 
             <!--
                 #75: how and when what was bought arrives has to be stated

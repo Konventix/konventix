@@ -16,6 +16,7 @@ use Konventix\Commerce\Actions\ChangeCartLineQuantity;
 use Konventix\Commerce\Actions\OpenCart;
 use Konventix\Commerce\Actions\PlaceOrderFromCart;
 use Konventix\Commerce\Actions\RemoveCartLine;
+use Konventix\Commerce\Actions\RestoreCartLine;
 use Konventix\Commerce\Cart\ProductPageUrls;
 use Konventix\Commerce\Data\AddToCartData;
 use Konventix\Commerce\Data\BillingPartyData;
@@ -23,6 +24,7 @@ use Konventix\Commerce\Data\CartData;
 use Konventix\Commerce\Data\CartLineData;
 use Konventix\Commerce\Data\CartLineQuantityData;
 use Konventix\Commerce\Data\CheckoutAccountData;
+use Konventix\Commerce\Data\RemovedCartLineData;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\CartStatus;
 use Konventix\Commerce\Events\CheckoutConsentGiven;
@@ -139,6 +141,20 @@ final class CartController
             );
         })->all());
 
+        // #219: the lines inside their undo window, alongside the ones
+        // still in the cart. They are read off `Cart::removedLines()`, the
+        // one relation that sees past the `removed_at` filter, and they are
+        // deliberately not in the tax calculation above — a removed line is
+        // not part of what the buyer is about to pay.
+        $removedLineData = $cart === null ? [] : array_values($cart->removedLines()->get()->map(
+            fn (CartLine $line): RemovedCartLineData => RemovedCartLineData::ofLine(
+                $line,
+                url: $line->kind === CartLineKind::Registration
+                    ? route('registration.mine.show', ['registration' => $line->ref_id], absolute: false)
+                    : null,
+            ),
+        )->all());
+
         // No legal text on this page since ADR-0066: the list depends on the
         // provider, and the provider is chosen here (spec §6.3). What the
         // payer is agreeing to is named on `cart/Confirm`, together with the
@@ -147,6 +163,7 @@ final class CartController
             'cart' => CartData::ofCart(
                 $cart,
                 $lineData,
+                $removedLineData,
                 $totalNet,
                 $totalTax,
                 $totalGross,
@@ -211,9 +228,33 @@ final class CartController
         return back();
     }
 
+    /**
+     * Removal stays one click (#219, operator decision 2026-09-22 — an undo
+     * window, explicitly *not* a confirmation dialog). What changed is
+     * behind it: a registration line is soft-removed and keeps holding
+     * everything it held until the window closes, so this request no longer
+     * cancels anything. `RemoveCartLine`'s docblock has the whole shape.
+     */
     public function destroyLine(Request $request, string $line): RedirectResponse
     {
         app(RemoveCartLine::class)->handle($this->cartLineFor($request, $line));
+
+        return back();
+    }
+
+    /**
+     * The undo (#219). A POST rather than a DELETE-undoing-DELETE: it
+     * restores a row, and `back()` re-renders the cart with the line in its
+     * place and the banner gone.
+     *
+     * `removedCartLineFor()` resolves the id through the payer's own open
+     * cart's *removed* lines, so a line that is in the cart, that belongs
+     * to somebody else, or whose window has already closed simply 404s —
+     * which is also what makes a double-tapped undo harmless.
+     */
+    public function restoreLine(Request $request, string $line): RedirectResponse
+    {
+        app(RestoreCartLine::class)->handle($this->removedCartLineFor($request, $line));
 
         return back();
     }
@@ -583,6 +624,21 @@ final class CartController
             ->firstOrFail();
 
         return $cart->lines()->findOrFail($line);
+    }
+
+    /**
+     * The same resolution for the undo route (#219), through the other
+     * side of the `removed_at` filter: only a line the payer removed and
+     * has not yet lost can be put back.
+     */
+    private function removedCartLineFor(Request $request, string $line): CartLine
+    {
+        $cart = Cart::query()
+            ->open()
+            ->where('payer_user_id', (string) $request->user()->getAuthIdentifier())
+            ->firstOrFail();
+
+        return $cart->removedLines()->findOrFail($line);
     }
 
     /**

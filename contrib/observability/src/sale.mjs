@@ -45,6 +45,8 @@ export default dashboard({
                 prom(`sum by (brand) (increase(konventix_carts_expired_total{${J}}[1h]))`, '{{brand}} carts expired'),
                 prom(`sum by (brand) (increase(konventix_stock_exhausted_total{${J}}[1h]))`, '{{brand}} stock exhausted'),
             ]),
+            stat('Confirmed seats kept (range)', [prom(`sum(increase(konventix_confirmed_registrations_kept_total{${J}}[$__range]))`)], { thresholds: thresholds('green', [1, 'orange']), description: 'A cart line holding a confirmed registration\'s payment died and the registration was left standing rather than voided (#211, ADR-0057 point 5). Each one is a held seat with money still owed — the dunning ladder chases it, no alert fires for it.' }),
+            timeseries('Confirmed seats kept per hour', [prom(`sum by (brand, trigger) (increase(konventix_confirmed_registrations_kept_total{${J}}[1h]))`, '{{brand}} {{trigger}}')], { description: 'trigger is cart_expired when the hold ran out and cart_line_removed when the buyer removed the line and let the undo window close (#219, #220).' }),
         ]),
         row('Seating', [
             stat('Seat claims unplaced', [prom(`sum(konventix_resource_seat_claims_unplaced{${J}})`)], { description: 'Confirmed registrations that have paid or been approved and still have not picked a place — someone cannot sit down, not a queue depth to average out.', thresholds: thresholds('green', [5, 'orange'], [20, 'red']) }),

@@ -63,6 +63,10 @@ Route::middleware(['ensure-feature:commerce:shop', 'ensure-waiting-room', 'auth'
     Route::post('/cart/lines', [CartController::class, 'storeLine'])->name('commerce.cart.lines.store');
     Route::patch('/cart/lines/{line}', [CartController::class, 'updateLine'])->name('commerce.cart.lines.update');
     Route::delete('/cart/lines/{line}', [CartController::class, 'destroyLine'])->name('commerce.cart.lines.destroy');
+    // #219's undo: the removal itself is soft, and this is how the buyer
+    // takes it back while the window is open. POST, not DELETE — it
+    // restores a row.
+    Route::post('/cart/lines/{line}/restore', [CartController::class, 'restoreLine'])->name('commerce.cart.lines.restore');
     // Two-step checkout (ADR-0066 §6.3, D-CPL-07): the cart page is step
     // one — the lines, the billing fields and the provider choice — and
     // `/cart/confirm` is step two, which is the first page to name a legal

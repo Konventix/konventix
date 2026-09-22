@@ -138,6 +138,10 @@ final class CommerceGdprHandler implements GdprHandler
      * a registration line's `CartLineRemoved` (which is what tells
      * Registration to give up the still-pending registration it was
      * holding, ADR-0047 point 3) — before the cart row itself is dropped.
+     * A line inside #219's undo window is released here too: the raw read
+     * below sees past `Cart::lines()`' `removed_at` filter, and an erasure
+     * is the end of the window whether or not the buyer had made up their
+     * mind.
      * `checked_out`/`expired` carts are left alone: one is already an
      * order, the other already released its stock through the sweep.
      */
@@ -176,7 +180,11 @@ final class CommerceGdprHandler implements GdprHandler
                         kind: $line->kind->value,
                         refId: $line->ref_id,
                         requestKey: $line->request_key,
-                        removedAt: now()->toIso8601String(),
+                        // The buyer's own click where #219's undo window
+                        // was still open on this line, `now()` otherwise —
+                        // the event reports when they decided, not when
+                        // the erasure got to it.
+                        removedAt: ($line->removed_at ?? now())->toIso8601String(),
                     ));
                 }
 

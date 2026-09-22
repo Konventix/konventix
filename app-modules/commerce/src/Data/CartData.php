@@ -20,10 +20,18 @@ final class CartData extends Data
 {
     /**
      * @param  list<CartLineData>  $lines
+     * @param  list<RemovedCartLineData>  $removedLines
      * @param  list<CheckoutAccountData>  $accounts
      */
     public function __construct(
         public readonly array $lines,
+        /**
+         * #219's undo window, as the page sees it: the lines the buyer has
+         * removed and may still put back. Empty almost always — it is the
+         * banner's own `v-if` — and never part of `lines` or the totals,
+         * which is the whole point of the soft removal.
+         */
+        public readonly array $removedLines,
         public readonly string $totalNet,
         public readonly string $totalTax,
         public readonly string $totalGross,
@@ -46,11 +54,13 @@ final class CartData extends Data
      * `of*`, never `from*` (.ai/rules/data.md).
      *
      * @param  list<CartLineData>  $lines
+     * @param  list<RemovedCartLineData>  $removedLines
      * @param  list<CheckoutAccountData>  $accounts
      */
     public static function ofCart(
         ?Cart $cart,
         array $lines,
+        array $removedLines,
         string $totalNet,
         string $totalTax,
         string $totalGross,
@@ -60,6 +70,7 @@ final class CartData extends Data
     ): self {
         return new self(
             lines: $lines,
+            removedLines: $removedLines,
             totalNet: $totalNet,
             totalTax: $totalTax,
             totalGross: $totalGross,

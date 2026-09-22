@@ -77,11 +77,34 @@ class Cart extends Model
      * (ADR-0014 only forbids them across module boundaries). Ordered by
      * `position` so the cart page never needs to sort client-side.
      *
+     * **What the cart holds**, which since #219 is not the same thing as
+     * every `cart_lines` row pointing at it: a line inside its undo window
+     * carries `removed_at` and is filtered out here. That one filter is
+     * what makes the soft removal indistinguishable from the delete it
+     * replaced for every existing reader — the page, the totals, the cart
+     * badge (`Cart\CartSummary`), the checkout (`PlaceOrderFromCart`) and
+     * the line lookup behind the quantity and remove routes, which all go
+     * through this relation.
+     *
      * @return HasMany<CartLine, $this>
      */
     public function lines(): HasMany
     {
-        return $this->hasMany(CartLine::class)->orderBy('position');
+        return $this->hasMany(CartLine::class)->whereNull('removed_at')->orderBy('position');
+    }
+
+    /**
+     * The other side of that filter (#219): the lines the buyer has removed
+     * and may still put back. Read by the cart page, which offers the undo,
+     * and by the two Actions that close the window —
+     * `Actions\ResolveRemovedCartLines` at checkout and
+     * `Actions\ExpireCarts` when the hold runs out.
+     *
+     * @return HasMany<CartLine, $this>
+     */
+    public function removedLines(): HasMany
+    {
+        return $this->hasMany(CartLine::class)->whereNotNull('removed_at')->orderBy('position');
     }
 
     /**

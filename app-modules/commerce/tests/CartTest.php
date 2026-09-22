@@ -13,6 +13,8 @@ use Konventix\Commerce\Actions\ExpireCarts;
 use Konventix\Commerce\Actions\OpenCart;
 use Konventix\Commerce\Actions\PlaceRegistrationLineInCart;
 use Konventix\Commerce\Actions\RemoveCartLine;
+use Konventix\Commerce\Actions\ResolveRemovedCartLines;
+use Konventix\Commerce\Actions\RestoreCartLine;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\CartStatus;
 use Konventix\Commerce\Enums\HostedPaymentState;
@@ -107,7 +109,41 @@ it('releases a product line\'s stock on removal', function (): void {
     Event::assertNotDispatched(CartLineRemoved::class);
 });
 
-it('emits CartLineRemoved with its requestKey when a registration line is removed', function (): void {
+it('soft-removes a registration line and emits nothing yet — #219\'s undo window', function (): void {
+    // The old behaviour emitted `CartLineRemoved` from this very call, and
+    // Registration cancelled the registration behind the line in the same
+    // click. Nothing irreversible may happen while the buyer can still take
+    // it back, so the click writes one column and says nothing.
+    Event::fake([CartLineRemoved::class]);
+    $this->withBrand();
+    $cart = Cart::factory()->create();
+    $line = CartLine::factory()->forCart($cart)->registration()->create();
+
+    app(RemoveCartLine::class)->handle($line);
+
+    expect(CartLine::query()->whereKey($line->getKey())->exists())->toBeTrue()
+        ->and($line->fresh()->removed_at)->not->toBeNull()
+        ->and($cart->lines()->count())->toBe(0)
+        ->and($cart->removedLines()->count())->toBe(1);
+    Event::assertNotDispatched(CartLineRemoved::class);
+});
+
+it('puts a soft-removed registration line back, still without emitting anything', function (): void {
+    Event::fake([CartLineRemoved::class]);
+    $this->withBrand();
+    $cart = Cart::factory()->create();
+    $line = CartLine::factory()->forCart($cart)->registration()->create();
+
+    app(RemoveCartLine::class)->handle($line);
+    app(RestoreCartLine::class)->handle($line->fresh());
+
+    expect($line->fresh()->removed_at)->toBeNull()
+        ->and($cart->lines()->count())->toBe(1)
+        ->and($cart->removedLines()->count())->toBe(0);
+    Event::assertNotDispatched(CartLineRemoved::class);
+});
+
+it('emits CartLineRemoved with its requestKey once the undo window closes at checkout', function (): void {
     Event::fake([CartLineRemoved::class]);
     $brand = $this->withBrand();
     $cart = Cart::factory()->create();
@@ -118,13 +154,34 @@ it('emits CartLineRemoved with its requestKey when a registration line is remove
     $line = CartLine::factory()->forCart($cart)->registration($requestKey)->create();
 
     app(RemoveCartLine::class)->handle($line);
+    app(ResolveRemovedCartLines::class)->handle($cart->fresh());
 
+    // Gone for good now — nothing may hold a registration on a cart whose
+    // order may be paid and therefore never swept again.
     expect(CartLine::query()->whereKey($line->getKey())->exists())->toBeFalse();
     Event::assertDispatched(CartLineRemoved::class, fn (CartLineRemoved $event): bool => $event->cartId === $cart->getKey()
         && $event->brandId === $brand->getKey()
         && $event->kind === CartLineKind::Registration->value
         && $event->refId === $line->ref_id
         && $event->requestKey === $requestKey);
+});
+
+it('emits CartLineRemoved rather than CartLineExpired when the cart hold closes an unused undo window', function (): void {
+    Event::fake([CartLineRemoved::class, CartLineExpired::class]);
+    $this->withBrand();
+    $cart = Cart::factory()->create();
+    $kept = CartLine::factory()->forCart($cart)->registration()->create(['position' => 0]);
+    $removed = CartLine::factory()->forCart($cart)->registration()->create(['position' => 1]);
+
+    app(RemoveCartLine::class)->handle($removed);
+    $cart->forceFill(['expires_at' => now()->subMinute()])->save();
+
+    app(ExpireCarts::class)->handle();
+
+    Event::assertDispatched(CartLineRemoved::class, fn (CartLineRemoved $event): bool => $event->refId === $removed->ref_id);
+    Event::assertDispatched(CartLineExpired::class, fn (CartLineExpired $event): bool => $event->refId === $kept->ref_id);
+    Event::assertDispatchedTimes(CartLineRemoved::class, 1);
+    Event::assertDispatchedTimes(CartLineExpired::class, 1);
 });
 
 it('consumes the delta on a quantity increase and releases it on a decrease', function (): void {

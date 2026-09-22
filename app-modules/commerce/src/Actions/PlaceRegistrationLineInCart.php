@@ -78,7 +78,13 @@ use Konventix\Commerce\Models\CartLine;
  * index `cart_lines_request_key_unique` is `(cart_id, kind, request_key)`,
  * so a replayed settlement request (a queued retry) finds the line it
  * already created rather than duplicating it — the same discipline
- * `PlaceOrderFromSettlementRequest` already applies to orders.
+ * `PlaceOrderFromSettlementRequest` already applies to orders. The lookup
+ * is deliberately not filtered by `removed_at` (#219): a line inside its
+ * undo window still occupies that unique index, and a retry must find it
+ * rather than collide with it. It is returned as it stands and **not**
+ * restored — a queued retry is the same intent arriving twice, not the
+ * buyer asking for the line back, and only the buyer's own undo puts it
+ * back (`RestoreCartLine`).
  */
 final class PlaceRegistrationLineInCart
 {

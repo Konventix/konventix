@@ -116,6 +116,12 @@ final class PlaceOrderFromCart
             throw CartCheckoutRefusedException::cartNotOpen($cart->id);
         }
 
+        // #219's undo window ends here for anything still in it: paying for
+        // what is left is the buyer saying they meant it. In its own
+        // transaction, before the order's — see `ResolveRemovedCartLines`
+        // for why the two are not merged (#233's lock order).
+        app(ResolveRemovedCartLines::class)->handle($cart);
+
         $lines = $cart->lines()->get();
 
         if ($lines->isEmpty()) {

@@ -215,6 +215,26 @@
 
 ## Done
 
+- [x] #220 — the cancellation reason comes from the trigger, not from a
+      hard-coded string: `Enums\CartHoldEnded` (`cart_expired` /
+      `cart_line_removed`), passed by
+      `CancelPendingRegistrationOnCartLineGone` per event and written as
+      `reason_code` by `CancelPendingRegistrationForCart`.
+      `MailOnRegistrationCancelled` maps both off the enum's own values and
+      `registration.cancelled` gained a `de`/`en` branch that says the buyer
+      removed it from their cart rather than that it expired.
+
+- [x] #211 — a `confirmed` registration is left standing when the cart line
+      holding its payment dies (operator decision 2026-09-22; ADR-0057
+      point 5 says the same, and ADR-0005's two independent fields exist for
+      it). Submitted and approved ones expire as before. The case is logged
+      and counted as `confirmed_registrations_kept_total{brand,trigger}`,
+      with a stat and a timeseries on the Sale dashboard — no alert, because
+      nothing fails silently: it is a held seat with an open receivable, and
+      the dunning ladder is what chases it. The counter is written straight
+      from the Action rather than from a `Listeners/Metrics/` recorder,
+      since nothing outside needs to hear about it.
+
 - [x] Attendee list on the event page (bugfix round 2026-09-21, Task 15,
       ADR-0064): `Attendees\PublicAttendees` (confirmed, one per person,
       named only when `Registrant.listed` and a known `username`, ordered

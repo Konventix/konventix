@@ -11,6 +11,7 @@ use Konventix\Commerce\Enums\CartStatus;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\CartExpired;
 use Konventix\Commerce\Events\CartLineExpired;
+use Konventix\Commerce\Events\CartLineRemoved;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Order;
@@ -247,6 +248,15 @@ final class ExpireCarts
      * a registration line emits `CartLineExpired` so Registration can
      * cancel the still-pending registration it was holding.
      *
+     * **A line inside #219's undo window emits `CartLineRemoved` instead.**
+     * This is the sweep that owns the clock the window rides on: the buyer
+     * removed the line, never put it back, and the hold they had to change
+     * their mind has now run out — so the removal becomes final here, with
+     * the reason that says what actually happened. No second schedule was
+     * added for it; the cart's own `expires_at` is the window's deadline
+     * and this sweep is what already reads it. The event carries the line's
+     * `removed_at`, the moment the buyer pressed the button.
+     *
      * **Both reads are ordered (#233).** The lines come back in `position`
      * order, the one `Cart::lines()` declares — this raw query bypasses the
      * relation (`withoutBrandScope()`, the sweep runs with no brand in
@@ -290,6 +300,19 @@ final class ExpireCarts
         foreach ($lines as $line) {
             if ($line->kind === CartLineKind::Product) {
                 ($variants[$line->ref_id] ?? null)?->releaseStock($line->quantity);
+
+                continue;
+            }
+
+            if ($line->isRemoved()) {
+                event(new CartLineRemoved(
+                    cartId: $cart->getKey(),
+                    brandId: $cart->brand_id,
+                    kind: $line->kind->value,
+                    refId: $line->ref_id,
+                    requestKey: $line->request_key,
+                    removedAt: ($line->removed_at ?? now())->toIso8601String(),
+                ));
 
                 continue;
             }

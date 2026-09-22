@@ -21,6 +21,7 @@ use Konventix\Registration\Actions\RejectRegistration;
 use Konventix\Registration\Actions\SubmitRegistration;
 use Konventix\Registration\Data\RegistrationMailData;
 use Konventix\Registration\Data\SubmitRegistrationData;
+use Konventix\Registration\Enums\CartHoldEnded;
 use Konventix\Registration\Enums\ConfirmationGate;
 use Konventix\Registration\Enums\PaymentStatus;
 use Konventix\Registration\Enums\RegistrationSettlement;
@@ -291,12 +292,34 @@ it('sends registration.cancelled with cancelReason=cart_expired when a cart line
     $type = regMailsInstantOnPaymentType();
     $registration = app(SubmitRegistration::class)->handle($type, $registrant->id, regMailsBilledSubmission());
 
-    app(CancelPendingRegistrationForCart::class)->handle($brand->id, $registration->id);
+    app(CancelPendingRegistrationForCart::class)->handle($brand->id, $registration->id, CartHoldEnded::Expired);
 
     $cancelled = regMailsPushed('registration.cancelled');
     expect($cancelled)->toHaveCount(1);
     $payload = $cancelled[0]->message->payload->toArray();
     expect($payload['cancelReason'])->toBe('cart_expired')
+        ->and($payload['wasPaid'])->toBeFalse();
+});
+
+it('sends registration.cancelled with cancelReason=cart_line_removed when the buyer removed the line (#220)', function (): void {
+    // The other trigger of the same path. It used to arrive as
+    // `cart_expired` however the line had died, so the buyer was told their
+    // reservation had expired about a line they had taken out of a cart
+    // that was still valid.
+    $brand = $this->withBrand();
+    $registrant = regMailsRecipient($brand->id);
+    Event::fake([RegistrationSettlementRequested::class]);
+    Queue::fake();
+
+    $type = regMailsInstantOnPaymentType();
+    $registration = app(SubmitRegistration::class)->handle($type, $registrant->id, regMailsBilledSubmission());
+
+    app(CancelPendingRegistrationForCart::class)->handle($brand->id, $registration->id, CartHoldEnded::Removed);
+
+    $cancelled = regMailsPushed('registration.cancelled');
+    expect($cancelled)->toHaveCount(1);
+    $payload = $cancelled[0]->message->payload->toArray();
+    expect($payload['cancelReason'])->toBe('cart_line_removed')
         ->and($payload['wasPaid'])->toBeFalse();
 });
 
@@ -438,6 +461,22 @@ it('renders the cart_expired cancellation sentence, in both locales', function (
 
     expect(regMailsRender('registration.cancelled', $payload, 'en'))
         ->toContain('Your reservation expired before payment was received.');
+});
+
+it('renders the removal cancellation sentence rather than the expiry one, in both locales (#220)', function (): void {
+    $payload = new RegistrationMailData(
+        registrationTypeName: 'Visitor Ticket',
+        registrationUrl: 'https://brand.example.test/my/registrations/abc',
+        cancelReason: 'cart_line_removed',
+    );
+
+    expect(regMailsRender('registration.cancelled', $payload))
+        ->toContain('Sie haben diese Anmeldung aus Ihrem Warenkorb entfernt.')
+        ->not->toContain('abgelaufen');
+
+    expect(regMailsRender('registration.cancelled', $payload, 'en'))
+        ->toContain('You removed this registration from your cart.')
+        ->not->toContain('expired');
 });
 
 it('renders the registrant-vs-operator cancellation phrasing and the refund sentence when wasPaid', function (): void {

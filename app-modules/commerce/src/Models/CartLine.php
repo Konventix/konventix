@@ -58,6 +58,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property Carbon|null $sale_starts_at
  * @property Carbon|null $sale_ends_at
  * @property array<string, mixed>|null $binding_context
+ * @property Carbon|null $removed_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -92,7 +93,23 @@ class CartLine extends Model
         'sale_starts_at',
         'sale_ends_at',
         'binding_context',
+        'removed_at',
     ];
+
+    /**
+     * Whether this line is inside its undo window (#219): removed from the
+     * buyer's point of view, still holding everything it held.
+     *
+     * A soft-removed line is invisible to `Cart::lines()` and therefore to
+     * the page, the totals, the cart badge and the checkout — the only
+     * readers are `Cart::removedLines()` (the undo banner),
+     * `Actions\RestoreCartLine` and the two Actions that close the window,
+     * `Actions\ResolveRemovedCartLines` and `Actions\ExpireCarts`.
+     */
+    public function isRemoved(): bool
+    {
+        return $this->removed_at !== null;
+    }
 
     /**
      * Whether this line may still be turned into money at `$now` (#218).
@@ -142,6 +159,9 @@ class CartLine extends Model
             // carried to the order line at checkout and interpreted by
             // nothing in this module.
             'binding_context' => 'array',
+            // #219: set while the line sits in its undo window, null for
+            // every line that is simply in the cart.
+            'removed_at' => 'datetime',
         ];
     }
 

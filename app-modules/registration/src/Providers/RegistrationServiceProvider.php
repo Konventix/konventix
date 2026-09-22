@@ -618,6 +618,8 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     @endif
                     @if ($cancelReason === 'cart_expired')
                     <p>Ihre Reservierung ist abgelaufen, bevor die Zahlung einging.</p>
+                    @elseif ($cancelReason === 'cart_line_removed')
+                    <p>Sie haben diese Anmeldung aus Ihrem Warenkorb entfernt.</p>
                     @elseif ($cancelReason === 'registrant')
                     <p>Die Stornierung erfolgte auf Ihren Wunsch.</p>
                     @else
@@ -640,6 +642,8 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     @endif
                     @if ($cancelReason === 'cart_expired')
                     <p>Your reservation expired before payment was received.</p>
+                    @elseif ($cancelReason === 'cart_line_removed')
+                    <p>You removed this registration from your cart.</p>
                     @elseif ($cancelReason === 'registrant')
                     <p>The cancellation was made at your request.</p>
                     @else

@@ -701,6 +701,67 @@ it('removes a product line through the destroy endpoint and releases its stock',
         ->and($variant->fresh()->stock_consumed)->toBe(0);
 });
 
+it('soft-removes a registration line through the destroy endpoint and offers it back on the page (#219)', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    Event::fake([CartLineRemoved::class]);
+    $user = User::factory()->create();
+    $cart = OpenCart::for($brand->getKey(), $user->getKey());
+    $line = CartLine::factory()->forCart($cart)->registration()->create(['label' => 'Visitor Ticket']);
+
+    test()->actingAs($user)
+        ->delete("/cart/lines/{$line->id}")
+        ->assertRedirect();
+
+    // One click, no dialog — and nothing cancelled.
+    Event::assertNotDispatched(CartLineRemoved::class);
+    expect($line->fresh()->removed_at)->not->toBeNull();
+
+    test()->actingAs($user)
+        ->get('/cart')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('cart/Show')
+            ->where('cart.lines', [])
+            ->where('cart.removedLines.0.id', $line->id)
+            ->where('cart.removedLines.0.label', 'Visitor Ticket'));
+});
+
+it('puts a removed line back through the restore endpoint, and 404s a second undo', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    $user = User::factory()->create();
+    $cart = OpenCart::for($brand->getKey(), $user->getKey());
+    $line = CartLine::factory()->forCart($cart)->registration()->create();
+
+    test()->actingAs($user)->delete("/cart/lines/{$line->id}")->assertRedirect();
+
+    test()->actingAs($user)
+        ->post("/cart/lines/{$line->id}/restore")
+        ->assertRedirect();
+
+    expect($line->fresh()->removed_at)->toBeNull();
+
+    // The window is closed now — there is nothing left to undo.
+    test()->actingAs($user)
+        ->post("/cart/lines/{$line->id}/restore")
+        ->assertNotFound();
+});
+
+it('404s the restore endpoint for another payer\'s removed line', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    $owner = User::factory()->create();
+    $intruder = User::factory()->create();
+    $cart = OpenCart::for($brand->getKey(), $owner->getKey());
+    $line = CartLine::factory()->forCart($cart)->registration()->create();
+
+    test()->actingAs($owner)->delete("/cart/lines/{$line->id}")->assertRedirect();
+
+    test()->actingAs($intruder)
+        ->post("/cart/lines/{$line->id}/restore")
+        ->assertNotFound();
+});
+
 it('sends a guest to login', function (): void {
     $brand = cartCheckoutBrand();
     test()->activateFeature('commerce:shop', $brand);

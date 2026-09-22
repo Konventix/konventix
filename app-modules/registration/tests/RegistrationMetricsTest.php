@@ -3,13 +3,18 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Str;
+use Konventix\Registration\Actions\CancelPendingRegistrationForCart;
+use Konventix\Registration\Enums\CartHoldEnded;
 use Konventix\Registration\Enums\EntryConditionAssertionState;
 use Konventix\Registration\Enums\EntryConditionDecisionSource;
 use Konventix\Registration\Enums\EntryConditionReasonCode;
 use Konventix\Registration\Enums\EntryConditionVerification;
+use Konventix\Registration\Enums\PaymentStatus;
+use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Events\RegistrationEntryConditionAsserted;
 use Konventix\Registration\Events\RegistrationEntryConditionDecided;
 use Konventix\Registration\Metrics\RegistrationMetrics;
+use Konventix\Registration\Models\Registration;
 
 /**
  * Registration's first numbers (ADR-0059, ADR-0066 spec §10).
@@ -83,13 +88,38 @@ it('counts a decision by outcome and where it was made', function (): void {
         ->toContain('konventix_entry_condition_decisions_total{brand="'.$brand->slug.'",state="waived",source="console"} 1');
 });
 
-it('declares two counters with bounded labels and nothing else', function (): void {
+it('counts a confirmed registration left standing when its cart hold dies (#211)', function (): void {
+    // The operator-visible half of "logged and reported": the registration
+    // is deliberately not cancelled, so the only thing that says it
+    // happened is this counter and the log line beside it. `trigger` is
+    // `CartHoldEnded`'s two values, a closed set.
+    $brand = $this->withBrand();
+    $registration = Registration::factory()->create([
+        'status' => RegistrationStatus::Confirmed,
+        'payment_status' => PaymentStatus::Pending,
+        'confirmed_at' => now(),
+    ]);
+
+    app(CancelPendingRegistrationForCart::class)->handle($brand->getKey(), $registration->getKey(), CartHoldEnded::Expired);
+    app(CancelPendingRegistrationForCart::class)->handle($brand->getKey(), $registration->getKey(), CartHoldEnded::Removed);
+
+    expect($registration->fresh()->status)->toBe(RegistrationStatus::Confirmed)
+        ->and(registrationMetricsScrape())
+        ->toContain('konventix_confirmed_registrations_kept_total{brand="'.$brand->slug.'",trigger="cart_expired"} 1')
+        ->toContain('konventix_confirmed_registrations_kept_total{brand="'.$brand->slug.'",trigger="cart_line_removed"} 1');
+});
+
+it('declares three counters with bounded labels and nothing else', function (): void {
     $definitions = RegistrationMetrics::definitions();
 
     expect(array_map(fn ($definition): string => $definition->name, $definitions))
-        ->toBe(['entry_condition_assertions_total', 'entry_condition_decisions_total']);
+        ->toBe([
+            'entry_condition_assertions_total',
+            'entry_condition_decisions_total',
+            'confirmed_registrations_kept_total',
+        ]);
 
     foreach ($definitions as $definition) {
-        expect($definition->labels)->each->toBeIn(['brand', 'verification', 'state', 'source']);
+        expect($definition->labels)->each->toBeIn(['brand', 'verification', 'state', 'source', 'trigger']);
     }
 });

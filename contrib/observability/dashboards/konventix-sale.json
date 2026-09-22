@@ -1332,13 +1332,127 @@
       "id": 27
     },
     {
-      "id": 28,
+      "type": "stat",
+      "title": "Confirmed seats kept (range)",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 0,
+        "y": 77
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(increase(konventix_confirmed_registrations_kept_total{job=\"$release\"}[$__range]))",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "A cart line holding a confirmed registration's payment died and the registration was left standing rather than voided (#211, ADR-0057 point 5). Each one is a held seat with money still owed — the dunning ladder chases it, no alert fires for it.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 28
+    },
+    {
+      "type": "timeseries",
+      "title": "Confirmed seats kept per hour",
+      "gridPos": {
+        "w": 12,
+        "h": 8,
+        "x": 4,
+        "y": 77
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (brand, trigger) (increase(konventix_confirmed_registrations_kept_total{job=\"$release\"}[1h]))",
+          "legendFormat": "{{brand}} {{trigger}}",
+          "range": true
+        }
+      ],
+      "description": "trigger is cart_expired when the hold ran out and cart_line_removed when the buyer removed the line and let the undo window close (#219, #220).",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 29
+    },
+    {
+      "id": 30,
       "type": "row",
       "title": "Seating",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 77,
+        "y": 85,
         "w": 24,
         "h": 1
       },
@@ -1351,7 +1465,7 @@
         "w": 4,
         "h": 4,
         "x": 0,
-        "y": 78
+        "y": 86
       },
       "targets": [
         {
@@ -1405,7 +1519,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 29
+      "id": 31
     },
     {
       "type": "stat",
@@ -1414,7 +1528,7 @@
         "w": 4,
         "h": 4,
         "x": 4,
-        "y": 78
+        "y": 86
       },
       "targets": [
         {
@@ -1460,7 +1574,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 30
+      "id": 32
     },
     {
       "type": "stat",
@@ -1469,7 +1583,7 @@
         "w": 4,
         "h": 4,
         "x": 8,
-        "y": 78
+        "y": 86
       },
       "targets": [
         {
@@ -1515,7 +1629,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 31
+      "id": 33
     },
     {
       "type": "stat",
@@ -1524,7 +1638,7 @@
         "w": 4,
         "h": 4,
         "x": 12,
-        "y": 78
+        "y": 86
       },
       "targets": [
         {
@@ -1577,7 +1691,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 32
+      "id": 34
     },
     {
       "type": "stat",
@@ -1586,7 +1700,7 @@
         "w": 4,
         "h": 4,
         "x": 16,
-        "y": 78
+        "y": 86
       },
       "targets": [
         {
@@ -1640,7 +1754,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 33
+      "id": 35
     },
     {
       "type": "timeseries",
@@ -1649,7 +1763,7 @@
         "w": 8,
         "h": 8,
         "x": 0,
-        "y": 82
+        "y": 90
       },
       "targets": [
         {
@@ -1694,7 +1808,7 @@
           "sort": "desc"
         }
       },
-      "id": 34
+      "id": 36
     },
     {
       "type": "timeseries",
@@ -1703,7 +1817,7 @@
         "w": 8,
         "h": 8,
         "x": 8,
-        "y": 82
+        "y": 90
       },
       "targets": [
         {
@@ -1748,7 +1862,7 @@
           "sort": "desc"
         }
       },
-      "id": 35
+      "id": 37
     },
     {
       "type": "timeseries",
@@ -1757,7 +1871,7 @@
         "w": 8,
         "h": 8,
         "x": 16,
-        "y": 82
+        "y": 90
       },
       "targets": [
         {
@@ -1803,7 +1917,7 @@
           "sort": "desc"
         }
       },
-      "id": 36
+      "id": 38
     },
     {
       "type": "stat",
@@ -1812,7 +1926,7 @@
         "w": 4,
         "h": 4,
         "x": 0,
-        "y": 90
+        "y": 98
       },
       "targets": [
         {
@@ -1858,7 +1972,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 37
+      "id": 39
     },
     {
       "type": "timeseries",
@@ -1867,7 +1981,7 @@
         "w": 8,
         "h": 8,
         "x": 4,
-        "y": 90
+        "y": 98
       },
       "targets": [
         {
@@ -1912,16 +2026,16 @@
           "sort": "desc"
         }
       },
-      "id": 38
+      "id": 40
     },
     {
-      "id": 39,
+      "id": 41,
       "type": "row",
       "title": "Holders and invites",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 98,
+        "y": 106,
         "w": 24,
         "h": 1
       },
@@ -1934,7 +2048,7 @@
         "w": 4,
         "h": 4,
         "x": 0,
-        "y": 99
+        "y": 107
       },
       "targets": [
         {
@@ -1980,7 +2094,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 40
+      "id": 42
     },
     {
       "type": "stat",
@@ -1989,7 +2103,7 @@
         "w": 4,
         "h": 4,
         "x": 4,
-        "y": 99
+        "y": 107
       },
       "targets": [
         {
@@ -2035,7 +2149,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 41
+      "id": 43
     },
     {
       "type": "stat",
@@ -2044,7 +2158,7 @@
         "w": 4,
         "h": 4,
         "x": 8,
-        "y": 99
+        "y": 107
       },
       "targets": [
         {
@@ -2089,7 +2203,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 42
+      "id": 44
     },
     {
       "type": "stat",
@@ -2098,7 +2212,7 @@
         "w": 4,
         "h": 4,
         "x": 12,
-        "y": 99
+        "y": 107
       },
       "targets": [
         {
@@ -2143,7 +2257,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 43
+      "id": 45
     },
     {
       "type": "stat",
@@ -2152,7 +2266,7 @@
         "w": 4,
         "h": 4,
         "x": 16,
-        "y": 99
+        "y": 107
       },
       "targets": [
         {
@@ -2202,7 +2316,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 44
+      "id": 46
     },
     {
       "type": "timeseries",
@@ -2211,7 +2325,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 103
+        "y": 111
       },
       "targets": [
         {
@@ -2256,7 +2370,7 @@
           "sort": "desc"
         }
       },
-      "id": 45
+      "id": 47
     },
     {
       "type": "timeseries",
@@ -2265,7 +2379,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 103
+        "y": 111
       },
       "targets": [
         {
@@ -2310,16 +2424,16 @@
           "sort": "desc"
         }
       },
-      "id": 46
+      "id": 48
     },
     {
-      "id": 47,
+      "id": 49,
       "type": "row",
       "title": "Tickets and calendars",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 111,
+        "y": 119,
         "w": 24,
         "h": 1
       },
@@ -2332,7 +2446,7 @@
         "w": 4,
         "h": 4,
         "x": 0,
-        "y": 112
+        "y": 120
       },
       "targets": [
         {
@@ -2378,7 +2492,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 48
+      "id": 50
     },
     {
       "type": "stat",
@@ -2387,7 +2501,7 @@
         "w": 4,
         "h": 4,
         "x": 4,
-        "y": 112
+        "y": 120
       },
       "targets": [
         {
@@ -2432,7 +2546,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 49
+      "id": 51
     },
     {
       "type": "stat",
@@ -2441,7 +2555,7 @@
         "w": 4,
         "h": 4,
         "x": 8,
-        "y": 112
+        "y": 120
       },
       "targets": [
         {
@@ -2487,7 +2601,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 50
+      "id": 52
     },
     {
       "type": "timeseries",
@@ -2496,7 +2610,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 112
+        "y": 120
       },
       "targets": [
         {
@@ -2551,7 +2665,7 @@
           "sort": "desc"
         }
       },
-      "id": 51
+      "id": 53
     },
     {
       "type": "timeseries",
@@ -2560,7 +2674,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 120
+        "y": 128
       },
       "targets": [
         {
@@ -2605,7 +2719,7 @@
           "sort": "desc"
         }
       },
-      "id": 52
+      "id": 54
     }
   ]
 }

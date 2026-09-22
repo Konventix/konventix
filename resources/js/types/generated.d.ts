@@ -130,6 +130,7 @@ declare namespace Konventix {
             };
             export type CartData = {
                 readonly lines: Konventix.Commerce.Data.CartLineData[];
+                readonly removedLines: Konventix.Commerce.Data.RemovedCartLineData[];
                 readonly totalNet: string;
                 readonly totalTax: string;
                 readonly totalGross: string;
@@ -336,6 +337,13 @@ declare namespace Konventix {
                 readonly dueOn: string | null;
                 readonly documentUrl: string | null;
                 readonly orderUrl: string | null;
+            };
+            export type RemovedCartLineData = {
+                readonly id: string;
+                readonly kind: string;
+                readonly label: string;
+                readonly quantity: number;
+                readonly url: string | null;
             };
             export type SaveProductData = {
                 readonly name: string;
@@ -1417,6 +1425,7 @@ declare namespace Konventix {
             };
         }
         namespace Enums {
+            export type CartHoldEnded = 'cart_expired' | 'cart_line_removed';
             export type ConfirmationGate =
                 'on_submit' | 'on_approval' | 'on_payment';
             export type EntryConditionAssertionState =
