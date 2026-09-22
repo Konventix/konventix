@@ -154,6 +154,17 @@ is entitled to what*; other modules materialize those entitlements.
   `Pricing\EndPriceCalculator`, which Commerce binds, and nothing here
   imports `Commerce\Tax\*` or learns a tax rate. Where nothing answers, the
   declared net amount is shown with its "excl. VAT" label.
+  A **waitlist entry pins the declaration it was created with** (D-0.8.2-2,
+  #8) beside the billing party it already snapshotted: a promotion settles
+  at the price the registrant saw when they joined the queue, not at what
+  the type costs weeks later. The *whole* value object is pinned, tax class
+  and display flag included — pinning the amount alone would charge a
+  gross-displayed type a gross nobody was shown, and pinning the class
+  freezes no tax law, because the rate for a class and the treatment (§19,
+  reverse charge) are both resolved in Commerce at settlement time
+  (ADR-0017, ADR-0030). A `free` type pins nothing, and an entry with no pin
+  — every row queued before the column existed — falls back to the type's
+  current declaration.
 
 ## Does not own
 

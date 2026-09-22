@@ -18,6 +18,20 @@ use Konventix\Registration\Models\WaitlistEntry;
  * snapshotted for a verbatim later conversion. One live queue position
  * per registrant and type — re-joining while queued or offered is a
  * no-op returning the existing entry.
+ *
+ * The type's **price declaration is snapshotted here too** (D-0.8.2-2, #8):
+ * a promotion happens days or weeks after the submission, and the
+ * registrant pays what they saw when they joined the queue, not what the
+ * type costs by then. The whole declaration travels — net amount, tax class
+ * and the net-vs-gross display flag — because ADR-0017 makes it one value
+ * object and splitting it is the "three loose columns" that ADR rejected;
+ * `RequestSettlement` explains why the tax class belongs in the pin and why
+ * pinning it freezes no law.
+ *
+ * Re-joining does **not** re-snapshot: the existing entry is returned
+ * untouched, so the queue position and its price are the same promise, made
+ * once. A re-join after a price rise must not silently reprice the spot the
+ * registrant already holds.
  */
 final class JoinWaitlist
 {
@@ -50,6 +64,10 @@ final class JoinWaitlist
                 'billing_city' => $data->billingCity,
                 'billing_country_code' => $data->billingCountryCode,
                 'billing_vat_id' => $data->billingVatId,
+                // Null for a `free` type, which has no price at all rather
+                // than a zero one (ADR-0017) — `RequestSettlement` never
+                // runs for it.
+                'price_declaration' => $registrationType->price_declaration,
                 'queued_at' => now(),
             ]);
 

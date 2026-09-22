@@ -173,11 +173,15 @@
 
 ## Backlog (Phase 2 — release scope)
 
-- [ ] `registration:expire-waitlist-offers` should get the same
+- [x] `registration:expire-waitlist-offers` got the same
       `->withoutOverlapping()` Task 11 added to Commerce's
-      `commerce:expire-carts` (Task 9 review minor): a rush that makes one
-      sweep run long enough to still be going at the next fifteen-minute
-      tick must not stack a second run on top of it.
+      `commerce:expire-carts` (Task 9 review minor, done in #8): a rush that
+      makes one sweep run long enough to still be going at the next
+      fifteen-minute tick must not stack a second run on top of it. The cost
+      was not merely a slow sweep run twice — `ExpireWaitlistOffers` reads
+      its rows outside the per-entry transaction, so both runs saw the same
+      lapsed entry and the loser released its held unit a second time once
+      the winner committed, inventing capacity.
 - [ ] Follow-ups from the filter-contract review (2026-08-25), none blocking:
       `export()`'s audit context now records resolved filter values and that
       path is untested; the registrations list clears `filters.event` to
@@ -185,11 +189,20 @@
       two spellings of "no event"; `registration-types/Index.vue` still uses
       native `<select>`s where the console lists moved to shadcn Select.
 
-- [ ] Waitlist prerequisite follow-up from the settlement build: decide how
-      a waitlisted-then-promoted registration interacts with the
-      gate-dependent settlement emission (promotion happens long after
-      submission — an `on_payment` type's settlement request emitted at
-      original submission may price differently by then).
+- [x] Waitlist prerequisite follow-up from the settlement build: how a
+      waitlisted-then-promoted registration interacts with the
+      gate-dependent settlement emission. **Decided D-0.8.2-2 (#8):** the
+      price at submission, not at promotion. `waitlist_entries` gained a
+      `price_declaration` snapshot, `JoinWaitlist` takes it, and
+      `SubmitRegistration` hands it to `RequestSettlement`'s new `$price`
+      override on the conversion path only. The whole value object travels,
+      tax class included — `RequestSettlement`'s docblock argues why that
+      freezes no tax law and why pinning two thirds of an ADR-0017 value
+      object is the "three loose columns" the ADR rejected. Not pinned: the
+      `settlement` axis itself, so a type switched to `free` after queuing
+      converts free — a settlement-mode change is not a price change.
+      Follow-up, not blocking: nothing shows a queued registrant the price
+      their spot is held at, on `/my/registrations` or in the offer mail.
 - [ ] `RegistrationStatsController`'s per-type "sold" figure sums capacity
       across every quota a type references and treats Submitted/Approved/
       Confirmed as equally "sold" — fine for the dashboard skeleton, but the

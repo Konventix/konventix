@@ -10,14 +10,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
+use Konventix\Registration\Data\PriceDeclarationData;
 use Konventix\Registration\Database\Factories\WaitlistEntryFactory;
 use Konventix\Registration\Enums\WaitlistState;
 
 /**
  * One queued submission on a type's waitlist (D-REG-12) — the only
  * waitlist in the system; Resources points here. Carries the full billing
- * snapshot so conversion recreates the submission verbatim. State moves
- * only through the waitlist Actions (`JoinWaitlist`,
+ * snapshot so conversion recreates the submission verbatim, and since
+ * D-0.8.2-2 (#8) the `price_declaration` that was on the type when the
+ * registrant joined the queue, so the conversion settles at the price they
+ * saw rather than at the price the type happens to carry weeks later. State
+ * moves only through the waitlist Actions (`JoinWaitlist`,
  * `PromoteFromWaitlist`, `ExpireWaitlistOffers`, conversion inside
  * `SubmitRegistration`).
  *
@@ -35,6 +39,7 @@ use Konventix\Registration\Enums\WaitlistState;
  * @property string|null $billing_city
  * @property string|null $billing_country_code
  * @property string|null $billing_vat_id
+ * @property PriceDeclarationData|null $price_declaration
  * @property Carbon $queued_at
  * @property Carbon|null $offered_at
  * @property Carbon|null $offer_expires_at
@@ -62,6 +67,7 @@ class WaitlistEntry extends Model
         'billing_city',
         'billing_country_code',
         'billing_vat_id',
+        'price_declaration',
         'queued_at',
         'offered_at',
         'offer_expires_at',
@@ -83,6 +89,12 @@ class WaitlistEntry extends Model
     {
         return [
             'state' => WaitlistState::class,
+            // The submitted price, pinned (D-0.8.2-2). Same value object and
+            // same cast as `RegistrationType::price_declaration` (ADR-0017)
+            // — the queue must not invent a second price concept. Null means
+            // "nothing was pinned": a free type, or a row queued before the
+            // column existed.
+            'price_declaration' => PriceDeclarationData::class,
             'queued_at' => 'datetime',
             'offered_at' => 'datetime',
             'offer_expires_at' => 'datetime',

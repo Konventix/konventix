@@ -46,6 +46,12 @@ use RuntimeException;
  * entry — the waitlist keeps its one-unit semantics, so only a submission
  * that finds *nothing* left queues.
  *
+ * A waitlist conversion (`$fromWaitlist`) settles at the price the entry
+ * pinned at submission rather than the type's current one (D-0.8.2-2, #8) —
+ * the registrant pays what they saw when they joined the queue. The whole
+ * declaration is pinned, tax class included; `RequestSettlement`'s docblock
+ * argues why, and why that freezes no tax law.
+ *
  * When `confirmation_gate: on_submit`, this Action confirms the
  * registration in the same transaction by calling `ConfirmRegistration`
  * (a nested `DB::transaction` becomes a savepoint — Laravel handles this
@@ -179,6 +185,13 @@ final class SubmitRegistration
                         $registration,
                         $registrationType,
                         enforcesSalesWindow: $windowBound,
+                        // D-0.8.2-2 (#8): a conversion settles at the price
+                        // the entry pinned when the registrant joined the
+                        // queue, not at what the type costs now. Null on
+                        // every other path, and null for an entry queued
+                        // before the column existed — `RequestSettlement`
+                        // then reads the type, exactly as before.
+                        price: $fromWaitlist?->price_declaration,
                     );
                 } catch (RuntimeException $exception) {
                     $this->convertSettlementRefusal($exception, $registrationType, $windowBound);

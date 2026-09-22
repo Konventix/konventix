@@ -736,7 +736,17 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         $this->commands([ExpireWaitlistOffersCommand::class, AnnounceRegistrationOwnershipCommand::class]);
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
-            $schedule->command('registration:expire-waitlist-offers')->everyFifteenMinutes();
+            // `withoutOverlapping()` (#8), the guard Commerce's
+            // `commerce:expire-carts` has carried since Task 11 and for the
+            // same reason: a rush that makes one sweep run past the next
+            // fifteen-minute tick must not stack a second run on top of it.
+            // Two sweeps over the same offers is not a slow sweep twice —
+            // `ExpireWaitlistOffers` reads its rows outside the per-entry
+            // transaction, so both runs see the same lapsed entry, and the
+            // loser blocks on the quota lock only to release the same unit a
+            // second time once the winner commits. Capacity is then invented
+            // out of nothing and the queue over-promises it.
+            $schedule->command('registration:expire-waitlist-offers')->everyFifteenMinutes()->withoutOverlapping();
         });
     }
 

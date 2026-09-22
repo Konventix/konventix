@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Console\Scheduling\Event as ScheduledEvent;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
@@ -9,9 +11,16 @@ use Konventix\Identity\Models\User;
 use Konventix\Registration\Actions\CancelRegistration;
 use Konventix\Registration\Actions\ExpireWaitlistOffers;
 use Konventix\Registration\Actions\JoinWaitlist;
+use Konventix\Registration\Actions\PromoteFromWaitlist;
 use Konventix\Registration\Actions\SubmitRegistration;
+use Konventix\Registration\Data\PriceDeclarationData;
 use Konventix\Registration\Data\SubmitRegistrationData;
+use Konventix\Registration\Enums\ConfirmationGate;
+use Konventix\Registration\Enums\PriceDisplay;
+use Konventix\Registration\Enums\RegistrationSettlement;
+use Konventix\Registration\Enums\TaxClass;
 use Konventix\Registration\Enums\WaitlistState;
+use Konventix\Registration\Events\RegistrationSettlementRequested;
 use Konventix\Registration\Events\WaitlistEntryConverted;
 use Konventix\Registration\Events\WaitlistEntryQueued;
 use Konventix\Registration\Events\WaitlistOfferExpired;
@@ -194,4 +203,160 @@ it('sends a waitlisted registrant to the event landing page, which still shows t
         ->assertRedirect(route('event.show', ['event' => 'wintercon']));
 
     expect(WaitlistEntry::query()->where('registrant_user_id', $user->id)->exists())->toBeTrue();
+});
+
+/**
+ * A priced `on_payment` type behind a quota with one free unit, with one
+ * registrant already queued on it.
+ *
+ * `on_payment` is the gate D-0.8.2-2 is about: it requests settlement at
+ * *submission*, and a waitlist conversion is a submission made long after
+ * the registrant decided to buy.
+ *
+ * @return array{0: RegistrationType, 1: Quota, 2: User, 3: WaitlistEntry}
+ */
+function waitlistPricedQueue(
+    string $unitAmountNet = '30.00',
+    TaxClass $taxClass = TaxClass::Standard,
+    PriceDisplay $display = PriceDisplay::Gross,
+): array {
+    $quota = Quota::factory()->withCapacity(1)->create();
+    $type = RegistrationType::factory()
+        ->settlement(RegistrationSettlement::Instant)
+        ->confirmationGate(ConfirmationGate::OnPayment)
+        ->priced(unitAmountNet: $unitAmountNet, taxClass: $taxClass, display: $display)
+        ->create();
+    $type->quotas()->attach($quota);
+
+    $user = User::factory()->create();
+
+    return [$type, $quota, $user, app(JoinWaitlist::class)->handle($type, (string) $user->id, waitlistSubmission())];
+}
+
+/**
+ * Promote the queue's head and let the registrant claim the offer, which is
+ * the conversion `SubmitRegistration(fromWaitlist:)` performs.
+ */
+function waitlistPromoteAndClaim(WaitlistEntry $entry, User $user, string $brandId): void
+{
+    app(PromoteFromWaitlist::class)->handle($entry->registrationType()->firstOrFail()->quotas()->first()->id, $brandId);
+
+    $entry->refresh();
+
+    test()->actingAs($user)->post(URL::temporarySignedRoute(
+        'registration.waitlist.claim',
+        $entry->offer_expires_at,
+        ['entry' => $entry->id],
+    ))->assertRedirect();
+}
+
+it('pins the price declaration onto the entry when the registrant joins the queue', function (): void {
+    $this->withBrand();
+    [, , , $entry] = waitlistPricedQueue('30.00');
+
+    expect($entry->price_declaration)->not->toBeNull()
+        ->and($entry->price_declaration->unitAmountNet)->toBe('30.00')
+        ->and($entry->price_declaration->taxClass)->toBe(TaxClass::Standard)
+        ->and($entry->price_declaration->display)->toBe(PriceDisplay::Gross);
+});
+
+it('settles a promoted registration at the submitted price after a price rise', function (): void {
+    $brand = $this->withBrand();
+    [$type, , $user, $entry] = waitlistPricedQueue('30.00');
+
+    // The operator raises the price while the registrant waits. Written
+    // straight onto the model rather than through `UpdateRegistrationType`:
+    // the test is about what the *queue* remembers, not about the console
+    // path that changed it.
+    $type->forceFill(['price_declaration' => new PriceDeclarationData('45.00', TaxClass::Standard, PriceDisplay::Gross)])->save();
+
+    Event::fake([RegistrationSettlementRequested::class]);
+
+    waitlistPromoteAndClaim($entry, $user, $brand->id);
+
+    Event::assertDispatched(RegistrationSettlementRequested::class, function (RegistrationSettlementRequested $event): bool {
+        expect($event->lines[0]['unit_amount_net'])->toBe('30.00');
+
+        return true;
+    });
+});
+
+it('settles a promoted registration at the submitted price after a price cut', function (): void {
+    $brand = $this->withBrand();
+    [$type, , $user, $entry] = waitlistPricedQueue('30.00');
+
+    // The cut cuts both ways: the promise is the promise, and a registrant
+    // who queued at 30,00 does not get today's 20,00 either. Repricing a
+    // promoted spot downwards is a discount decision nobody took.
+    $type->forceFill(['price_declaration' => new PriceDeclarationData('20.00', TaxClass::Standard, PriceDisplay::Gross)])->save();
+
+    Event::fake([RegistrationSettlementRequested::class]);
+
+    waitlistPromoteAndClaim($entry, $user, $brand->id);
+
+    Event::assertDispatched(RegistrationSettlementRequested::class, function (RegistrationSettlementRequested $event): bool {
+        expect($event->lines[0]['unit_amount_net'])->toBe('30.00');
+
+        return true;
+    });
+});
+
+it('pins the tax class and the display flag with the amount, not just the amount', function (): void {
+    $brand = $this->withBrand();
+    [$type, , $user, $entry] = waitlistPricedQueue('30.00', TaxClass::Standard, PriceDisplay::Gross);
+
+    // The whole declaration moves under the queued registrant: class and
+    // display too. Pinning the amount alone would charge a gross the
+    // registrant never saw (30,00 + 7% instead of 30,00 + 19%), which is the
+    // failure D-0.8.2-2 exists to prevent, reached from the other side.
+    //
+    // Nothing here freezes tax *law*: `TaxClass` is a class, never a rate,
+    // and Commerce resolves both the rate and the treatment (§19, reverse
+    // charge) at settlement — see `RequestSettlement`'s docblock.
+    $type->forceFill(['price_declaration' => new PriceDeclarationData('30.00', TaxClass::Reduced, PriceDisplay::Net)])->save();
+
+    Event::fake([RegistrationSettlementRequested::class]);
+
+    waitlistPromoteAndClaim($entry, $user, $brand->id);
+
+    Event::assertDispatched(RegistrationSettlementRequested::class, function (RegistrationSettlementRequested $event): bool {
+        expect($event->lines[0]['tax_class'])->toBe('standard')
+            ->and($event->lines[0]['unit_amount_net'])->toBe('30.00')
+            ->and($event->priceDisplay)->toBe('gross');
+
+        return true;
+    });
+});
+
+it('falls back to the type for an entry queued before the price was pinned', function (): void {
+    $brand = $this->withBrand();
+    [, , $user, $entry] = waitlistPricedQueue('30.00');
+
+    // The rows that predate the column: null pin, and the behaviour is
+    // exactly what it was before this existed — the type's price today.
+    $entry->forceFill(['price_declaration' => null])->save();
+
+    Event::fake([RegistrationSettlementRequested::class]);
+
+    waitlistPromoteAndClaim($entry, $user, $brand->id);
+
+    Event::assertDispatched(RegistrationSettlementRequested::class, function (RegistrationSettlementRequested $event): bool {
+        expect($event->lines[0]['unit_amount_net'])->toBe('30.00');
+
+        return true;
+    });
+});
+
+it('schedules the offer sweep every fifteen minutes and never overlapping itself', function (): void {
+    // Mirrors `ExpireRegistrationOrdersTest`'s schedule assertion for
+    // `commerce:expire-carts`'s cadence, plus the guard #8 asks for: two
+    // sweeps over the same lapsed offer would release its held unit twice,
+    // because `ExpireWaitlistOffers` reads its rows outside the per-entry
+    // transaction.
+    $entries = collect(app(Schedule::class)->events())
+        ->filter(fn (ScheduledEvent $event): bool => str_contains((string) $event->command, 'registration:expire-waitlist-offers'));
+
+    expect($entries)->toHaveCount(1)
+        ->and($entries->first()->expression)->toBe('*/15 * * * *')
+        ->and($entries->first()->withoutOverlapping)->toBeTrue();
 });

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Registration\Actions;
 
 use Konventix\Platform\Models\Scopes\BrandScope;
+use Konventix\Registration\Data\PriceDeclarationData;
 use Konventix\Registration\Events\RegistrationSettlementRequested;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
@@ -46,6 +47,51 @@ use RuntimeException;
  * it with the delta's own lines: the added grants are priced independently of
  * what the type costs — crew that comes with an exhibitor package is free,
  * while a second booth is not — and `GrantData` carries no price of its own.
+ *
+ * `$price` overrides *which declaration* those defaults are built from, and
+ * has exactly one caller: a waitlist conversion, which passes the
+ * declaration the entry pinned when the registrant joined the queue
+ * (D-0.8.2-2, #8). Null — every other caller, and any entry queued before
+ * the column existed — reads the type's current declaration, which is what
+ * this Action always did.
+ *
+ * ### Why the tax *class* is pinned with the amount, not re-read
+ *
+ * The amount and the tax class look like two questions, and the tempting
+ * split is "pin the amount the registrant was promised, take the tax
+ * treatment from the law at the moment of sale". With this codebase in
+ * front of you that split buys nothing and costs something.
+ *
+ * Nothing pinned here can freeze any law. `TaxClass` is `standard|reduced`,
+ * a property of the supply, never a percentage: `Commerce\Tax\GermanVat`
+ * resolves the *rate* for a class at settlement from its own constants
+ * ("a statutory rate change is a code change here"), and resolves the
+ * *treatment* — §19 UStG, reverse charge — at settlement from the operator's
+ * election and the billing party's VAT ID, evidence this module never sees
+ * (ADR-0017, ADR-0030). A conversion settles at promotion, so both are
+ * already the law of the day whatever travels in the pin. Re-reading the
+ * class would not add currency to anything; it would only let an operator's
+ * later reclassification of the type reach back into a promise.
+ *
+ * And it would break the promise where the promise is most visible. The
+ * declaration carries `display`, and a type displaying gross showed the
+ * registrant net + rate(class). Pin the net while the class moves and the
+ * gross they are charged is not the gross they saw — the exact failure
+ * D-0.8.2-2 exists to prevent, arrived at through the back door.
+ *
+ * So the whole value object travels. ADR-0017 made the declaration one
+ * value object precisely so it would not be handled as three loose columns,
+ * and pinning two thirds of it is that handling. What the registrant is
+ * promised is *the offer*; what the state takes is Commerce's, resolved
+ * fresh at settlement, and untouched by any of this.
+ *
+ * A type whose price declaration was set to null after the entry queued
+ * (while its settlement stayed priced) used to throw here; with a pin it
+ * settles at the pinned price instead, which is the same promise seen from
+ * a misconfiguration. The `settlement` axis itself is deliberately *not*
+ * pinned — it is read live off the type, so a type switched to `free` after
+ * queuing converts free. That is a settlement-mode change, not a price
+ * change, and D-0.8.2-2 does not reach it.
  */
 final class RequestSettlement
 {
@@ -58,8 +104,9 @@ final class RequestSettlement
         ?string $requestKey = null,
         ?array $lines = null,
         bool $enforcesSalesWindow = false,
+        ?PriceDeclarationData $price = null,
     ): void {
-        $price = $registrationType->price_declaration;
+        $price ??= $registrationType->price_declaration;
 
         if ($price === null) {
             throw new RuntimeException(sprintf(
