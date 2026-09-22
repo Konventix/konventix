@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { Pencil, RefreshCw } from '@lucide/vue';
+import { LayoutGrid, Pencil, RefreshCw } from '@lucide/vue';
 import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
+import { edit as editHubLayout } from '@/routes/admin/events/hub';
 
 /**
  * Composes Event's own header with contributions from other modules'
@@ -152,6 +153,12 @@ function refresh(): void {
                         Edit
                     </Button>
                 </Link>
+                <Button as-child variant="secondary" size="sm">
+                    <Link :href="editHubLayout(props.event.id).url">
+                        <LayoutGrid class="size-4" />
+                        Live hub
+                    </Link>
+                </Button>
                 <Button
                     variant="outline"
                     size="sm"

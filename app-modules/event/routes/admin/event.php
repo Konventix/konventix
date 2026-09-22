@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Konventix\Event\Http\Controllers\Admin\EventAdminController;
+use Konventix\Event\Http\Controllers\Admin\EventHubLayoutController;
 use Konventix\Event\Http\Controllers\Admin\EventLifecycleController;
 use Konventix\Event\Http\Controllers\Admin\EventVenueController;
 use Konventix\Event\Http\Controllers\Admin\VenueAdminController;
@@ -29,6 +30,10 @@ Route::post('/events/{event}/start', [EventLifecycleController::class, 'start'])
 Route::post('/events/{event}/conclude', [EventLifecycleController::class, 'conclude'])->name('admin.events.conclude');
 Route::post('/events/{event}/cancel', [EventLifecycleController::class, 'cancel'])->name('admin.events.cancel');
 Route::post('/events/{event}/archive', [EventLifecycleController::class, 'archive'])->name('admin.events.archive');
+
+// The live hub's composition per event (design §6).
+Route::get('/events/{event}/hub', [EventHubLayoutController::class, 'edit'])->name('admin.events.hub.edit');
+Route::put('/events/{event}/hub', [EventHubLayoutController::class, 'update'])->name('admin.events.hub.update');
 
 // Venue assignment on an event (D-EVT-15).
 Route::post('/events/{event}/venues', [EventVenueController::class, 'store'])->name('admin.events.venues.store');

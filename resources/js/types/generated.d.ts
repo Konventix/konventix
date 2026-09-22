@@ -639,6 +639,10 @@ declare namespace Konventix {
                 readonly bannerMediaId: string | null;
                 readonly attendeeListVisibility: Konventix.Event.Enums.AttendeeListVisibility;
             };
+            export type HubLayoutEntryData = {
+                readonly key: string;
+                readonly visible: boolean;
+            };
             export type OpeningPeriodData = {
                 readonly dayOfWeek: number;
                 readonly opensAt: string;

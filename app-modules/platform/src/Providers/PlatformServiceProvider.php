@@ -13,6 +13,7 @@ use Konventix\Admission\Events\ParticipantAdmitted;
 use Konventix\Admission\Events\ParticipantHubAccessEnded;
 use Konventix\Admission\Events\ParticipantPresenceChanged;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Event\Events\EventHubLayoutChanged;
 use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Blocks\Types\CardsBlock;
 use Konventix\Platform\Blocks\Types\HeroBlock;
@@ -35,11 +36,14 @@ use Konventix\Platform\Http\Middleware\EnsureFeatureIsActive;
 use Konventix\Platform\Http\Middleware\EnsureModuleIsActive;
 use Konventix\Platform\Http\Middleware\EnsureWaitingRoomAdmission;
 use Konventix\Platform\Hub\ActiveEventContext;
+use Konventix\Platform\Hub\HubCatalogue;
+use Konventix\Platform\Hub\HubLayoutResolver;
 use Konventix\Platform\Hub\HubRegistry;
 use Konventix\Platform\Legal\NoPublicLegalTexts;
 use Konventix\Platform\Legal\PublicLegalTexts;
 use Konventix\Platform\Listeners\GuardNonProductionMail;
 use Konventix\Platform\Listeners\ProjectHubAccess;
+use Konventix\Platform\Listeners\ProjectHubLayout;
 use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
@@ -167,6 +171,12 @@ class PlatformServiceProvider extends ModuleServiceProvider
         $this->app->singleton(ModuleGate::class);
         $this->app->singleton(NavigationRegistry::class);
         $this->app->singleton(HubRegistry::class);
+
+        // Stateless readers over the registry and the cache (design §6): the
+        // catalogue flattens boot-time registrations, the resolver reads the
+        // cache per call — neither holds anything from a request.
+        $this->app->singleton(HubCatalogue::class);
+        $this->app->singleton(HubLayoutResolver::class);
         $this->app->singleton(SlotRegistry::class);
         $this->app->singleton(BlockRegistry::class);
         $this->app->singleton(ConsoleEventSources::class);
@@ -241,6 +251,11 @@ class PlatformServiceProvider extends ModuleServiceProvider
         Event::listen(ParticipantAdmitted::class, [ProjectHubAccess::class, 'handleAdmitted']);
         Event::listen(ParticipantPresenceChanged::class, [ProjectHubAccess::class, 'handlePresenceChanged']);
         Event::listen(ParticipantHubAccessEnded::class, [ProjectHubAccess::class, 'handleEnded']);
+
+        // Event's layout event feeds the `hub_layouts` projection the same
+        // way (design §6): Platform holds a copy of the operator's
+        // composition and never reads Event's table.
+        Event::listen(EventHubLayoutChanged::class, ProjectHubLayout::class);
     }
 
     /**
