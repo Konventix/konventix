@@ -25,6 +25,9 @@ you need foreign display data, keep a read model in your own module, populated b
 to the owning module's events (ADR-0004). Events are the only public contract between
 modules, and their payloads carry IDs and scalars, never models.
 
+## Every date this application hands you is a `CarbonImmutable`, and the models' `@property Carbon` lines say otherwise
+`AppServiceProvider::configureDefaults()` calls `Date::use(CarbonImmutable::class)`, so a `datetime` cast, `created_at`/`updated_at` and `now()` all return `Carbon\CarbonImmutable`. That is a **sibling** of `Illuminate\Support\Carbon`, not a subclass, so a parameter, property or return typed `Carbon` rejects it at runtime with a TypeError. Meanwhile most models' `@property` blocks still say `Carbon|null`, which means PHPStan sees no mismatch at all and the first sign is a red pipeline — `ReplayEventDetailsCommand`'s `--with-state` helper shipped exactly that way, its `?Carbon` closure parameter surviving only the calls that passed `null`. Type these `Carbon\CarbonInterface` (both implement it), or `CarbonImmutable` where you genuinely mean the immutable one. Note that both kinds really are in circulation: a cast or `now()` answers immutable, while an explicit `Illuminate\Support\Carbon::parse()` bypasses the factory and answers mutable — which is why `Event::startsAtInstant(): Carbon` is correct as written and a `CarbonImmutable` from `$event->starts_at` is too.
+
 ## Response headers that must reach the webhooks go on the global stack
 `SecurityHeaders` (#251) is appended in `bootstrap/app.php` with
 `$middleware->append()`, not `$middleware->web()`. The surfaces that need `nosniff`

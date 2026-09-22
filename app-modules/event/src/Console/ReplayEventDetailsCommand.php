@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Konventix\Event\Console;
 
+use Carbon\CarbonInterface;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Carbon;
 use Konventix\Event\Enums\EventLifecycleState;
 use Konventix\Event\Events\EventAnnounced;
 use Konventix\Event\Events\EventArchived;
@@ -169,11 +169,25 @@ final class ReplayEventDetailsCommand extends Command
      * writes only `whereNull('public_since')`). The four that *are* stored
      * — published, cancelled, concluded, archived — are replayed exactly,
      * so Compliance's clock and Admission's access-ended stamps land on the
-     * same instants they did the first time.
+     * same instants they did the first time. Every one of them arrives as a
+     * `CarbonImmutable` rather than an `Illuminate\Support\Carbon`, which is
+     * why the helper below takes `CarbonInterface`; see the comment there.
      */
     private static function lifecycleEventFor(Event $event): EventAnnounced|EventPublished|EventStarted|EventConcluded|EventCancelled|EventArchived|null
     {
-        $at = static fn (?Carbon $stored): string => ($stored ?? $event->updated_at ?? $event->created_at ?? now())->toIso8601String();
+        // `?CarbonInterface`, never `Illuminate\Support\Carbon`: this
+        // application calls `Date::use(CarbonImmutable::class)`
+        // (`AppServiceProvider`), so every `datetime` cast, both timestamp
+        // columns and `now()` itself hand over a `CarbonImmutable` — a
+        // *sibling* of `Illuminate\Support\Carbon`, not a subclass. The
+        // interface is the only type that accepts both, and the `null`
+        // arguments below (the two states that store no timestamp) were the
+        // only reason the narrower hint ever survived a call.
+        //
+        // PHPStan cannot see this: `Event`'s own `@property` lines declare
+        // `Carbon|null`, so the mismatch was a runtime TypeError rather than
+        // an analysis error.
+        $at = static fn (?CarbonInterface $stored): string => ($stored ?? $event->updated_at ?? $event->created_at ?? now())->toIso8601String();
 
         return match ($event->state) {
             EventLifecycleState::Draft => null,
