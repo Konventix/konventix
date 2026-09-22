@@ -19,8 +19,8 @@ use Konventix\Community\Models\RoomMute;
  * row survives as a tombstone, so a link to the wall does not 404 into
  * nothing — it opens onto an empty, closed room.
  *
- * `closed_at` is set by `CloseRoomOnEventConcluded` from the event's own
- * conclusion instant; this command only reads it. A room is due once
+ * `closed_at` is set by `CloseRoomOnEventClosed` from the event's own
+ * conclusion or cancellation instant; this command only reads it. A room is due once
  * `closed_at <= now - 30 days`, so a room closed at 20:00 on 18 October is
  * swept by the first run at or after 20:00 on 17 November.
  *

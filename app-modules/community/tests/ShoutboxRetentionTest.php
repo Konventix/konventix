@@ -19,14 +19,16 @@ use Konventix\Community\Models\Room;
 use Konventix\Community\Models\RoomMute;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\SubjectRef;
+use Konventix\Event\Events\EventCancelled;
 use Konventix\Event\Events\EventConcluded;
 
 /**
  * Design §7 and §12 items 7-8: the shoutbox's retention clock and its GDPR
  * half.
  *
- * - `EventConcluded` closes the room (`closed_at`, the conclusion instant)
- *   and a closed room refuses every post.
+ * - `EventConcluded` closes the room (`closed_at`, the conclusion instant),
+ *   and so does `EventCancelled` (the cancellation instant) — a cancelled
+ *   event never concludes; a closed room refuses every post.
  * - `community:sweep-shoutbox` deletes the room's messages, mutes and
  *   reports **30 days** after that instant and keeps the room row as a
  *   tombstone. Time is frozen explicitly around the boundary, and the day
@@ -161,6 +163,53 @@ it('sweeps a closed room\'s messages, reports and mutes 30 days after it closed,
     $this->artisan('community:sweep-shoutbox')
         ->expectsOutputToContain('Swept 0 shoutbox room(s), 0 message(s) deleted.')
         ->assertSuccessful();
+});
+
+// A running event can be cancelled — and later archived — without ever
+// concluding. Its room must close on the cancellation, or the wall's
+// messages, reports and mutes would be kept forever.
+it('closes the room of a cancelled event at the cancellation instant, and the sweep reaches it 30 days later', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('community', $brand);
+
+    $eventId = (string) Str::ulid();
+    $filled = shoutboxRetentionFilledRoom(null);
+    $filled['room']->forceFill(['subject_id' => $eventId])->save();
+
+    event(new EventCancelled(eventId: $eventId, brandId: $brand->getKey(), reasonCode: 'venue_lost', cancelledAt: '2026-10-17T15:00:00+00:00'));
+
+    expect($filled['room']->refresh()->closed_at?->toIso8601String())->toBe('2026-10-17T15:00:00+00:00');
+
+    try {
+        app(PostMessage::class)->handle($filled['room'], (string) Str::ulid(), new PostMessageData('Findet es noch statt?'));
+        $refusal = null;
+    } catch (ShoutboxWriteException $e) {
+        $refusal = $e->cause;
+    }
+
+    expect($refusal)->toBe(ShoutboxRefusal::RoomClosed);
+
+    // 30 days after 2026-10-17 15:00 is 2026-11-16 15:00: 17 Oct + 14 days
+    // = 31 Oct, + 16 days = 16 Nov (14 + 16 = 30). One second earlier the
+    // room is 29 days, 23:59:59 closed and keeps everything.
+    CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-11-16T14:59:59Z'));
+
+    $this->artisan('community:sweep-shoutbox')
+        ->expectsOutputToContain('Swept 0 shoutbox room(s), 0 message(s) deleted.')
+        ->assertSuccessful();
+
+    expect(shoutboxRetentionStillHolds($filled))->toBeTrue();
+
+    CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-11-16T15:00:00Z'));
+
+    $this->artisan('community:sweep-shoutbox')
+        ->expectsOutputToContain('Swept 1 shoutbox room(s), 1 message(s) deleted.')
+        ->assertSuccessful();
+
+    expect(Message::withoutBrandScope()->where('room_id', $filled['room']->id)->exists())->toBeFalse()
+        ->and(MessageReport::withoutBrandScope()->whereKey($filled['report']->id)->exists())->toBeFalse()
+        ->and(RoomMute::withoutBrandScope()->whereKey($filled['mute']->id)->exists())->toBeFalse()
+        ->and(Room::withoutBrandScope()->find($filled['room']->id)?->closed_at?->toIso8601String())->toBe('2026-10-17T15:00:00+00:00');
 });
 
 it('runs the sweep daily, without overlapping, and names the 30 days the spec gives', function (): void {

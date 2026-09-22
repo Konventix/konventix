@@ -23,7 +23,7 @@ use Konventix\Community\Exceptions\ShoutboxWriteException;
 use Konventix\Community\Gdpr\CommunityGdprHandler;
 use Konventix\Community\Hub\ShoutboxCard;
 use Konventix\Community\Listeners\BroadcastToRoom;
-use Konventix\Community\Listeners\CloseRoomOnEventConcluded;
+use Konventix\Community\Listeners\CloseRoomOnEventClosed;
 use Konventix\Community\Listeners\Metrics\RecordShoutboxMetrics;
 use Konventix\Community\Listeners\ProjectAdmissionBadge;
 use Konventix\Community\Listeners\ProjectCommunityMember;
@@ -32,6 +32,7 @@ use Konventix\Community\Listeners\ProjectEventParticipation;
 use Konventix\Community\Metrics\CommunityMetrics;
 use Konventix\Community\Presence\ConnectionState;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Event\Events\EventCancelled;
 use Konventix\Event\Events\EventConcluded;
 use Konventix\Identity\Events\BrandMembershipProfileUpdated;
 use Konventix\Identity\Events\UserProfileUpdated;
@@ -194,8 +195,10 @@ class CommunityServiceProvider extends ModuleServiceProvider
      * `ParticipantAdmissionReplaced` deliberately excluded, see its own
      * docblock.
      *
-     * `CloseRoomOnEventConcluded` (design §7) gates itself on the event's
-     * brand and starts the retention clock. `BroadcastToRoom` is registered
+     * `CloseRoomOnEventClosed` (design §7) gates itself on the event's
+     * brand and starts the retention clock on `EventConcluded` and on
+     * `EventCancelled` — a cancelled event never concludes, and its room
+     * would otherwise never be swept. `BroadcastToRoom` is registered
      * **first** for both shoutbox events, so the room hears about a change
      * before any other listener reacts to it — see its docblock for why it,
      * and not the framework's `ShouldRescue`, sends the broadcast.
@@ -212,7 +215,8 @@ class CommunityServiceProvider extends ModuleServiceProvider
         Event::listen(ParticipantAdmitted::class, ProjectAdmissionBadge::class);
         Event::listen(ParticipantPresenceChanged::class, ProjectAdmissionBadge::class);
         Event::listen(ParticipantHubAccessEnded::class, ProjectAdmissionBadge::class);
-        Event::listen(EventConcluded::class, CloseRoomOnEventConcluded::class);
+        Event::listen(EventConcluded::class, [CloseRoomOnEventClosed::class, 'handleConcluded']);
+        Event::listen(EventCancelled::class, [CloseRoomOnEventClosed::class, 'handleCancelled']);
         Event::listen(ShoutboxMessagePosted::class, BroadcastToRoom::class);
         Event::listen(ShoutboxMessageRemoved::class, BroadcastToRoom::class);
         Event::listen(ShoutboxMessagePosted::class, RecordShoutboxMetrics::class);

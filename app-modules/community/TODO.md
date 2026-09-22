@@ -17,7 +17,9 @@ and the backlog below is still a starting point for that phase.
       on for the brand (ADR-0003's listener gate), so a brand that switches
       the module off between opening its wall and concluding the event keeps
       that room open and outside the 30-day sweep. `docs/operations.md`
-      ("Shoutbox") has the manual repair; decide whether the close belongs
+      ("Shoutbox") has the manual repair (a tinker line, since
+      `event:replay-details --with-state` replays only the current lifecycle
+      event and so cannot reach an archived event's conclusion); decide whether the close belongs
       outside the gate, since it builds no read model and only starts a
       retention clock on rows that already exist.
 
@@ -32,8 +34,8 @@ and the backlog below is still a starting point for that phase.
 
 - [x] Shoutbox retention, gating, GDPR and observability (0.9.0 sub-project D
       Task 6, design §7 and §12 items 7-10, ADR-0059, ADR-0067).
-      `CloseRoomOnEventConcluded` sets `closed_at` from the conclusion instant
-      (gated, idempotent); `community:sweep-shoutbox` runs daily without
+      `CloseRoomOnEventClosed` sets `closed_at` from the conclusion or
+      cancellation instant (gated, idempotent); `community:sweep-shoutbox` runs daily without
       overlapping and deletes a room's messages, reports and mutes 30 days
       later, keeping the room tombstone. `CommunityGdprHandler` exports the
       subject's lines, reports, mutes and admission badges; erasure deletes

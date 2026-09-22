@@ -525,9 +525,10 @@ Agenda's and Registration's projections (the latter only fills
 (`updateOrCreate` on the event id, with the event's own `concluded_at`), and
 Admission's `EndHubAccessOnEventClosed`, whose sweep skips every presence
 row that is already settled and therefore emits nothing on a second pass,
-and Community's `CloseRoomOnEventConcluded` (added with the shoutbox), which
-closes only a room whose `closed_at` is still empty, from the event's own
-`concluded_at`, so a replay never moves the retention clock. Compliance's wildcard audit listener ignores all seven: none of them
+and Community's `CloseRoomOnEventClosed` (added with the shoutbox, on
+`EventConcluded` and `EventCancelled`), which closes only a room whose
+`closed_at` is still empty, from the event's own `concluded_at` or
+`cancelled_at`, so a replay never moves the retention clock. Compliance's wildcard audit listener ignores all seven: none of them
 implements `AuditableEvent`. **Adding a listener to one of those seven
 events puts it on this list** — if it is not idempotent, this flag stops
 being safe and the note belongs here.
@@ -547,8 +548,9 @@ organizer with `community.moderate-community` works the desk at
 listeners do anything for it.
 
 **Retention: 30 days after the event concluded** (D-COM-05).
-`EventConcluded` sets the room's `closed_at` to the conclusion instant; the
-wall is readable but refuses posts from then on. `community:sweep-shoutbox`
+`EventConcluded` sets the room's `closed_at` to the conclusion instant —
+and `EventCancelled` to the cancellation instant, since a cancelled event
+never concludes; the wall is readable but refuses posts from then on. `community:sweep-shoutbox`
 runs **daily** (`withoutOverlapping()`) and, for every room closed at least
 30 days ago, deletes its messages, the reports on them and its mutes. The
 room row stays as a tombstone, so an old link opens onto an empty, closed
@@ -559,13 +561,23 @@ in the scheduler or web pod); a room already swept has nothing left to
 delete. If the scheduler role was down for days, the next run catches up —
 there is no window it can miss.
 
-One gap to know: a room is closed only by `EventConcluded` *while
-`community` is on for the brand*. A brand that switches the module off
-between opening its wall and concluding the event leaves that room open,
-and the sweep never reaches it. Turn the module back on and run
-`event:replay-details --with-state --event=<event ulid>`, which re-emits
-`EventConcluded` with the stored conclusion instant (see **Programme** for
-why that replay is safe).
+One gap to know: a room is closed only by `EventConcluded` or
+`EventCancelled` *while `community` is on for the brand*. A brand that
+switches the module off between opening its wall and closing the event
+leaves that room open, and the sweep never reaches it. `event:replay-details
+--with-state` is **not** the repair: it re-emits only the event's *current*
+lifecycle event, which for an archived event is `EventArchived`. Set the
+room's clock by hand from the event's own instant instead:
+
+```
+kubectl -n konventix exec deploy/konventix-web -- php artisan tinker --execute '$e = Konventix\Event\Models\Event::withoutBrandScope()->findOrFail("EVENT_ULID"); echo Konventix\Community\Models\Room::withoutBrandScope()->where("subject_type", "event")->where("subject_id", $e->id)->whereNull("closed_at")->update(["closed_at" => $e->concluded_at ?? $e->cancelled_at]);'
+```
+
+It prints the number of rooms it closed (0 or 1), touches a room only while
+its `closed_at` is empty, and leaves it empty for an event that has neither
+concluded nor been cancelled. The next daily sweep deletes the room's
+contents once 30 days have passed since that instant — at once, if they
+already have.
 
 **GDPR.** Community's handler exports the subject's own lines (removed ones
 too), the reports they filed, the mutes held against them and their
