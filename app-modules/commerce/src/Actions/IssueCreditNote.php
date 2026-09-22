@@ -6,11 +6,13 @@ namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
+use Konventix\Commerce\Data\CreditNoteLineSelectionData;
 use Konventix\Commerce\Events\CreditNoteIssued;
 use Konventix\Commerce\Exceptions\CreditNoteExceedsInvoiceException;
 use Konventix\Commerce\Exceptions\CreditNoteRequiresInvoiceException;
 use Konventix\Commerce\Jobs\GenerateCreditNoteDocument;
 use Konventix\Commerce\Models\CreditNote;
+use Konventix\Commerce\Models\CreditNoteLine;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 
@@ -36,23 +38,40 @@ use Konventix\Commerce\Models\Order;
  * reason the invoice snapshotted them: the document must read correctly
  * years later.
  *
- * **Amounts are the caller's, not the invoice's** (#7). Until D-REG-15 this
- * Action copied the invoice's `total_net` and `total_tax` and overrode only
- * the gross, which is correct for a whole credit note and false for every
- * other: a partial credit note then printed the full invoice's net and tax
- * beside a smaller gross, and `CreditNoteDocumentRenderer` derives the VAT
- * rate it prints from exactly those two numbers — so the document stated a
- * rate nobody had ever charged. A caller that credits part of an invoice
- * now passes all three amounts, computed where the tax class and rate
- * actually are (`RefundUnitsOnRegistrationQuantityReduced` takes them off
- * the order line and `TaxCalculator`'s own formula). Passing none keeps the
- * whole-invoice behaviour unchanged.
+ * **A partial credit note names lines and quantities** (#7, D-0.8.2-1).
+ * `$lines` is the whole shape of a partial credit note: the invoice lines
+ * being credited and how many units of each. `ResolveCreditNoteLines`
+ * computes the net, the VAT and the gross **per line** at each line's own
+ * snapshotted rate (ADR-0017) through `TaxCalculator`, and those lines are
+ * snapshotted onto `credit_note_lines` beside the totals they sum to.
+ *
+ * That replaces inheriting the invoice's allocation for a gross sum, which
+ * was #7's defect and a bookkeeping one rather than a rounding one: on an
+ * invoice mixing 19% and 7%, crediting the reduced-rate line produced the
+ * invoice's blended split, and the document stated a VAT figure nobody had
+ * charged. A gross alone cannot be un-blended, because it does not say
+ * which line it came from.
+ *
+ * **Amounts may still be passed explicitly**, without lines. That is the
+ * whole-invoice credit note — a full refund, an ADR-0036 transfer, ADR-0057
+ * point 4's cancellation — which credits everything and needs no
+ * allocation, and it is also how a caller that has already computed one
+ * line's amounts states them (the D-REG-15 unit refund passes `$lines` now,
+ * so nothing in the codebase takes that road any more). Passing neither
+ * copies the invoice's totals, which is exact for a whole credit note and
+ * for nothing else.
  *
  * **The sum of an invoice's credit notes never exceeds its gross** (#7's
- * third criterion). Partial notes make that reachable — the order stays
- * `paid`, so nothing above refuses a second one — and a credit note cannot
- * be corrected afterwards (ADR-0031), so the guard is here, inside the
- * transaction that draws the number.
+ * third criterion), and **no line is credited beyond what was sold**.
+ * Partial notes make both reachable — the order stays `paid`, so nothing
+ * above refuses a second one — and a credit note cannot be corrected
+ * afterwards (ADR-0031), so both guards are here, inside the transaction
+ * that draws the number. The per-line one is the stricter of the two: an
+ * invoice of 200.00 + 100.00 still has 100.00 of room after its first line
+ * is credited whole, and without `credit_note_lines` as a ledger the second
+ * note could spend that room on the same line again. Both refuse rather
+ * than clamp: a silent clamp turns an operator's mistake into a wrong
+ * document.
  *
  * `$reductionKey` is D-REG-15's idempotency key: the reduction whose units
  * this note credits, unique per brand at the database. Null for every other
@@ -79,8 +98,18 @@ final class IssueCreditNote
 
     public function __construct(
         private readonly DrawCreditNoteNumber $drawNumber,
+        private readonly ResolveCreditNoteLines $resolveLines,
     ) {}
 
+    /**
+     * `$lines` is D-0.8.2-1's line-and-quantity selection; when it is given
+     * the three amounts are computed from it and any `$totalGross`/
+     * `$totalNet`/`$totalTax` the caller also passed are ignored, because
+     * the lines are the more specific statement of the same thing and two
+     * sources of truth for one document's totals is how they come apart.
+     *
+     * @param  list<CreditNoteLineSelectionData>|null  $lines
+     */
     public function handle(
         Order $order,
         string $reasonCode,
@@ -89,8 +118,9 @@ final class IssueCreditNote
         ?string $totalNet = null,
         ?string $totalTax = null,
         ?string $reductionKey = null,
+        ?array $lines = null,
     ): CreditNote {
-        return DB::transaction(function () use ($order, $reasonCode, $reasonNote, $totalGross, $totalNet, $totalTax, $reductionKey): CreditNote {
+        return DB::transaction(function () use ($order, $reasonCode, $reasonNote, $totalGross, $totalNet, $totalTax, $reductionKey, $lines): CreditNote {
             $invoice = Invoice::withoutBrandScope()
                 ->where('brand_id', $order->brand_id)
                 ->where('order_id', $order->id)
@@ -99,6 +129,21 @@ final class IssueCreditNote
 
             if ($invoice === null) {
                 throw CreditNoteRequiresInvoiceException::forOrder($order->id);
+            }
+
+            // Resolved inside the transaction, and inside the order lock
+            // `RecordRefund` is holding by the time a refund reaches here:
+            // the per-line guard is a read-then-write, and the lock is what
+            // makes it safe against a second credit note of the same line.
+            // `RefundOrder` has already asked the same question before the
+            // provider call, so a refusal there costs nothing; this call is
+            // the authoritative one.
+            $credited = $lines === null ? null : $this->resolveLines->handle($order, $lines);
+
+            if ($credited !== null) {
+                $totalNet = $credited->totalNet;
+                $totalTax = $credited->totalTax;
+                $totalGross = $credited->totalGross;
             }
 
             $gross = $totalGross ?? $invoice->total_gross;
@@ -137,6 +182,20 @@ final class IssueCreditNote
             ]);
             // brand_id from the order, not ambient context (ADR-0010).
             $creditNote->forceFill(['brand_id' => $order->brand_id])->save();
+
+            if ($credited !== null) {
+                foreach ($credited->lines as $line) {
+                    $row = new CreditNoteLine([
+                        'credit_note_id' => $creditNote->getKey(),
+                        ...$line->toRow(),
+                    ]);
+                    // Same reason as the credit note itself: the brand is
+                    // the order's, never the ambient context (ADR-0010) —
+                    // a refund is made from the operator host, which
+                    // resolves none.
+                    $row->forceFill(['brand_id' => $order->brand_id])->save();
+                }
+            }
 
             event(new CreditNoteIssued(
                 creditNoteId: $creditNote->id,

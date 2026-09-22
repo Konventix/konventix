@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Actions\Concerns\GuardsCheckedInAdmissions;
 use Konventix\Commerce\Actions\Concerns\LocksMoneyRowsInOneOrder;
+use Konventix\Commerce\Data\CreditNoteLineSelectionData;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Enums\ReversalKind;
@@ -60,6 +61,17 @@ use Throwable;
  * Gutschrift states the rate that was actually charged. Its check-in guard
  * is per admission rather than per registration: one attendee among five
  * does not block the money for four people who never came.
+ *
+ * **And a fourth, the operator's own partial** (#7, D-0.8.2-1): the console
+ * names invoice lines and quantities, `ResolveCreditNoteLines` computes what
+ * they come to at each line's snapshotted rate, and that — not a sum anybody
+ * typed — is both what the provider is asked to send back and what the
+ * Gutschrift documents. The selection is resolved **before** the provider is
+ * called, so a pick that cannot be credited (a line already credited in full,
+ * a line that is not on this order) refuses while nothing has moved;
+ * `IssueCreditNote` resolves it again inside the transaction that holds the
+ * order lock, which is the answer that counts. Like the reduction, it leaves
+ * the order `paid` unless the selection comes to the whole gross.
  *
  * The guards and the provider call are what this Action *is*; the credit
  * note, the status and `OrderRefunded` live in `RecordRefund`, which the
@@ -131,6 +143,7 @@ final class RefundOrder
         private readonly RecordOwnRefund $recordOwnRefund,
         private readonly SettlementAdapterRegistry $registry,
         private readonly AuditRecorder $auditRecorder,
+        private readonly ResolveCreditNoteLines $resolveCreditNoteLines,
     ) {}
 
     /**
@@ -141,6 +154,8 @@ final class RefundOrder
      * audit entry (#250): the console passes the operator, a sweep or a
      * console command passes nothing, and `AuditRecorder` is left to record
      * an actorless act rather than invent one.
+     *
+     * @param  list<CreditNoteLineSelectionData>|null  $creditLines  D-0.8.2-1's line-and-quantity selection; it decides `$amount` rather than being checked against one.
      */
     public function handle(
         Order $order,
@@ -153,6 +168,7 @@ final class RefundOrder
         ?string $registrationId = null,
         ?int $units = null,
         ?string $actorUserId = null,
+        ?array $creditLines = null,
     ): Order {
         // **Before the provider, not after** (D-REG-15). The money leg runs
         // first on purpose (#236), so the only place a replay can be stopped
@@ -167,6 +183,19 @@ final class RefundOrder
         $unapplied = $this->unappliedPayment($order);
 
         $this->guardRefundable($order, $unapplied);
+
+        // **Before the provider** (D-0.8.2-1). The amount a line selection
+        // comes to is computed here rather than taken from the caller, and
+        // the same call is what refuses a selection that would over-credit
+        // a line or name one that is not on this order. Both matter in this
+        // order: the money leg runs first (#236), so a refusal that only
+        // happened at document time would leave the payer's money returned
+        // and no Gutschrift to explain it. `IssueCreditNote` asks again
+        // under the order lock for the concurrent case this unlocked read
+        // cannot see — the same two-step the reduction key already uses.
+        if ($creditLines !== null) {
+            $amount = $this->resolveCreditNoteLines->handle($order, $creditLines)->totalGross;
+        }
 
         // ADR-0037's guard protects a *sale*. Unapplied money paid for
         // nothing — the order was already cancelled when it arrived, the
@@ -243,6 +272,7 @@ final class RefundOrder
                 reductionKey: $reductionKey,
                 amountNet: $amountNet,
                 amountTax: $amountTax,
+                creditLines: $creditLines,
             );
         } catch (RefundEventRelayFailedException $e) {
             // The opposite of a refusal (#236 fix round 1, NEW-1): the record

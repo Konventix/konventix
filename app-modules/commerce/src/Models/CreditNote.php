@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Konventix\Commerce\Data\BillingPartyData;
 use Konventix\Commerce\Database\Factories\CreditNoteFactory;
@@ -111,6 +112,19 @@ class CreditNote extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    /**
+     * What this note credits, line by line (#7, D-0.8.2-1) — empty for a
+     * whole-invoice credit note and for every note issued before
+     * `credit_note_lines` existed, which is a state rather than a gap: the
+     * document then renders the summary position it always did.
+     *
+     * @return HasMany<CreditNoteLine, $this>
+     */
+    public function lines(): HasMany
+    {
+        return $this->hasMany(CreditNoteLine::class)->orderBy('position');
     }
 
     /**

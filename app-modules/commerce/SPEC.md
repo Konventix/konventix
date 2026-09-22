@@ -366,12 +366,19 @@ BaFin/ZAG licensing.
   code 381), archived once to the `credit_notes.document_*` columns
   (idempotent on `document_path`, same as an invoice) on the same
   `invoices_disk` an invoice archives to — one archive, one retention rule,
-  for both document kinds. Unlike `InvoiceDocumentRenderer`, it never reads
-  `Order`/`OrderLine`: a credit note only snapshots the invoice's totals
-  (`IssueCreditNote`), so the document renders one summary position
-  ("Gutschrift zu Rechnung Nr. …") rather than a line-by-line breakdown, and
-  `addDocumentInvoiceReferencedDocument()` carries the corrected invoice's
-  number and issue date whenever `invoice_id` is set. `Actions\SendCreditNoteMail`
+  for both document kinds. It never reads `Order`/`OrderLine`: what a
+  **partial** credit note credits is the credit note's own snapshot,
+  `credit_note_lines` (#7, D-0.8.2-1), so both halves render the credited
+  subset line by line — the visual table like the invoice's, with each
+  line's own VAT rate, plus a per-rate breakdown wherever more than one rate
+  is credited, and the Factur-X document with one position per line and one
+  `BG-23` tax group per rate. A credit note that names **no** lines — a
+  whole-invoice one, and every note issued before that table existed —
+  renders the single summary position it always did ("Gutschrift zu Rechnung
+  Nr. …") at the rate derived from its two totals, which is exact where
+  there is nothing to allocate. `addDocumentInvoiceReferencedDocument()`
+  carries the corrected invoice's number and issue date whenever
+  `invoice_id` is set. `Actions\SendCreditNoteMail`
   mails the sealed archive through `commerce.credit-note-issued`
   (`Data\CreditNoteMailData`) — one template for both reasons
   (`IssueCreditNote::REASON_REFUND`/`REASON_TRANSFER`): the payload carries
@@ -398,24 +405,54 @@ BaFin/ZAG licensing.
   organizer marking a bank transfer as received is a normal, supported flow,
   not a workaround.
 - **Refunds and partial credit notes** as domain flows, with PSP calls as side
-  effects. Refund (whole order) is an operator action in the console:
+  effects. Refund is an operator action in the console:
   `POST /admin/orders/{order}/refund`, capability `commerce.issue-refunds`,
   reason from `RefundReason` plus a free-text note, both recorded in the
   audit trail. Neither is printed on the credit note, which always says
-  "Grund: Erstattung". Partial refunds stay out of the console's own form —
-  the button refunds the whole order — but they are no longer Action-only
-  guesswork: **the per-unit refund** (D-REG-15, #7) is driven by
-  Registration and computed exactly. `RefundUnitsOnRegistrationQuantityReduced`
-  finds the order line by `settles_kind = 'registration'` and `settles_ref`
-  (both order shapes write the pair), takes `removed_units × unit_amount_net`
-  plus tax at the **line's own snapshotted rate** through `TaxCalculator`'s
-  formula, and hands all three amounts to `IssueCreditNote`, which since then
-  writes the caller's net/tax/gross instead of copying the invoice's — so the
-  VAT rate `CreditNoteDocumentRenderer` derives from those two totals is the
-  rate that was actually charged (#7's first two criteria). The sum of an
-  invoice's credit notes can never exceed its gross (#7's third), guarded
-  inside the transaction that draws the number, since a credit note is
-  immutable (ADR-0031). On that branch the **order stays `paid`**: the sale
+  "Grund: Erstattung".
+
+  **A partial refund is expressed by picking lines and quantities**
+  (D-0.8.2-1, #7) — never by typing a gross sum, and the form has no amount
+  field. `Data\CreditNoteLineSelectionData` is the pick;
+  `Actions\ResolveCreditNoteLines` computes each line's net, VAT and gross
+  through `TaxCalculator::lineAtRate()` at the line's **own snapshotted
+  rate** (ADR-0017), never a re-resolution of its `TaxClass`; and
+  `IssueCreditNote` writes both the totals and the lines themselves onto
+  `credit_note_lines`. Inheriting the invoice's allocation for a gross was
+  the defect: on an invoice mixing 19% and 7%, crediting the reduced-rate
+  line produced the invoice's blend — 45.00 on 300.00, a 15% rate nobody
+  charged. A gross alone cannot be un-blended because it does not say which
+  line it came from. Rounding is the calculator's and only the calculator's:
+  per line, half-up to cents at intermediate scale 4, then summed, so the
+  totals are exactly the sum of the printed lines. Fractions of a unit are
+  not expressible and are refused rather than approximated.
+
+  A line-selected partial leaves the order **`paid`** — the buyer keeps what
+  was not credited and a second partial is legitimate — unless the selection
+  comes to the whole gross, which takes the ordinary road (`refunded`, the
+  per-line cancellations, `OrderRefunded.whole = true`). A partial *amount*
+  with no lines keeps its older meaning and still moves the order to
+  `refunded`: an operator typing a sum, and a provider reporting one
+  dashboard refund back in instalments, both mean the sale is over.
+
+  **The per-unit refund** (D-REG-15) is the same mechanism driven by
+  Registration rather than by an operator.
+  `RefundUnitsOnRegistrationQuantityReduced` finds the order line by
+  `settles_kind = 'registration'` and `settles_ref` (both order shapes write
+  the pair) and hands `RefundOrder` that line and `removed_units` as an
+  ordinary selection, so one computation produces the gross the provider is
+  asked for and the net/tax the document states — and the units it credits
+  join the per-line ledger.
+
+  **Two guards, both refusals rather than clamps.** The sum of an invoice's
+  credit notes can never exceed its gross (#7's third criterion), and no
+  line is credited beyond what was sold. The second is the stricter: an
+  invoice of 200.00 + 100.00 still has 100.00 of room after its first line
+  is credited whole, so only `credit_note_lines` can say that the *line* is
+  exhausted. Both are checked inside the transaction that draws the number,
+  since a credit note is immutable (ADR-0031), and `RefundOrder` checks the
+  selection once more **before** the provider is called so a refusal never
+  leaves money returned with no Gutschrift to explain it. On that branch the **order stays `paid`**: the sale
   still stands for the units the buyer kept, a second reduction of the same
   order is legitimate, and no `OrderLineCancelled` goes out because
   Registration has already released what it released. Every money write is

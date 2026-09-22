@@ -59,26 +59,18 @@ final class TaxCalculator
                 ? GermanVat::rateFor($taxClass)
                 : '0.00';
 
-            $lineNet = bcround(bcmul($line['unit_amount_net'], (string) $line['quantity'], self::SCALE), 2);
-            $lineTax = bcround(
-                bcdiv(bcmul($lineNet, $rate, self::SCALE), '100', self::SCALE),
-                2,
-            );
-            $lineGross = bcadd($lineNet, $lineTax, 2);
-
-            $calculated[] = new CalculatedLineData(
+            $calculatedLine = $this->lineAtRate(
                 label: $line['label'],
                 quantity: $line['quantity'],
                 unitAmountNet: $line['unit_amount_net'],
                 taxClass: $taxClass,
                 taxRate: $rate,
-                lineNet: $lineNet,
-                lineTax: $lineTax,
-                lineGross: $lineGross,
             );
 
-            $totalNet = bcadd($totalNet, $lineNet, 2);
-            $totalTax = bcadd($totalTax, $lineTax, 2);
+            $calculated[] = $calculatedLine;
+
+            $totalNet = bcadd($totalNet, $calculatedLine->lineNet, 2);
+            $totalTax = bcadd($totalTax, $calculatedLine->lineTax, 2);
         }
 
         return new TaxCalculationData(
@@ -87,6 +79,56 @@ final class TaxCalculator
             totalNet: $totalNet,
             totalTax: $totalTax,
             totalGross: bcadd($totalNet, $totalTax, 2),
+        );
+    }
+
+    /**
+     * One line at a rate the caller already holds — the same arithmetic
+     * `calculate()` runs, with the rate resolution taken out of it.
+     *
+     * This exists because **a credit note must not re-resolve anything**
+     * (#7, D-0.8.2-1). `calculate()` resolves a declared `TaxClass` to
+     * today's statutory rate and today's treatment; an order credited next
+     * year has to be credited at the rate it was charged at, which is the
+     * `order_lines.tax_rate` snapshot (ADR-0017). Every partial credit note
+     * therefore comes through here with that snapshot rather than through
+     * `calculate()`.
+     *
+     * Splitting it out rather than restating the formula is the point:
+     * rounding is per line, half-up to cents at intermediate scale 4, and
+     * there is exactly one place that does it. `D-REG-15`'s unit refund
+     * used to carry its own copy of these three lines, and a copy is how
+     * two rounding policies come to differ by a cent on a document that
+     * cannot be corrected afterwards.
+     *
+     * A zero rate — reverse charge, §19 UStG — yields zero tax by
+     * construction, so no treatment branch is needed here either.
+     *
+     * @param  numeric-string  $unitAmountNet
+     * @param  numeric-string  $taxRate
+     */
+    public function lineAtRate(
+        string $label,
+        int $quantity,
+        string $unitAmountNet,
+        TaxClass $taxClass,
+        string $taxRate,
+    ): CalculatedLineData {
+        $lineNet = bcround(bcmul($unitAmountNet, (string) $quantity, self::SCALE), 2);
+        $lineTax = bcround(
+            bcdiv(bcmul($lineNet, $taxRate, self::SCALE), '100', self::SCALE),
+            2,
+        );
+
+        return new CalculatedLineData(
+            label: $label,
+            quantity: $quantity,
+            unitAmountNet: $unitAmountNet,
+            taxClass: $taxClass,
+            taxRate: $taxRate,
+            lineNet: $lineNet,
+            lineTax: $lineTax,
+            lineGross: bcadd($lineNet, $lineTax, 2),
         );
     }
 }

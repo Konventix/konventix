@@ -16,20 +16,24 @@ use Konventix\Commerce\Actions\RecordPaymentSuccess;
 use Konventix\Commerce\Actions\RecordRefund;
 use Konventix\Commerce\Actions\RefundOrder;
 use Konventix\Commerce\Data\BillingPartyData;
+use Konventix\Commerce\Data\CreditNoteLineSelectionData;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
+use Konventix\Commerce\Enums\TaxClass;
 use Konventix\Commerce\Events\CreditNoteIssued;
 use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Exceptions\CreditNoteExceedsInvoiceException;
+use Konventix\Commerce\Exceptions\CreditNoteLineSelectionException;
 use Konventix\Commerce\Exceptions\CreditNoteRequiresInvoiceException;
 use Konventix\Commerce\Exceptions\RefundBlockedByCheckInException;
 use Konventix\Commerce\Exceptions\RefundEventRelayFailedException;
 use Konventix\Commerce\Listeners\RefundUnitsOnRegistrationQuantityReduced;
 use Konventix\Commerce\Models\CheckedInAdmission;
 use Konventix\Commerce\Models\CreditNote;
+use Konventix\Commerce\Models\CreditNoteLine;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
@@ -1632,4 +1636,290 @@ it('does nothing for a registration that never produced an order', function (): 
 
     Event::assertNotDispatched(OrderRefunded::class);
     Event::assertNotDispatched(CreditNoteIssued::class);
+});
+
+/**
+ * #7 / D-0.8.2-1: an invoice that mixes tax rates, which is the case the
+ * old shape got wrong.
+ *
+ * Two lines, 19% and 7%, summing to 300.00 net + 45.00 VAT = 345.00 gross.
+ * The invoice's own allocation is therefore a *blend* — 45.00 on 300.00 is
+ * 15.00%, a rate nobody charged and nobody may be shown.
+ */
+function refundTestMixedRateOrder(): array
+{
+    $order = Order::factory()->paid()->create([
+        'total_net' => '300.00',
+        'total_tax' => '45.00',
+        'total_gross' => '345.00',
+    ]);
+
+    $standard = OrderLine::factory()->forOrder($order)->create([
+        'position' => 1,
+        'label' => 'Konferenzticket',
+        'quantity' => 2,
+        'unit_amount_net' => '100.00',
+        'tax_class' => TaxClass::Standard,
+        'tax_rate' => '19.00',
+        'line_net' => '200.00',
+        'line_tax' => '38.00',
+        'line_gross' => '238.00',
+    ]);
+
+    $reduced = OrderLine::factory()->forOrder($order)->create([
+        'position' => 2,
+        'label' => 'Tagungsband',
+        'quantity' => 1,
+        'unit_amount_net' => '100.00',
+        'tax_class' => TaxClass::Reduced,
+        'tax_rate' => '7.00',
+        'line_net' => '100.00',
+        'line_tax' => '7.00',
+        'line_gross' => '107.00',
+    ]);
+
+    Invoice::factory()->create([
+        'order_id' => $order->id,
+        'total_net' => $order->total_net,
+        'total_tax' => $order->total_tax,
+        'total_gross' => $order->total_gross,
+    ]);
+
+    return [$order, $standard, $reduced];
+}
+
+it('computes a partial credit note per line rather than inheriting the invoice\'s allocation (#7)', function (): void {
+    $this->withBrand();
+
+    [$order, , $reduced] = refundTestMixedRateOrder();
+
+    // The reduced-rate line alone: one unit of 100.00 net at 7%.
+    $note = app(IssueCreditNote::class)->handle(
+        order: $order,
+        reasonCode: IssueCreditNote::REASON_REFUND,
+        lines: [new CreditNoteLineSelectionData($reduced->getKey(), 1)],
+    );
+
+    // This is the whole defect, in three numbers. Inheriting the invoice's
+    // allocation for a gross of 107.00 gave net 300.00 and tax 45.00 — the
+    // *invoice's* figures beside a smaller total — and deriving a rate from
+    // them gave 15.00%. The line's own rate is 7%, and 7.00 is the VAT the
+    // buyer was actually charged on what is going back.
+    expect((string) $note->total_net)->toBe('100.00')
+        ->and((string) $note->total_tax)->toBe('7.00')
+        ->and((string) $note->total_gross)->toBe('107.00')
+        ->and(bcadd((string) $note->total_net, (string) $note->total_tax, 2))
+        ->toBe((string) $note->total_gross);
+
+    /** @var CreditNoteLine $line */
+    $line = CreditNoteLine::withoutBrandScope()->where('credit_note_id', $note->getKey())->sole();
+
+    expect($line->order_line_id)->toBe($reduced->getKey())
+        ->and($line->quantity)->toBe(1)
+        ->and((string) $line->tax_rate)->toBe('7.00')
+        ->and($line->label)->toBe('Tagungsband')
+        ->and((string) $line->line_tax)->toBe('7.00');
+
+    // The contrast, on the same invoice and for the same 107.00: the old
+    // shape — a gross with no lines — still exists for the whole-invoice
+    // credit note, and it still copies the invoice's net and tax. That is
+    // exact when the whole invoice is credited and wrong for a subset,
+    // which is why a subset may no longer be expressed that way.
+    $inherited = app(IssueCreditNote::class)->handle(
+        order: $order->refresh(),
+        reasonCode: IssueCreditNote::REASON_REFUND,
+        totalGross: '107.00',
+    );
+
+    expect((string) $inherited->total_tax)->toBe('45.00')
+        ->and((string) $inherited->total_net)->toBe('300.00')
+        // 45.00 on 300.00 is the 15% blend `CreditNoteDocumentRenderer`
+        // used to print for this document. Nobody was ever charged 15%.
+        ->and((string) $inherited->total_tax)->not->toBe((string) $note->total_tax);
+});
+
+it('credits two rates in one partial note, each at its own rate (#7)', function (): void {
+    $this->withBrand();
+
+    [$order, $standard, $reduced] = refundTestMixedRateOrder();
+
+    // One unit of each: 100.00 at 19% and 100.00 at 7%.
+    $note = app(IssueCreditNote::class)->handle(
+        order: $order,
+        reasonCode: IssueCreditNote::REASON_REFUND,
+        lines: [
+            new CreditNoteLineSelectionData($standard->getKey(), 1),
+            new CreditNoteLineSelectionData($reduced->getKey(), 1),
+        ],
+    );
+
+    // 19.00 + 7.00 = 26.00 of VAT on 200.00 net. A blended 15% would have
+    // said 30.00, and the pro-rated share of the invoice's own split would
+    // have said something else again.
+    expect((string) $note->total_net)->toBe('200.00')
+        ->and((string) $note->total_tax)->toBe('26.00')
+        ->and((string) $note->total_gross)->toBe('226.00');
+
+    $rates = CreditNoteLine::withoutBrandScope()
+        ->where('credit_note_id', $note->getKey())
+        ->orderBy('position')
+        ->pluck('line_tax', 'tax_rate')
+        ->map(fn (mixed $tax): string => (string) $tax)
+        ->all();
+
+    expect($rates)->toBe(['19.00' => '19.00', '7.00' => '7.00']);
+});
+
+it('refuses a second credit note that would over-credit a line the invoice still has room for (#7)', function (): void {
+    $this->withBrand();
+
+    [$order, , $reduced] = refundTestMixedRateOrder();
+
+    app(IssueCreditNote::class)->handle(
+        order: $order,
+        reasonCode: IssueCreditNote::REASON_REFUND,
+        lines: [new CreditNoteLineSelectionData($reduced->getKey(), 1)],
+    );
+
+    // The invoice has 238.00 of its 345.00 left, so the *total* guard would
+    // wave this through — the reduced line itself has nothing left, and
+    // that is what `credit_note_lines` is for. Refused, never clamped to
+    // zero units: a credit note cannot be corrected afterwards (ADR-0031).
+    expect(fn () => app(IssueCreditNote::class)->handle(
+        order: $order,
+        reasonCode: IssueCreditNote::REASON_REFUND,
+        lines: [new CreditNoteLineSelectionData($reduced->getKey(), 1)],
+    ))->toThrow(CreditNoteExceedsInvoiceException::class, 'Tagungsband');
+
+    expect(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+});
+
+it('refuses more units of a line than were ever sold, and a line from another order (#7)', function (): void {
+    $this->withBrand();
+
+    [$order, $standard] = refundTestMixedRateOrder();
+
+    expect(fn () => app(IssueCreditNote::class)->handle(
+        order: $order,
+        reasonCode: IssueCreditNote::REASON_REFUND,
+        lines: [new CreditNoteLineSelectionData($standard->getKey(), 3)],
+    ))->toThrow(CreditNoteExceedsInvoiceException::class);
+
+    [, $strangersLine] = refundTestMixedRateOrder();
+
+    expect(fn () => app(IssueCreditNote::class)->handle(
+        order: $order,
+        reasonCode: IssueCreditNote::REASON_REFUND,
+        lines: [new CreditNoteLineSelectionData($strangersLine->getKey(), 1)],
+    ))->toThrow(CreditNoteLineSelectionException::class);
+
+    // A fraction of a unit is not expressible at all, and a zero is not a
+    // credit note: both are refused rather than rounded into a document.
+    expect(fn () => app(IssueCreditNote::class)->handle(
+        order: $order,
+        reasonCode: IssueCreditNote::REASON_REFUND,
+        lines: [new CreditNoteLineSelectionData($standard->getKey(), 0)],
+    ))->toThrow(CreditNoteLineSelectionException::class);
+
+    expect(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
+});
+
+it('keeps the order paid for a line-selected partial refund, and releases nothing (#7)', function (): void {
+    $this->withBrand();
+
+    [$order, , $reduced] = refundTestMixedRateOrder();
+
+    Event::fake([OrderRefunded::class, OrderLineCancelled::class]);
+
+    app(RefundOrder::class)->handle(
+        order: $order,
+        reasonCode: 'customer-request',
+        creditLines: [new CreditNoteLineSelectionData($reduced->getKey(), 1)],
+    );
+
+    // The buyer keeps the two conference tickets, so the sale stands and a
+    // second partial of the same order stays possible.
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid);
+
+    Event::assertDispatched(
+        OrderRefunded::class,
+        fn (OrderRefunded $e): bool => $e->orderId === $order->id
+            && $e->whole === false
+            && $e->amountRefunded === '107.00',
+    );
+    Event::assertNotDispatched(OrderLineCancelled::class);
+});
+
+it('refuses a line selection before the provider is asked for the money (#7)', function (): void {
+    $brand = $this->withBrand();
+
+    [$order, , $reduced] = refundTestMixedRateOrder();
+
+    $account = SettlementAccount::factory()->create(['provider' => 'spy']);
+    Payment::factory()->create([
+        'order_id' => $order->id,
+        'settlement_account_id' => $account->id,
+        'provider' => 'spy',
+        'status' => PaymentStatus::Succeeded,
+        'amount' => $order->total_gross,
+        'currency' => 'EUR',
+        'received_at' => now(),
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    $spy = app(RefundTestSpyAdapter::class);
+    app()->instance(RefundTestSpyAdapter::class, $spy);
+
+    app(RefundOrder::class)->handle(
+        order: $order,
+        reasonCode: 'customer-request',
+        creditLines: [new CreditNoteLineSelectionData($reduced->getKey(), 1)],
+    );
+
+    expect($spy->refunds)->toHaveCount(1)
+        // The gross is the selection's own, computed per line — never a
+        // number the caller supplied.
+        ->and($spy->refunds[0]['amount'])->toBe('107.00');
+
+    // The same selection again: nothing is left of that line, so the money
+    // leg must not run at all. #236 keeps the provider first, which is
+    // exactly why the guard has to be ahead of it.
+    expect(fn () => app(RefundOrder::class)->handle(
+        order: $order->refresh(),
+        reasonCode: 'customer-request',
+        creditLines: [new CreditNoteLineSelectionData($reduced->getKey(), 1)],
+    ))->toThrow(CreditNoteExceedsInvoiceException::class);
+
+    expect($spy->refunds)->toHaveCount(1)
+        ->and(CreditNote::withoutBrandScope()->where('brand_id', $brand->getKey())->where('order_id', $order->id)->count())
+        ->toBe(1);
+});
+
+it('records a reduction\'s units on the credited-quantity ledger, so a console partial cannot spend them twice (#7)', function (): void {
+    $brand = $this->withBrand();
+    $registrationId = (string) Str::ulid();
+
+    [$order, $line] = refundTestUnitOrder($registrationId);
+
+    // Two of the three units go back through D-REG-15's own path.
+    app(RefundUnitsOnRegistrationQuantityReduced::class)->handle(
+        refundTestReductionEvent($registrationId, $brand->getKey(), (string) Str::ulid(), 2),
+    );
+
+    expect(CreditNoteLine::creditedQuantitiesFor($brand->getKey(), [(string) $line->getKey()]))
+        ->toBe([(string) $line->getKey() => 2]);
+
+    // The third unit is creditable; a fourth is not, even though nothing at
+    // the invoice level says so yet.
+    app(IssueCreditNote::class)->handle(
+        order: $order->refresh(),
+        reasonCode: IssueCreditNote::REASON_REFUND,
+        lines: [new CreditNoteLineSelectionData($line->getKey(), 1)],
+    );
+
+    expect(fn () => app(IssueCreditNote::class)->handle(
+        order: $order->refresh(),
+        reasonCode: IssueCreditNote::REASON_REFUND,
+        lines: [new CreditNoteLineSelectionData($line->getKey(), 1)],
+    ))->toThrow(CreditNoteExceedsInvoiceException::class);
 });

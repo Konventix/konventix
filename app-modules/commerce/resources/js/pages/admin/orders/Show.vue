@@ -1,20 +1,13 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { AlertCircle, FileText, Landmark, Undo2, XCircle } from '@lucide/vue';
-import { computed, nextTick, ref } from 'vue';
+import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
@@ -25,8 +18,8 @@ import {
     billingAddress,
     bookPayment,
     cancelReversed,
-    refund,
 } from '@/routes/admin/orders';
+import OrderRefundDialog from '../../../components/admin/OrderRefundDialog.vue';
 import type { OrderReversal, UnappliedPayment } from './reversals';
 import {
     canBookPayment,
@@ -70,15 +63,12 @@ type Props = {
             hasPostalAddress: boolean;
         } | null;
     };
-    lines: {
-        id: string;
-        label: string;
-        quantity: number;
-        unitAmountNet: string;
-        taxRate: string;
-        lineNet: string;
-        lineGross: string;
-    }[];
+    /**
+     * Each line with what is left of it to credit (#7, D-0.8.2-1). The
+     * generated `Data` type, never a hand-written shape (ADR-0009) — the
+     * refund dialog's picker reads `remainingQuantity` off it.
+     */
+    lines: Konventix.Commerce.Data.OrderCreditLineData[];
     invoice: {
         id: string;
         number: string;
@@ -218,46 +208,6 @@ function submitCancelReversed(): void {
 }
 
 /**
- * #73: the whole-order refund, the first console surface `RefundOrder` has
- * ever had (ADR-0037). A dialog rather than the plain `confirm()` the cancel
- * button uses, because this one collects something.
- *
- * Where what it collects ends up, precisely: the note is stored on the
- * credit-note record (`credit_notes.reason_note`) and the code travels on
- * `OrderRefunded` — and both are written in full to the console's audit
- * entry, which is where an operator reads back who refunded and why. Neither
- * is printed on the Gutschrift itself: that document says "Grund: Erstattung"
- * for every refund (`credit-notes/document.blade.php` renders `reason_code`,
- * which `RecordRefund` always sets to `refund`). Printing the operator's
- * reason on the document is a follow-up, not something this dialog may
- * promise.
- *
- * The vocabulary is `Konventix.Commerce.Enums.RefundReason`, the generated
- * type, and not a hand-kept copy of it (ADR-0009, whole-branch review
- * finding 10): `EnumTransformer` is registered over every module's `Enums`
- * directory, so the enum is emitted whether or not a Data class references
- * it. A `Record` keyed by that type is exhaustive — adding, renaming or
- * removing a case fails `npm run types:check` here rather than reaching an
- * operator as a form error.
- */
-const refundReasonLabels: Record<
-    Konventix.Commerce.Enums.RefundReason,
-    string
-> = {
-    'customer-request': 'The customer asked for it',
-    'event-cancelled': 'The event was cancelled',
-    'duplicate-payment': 'Paid twice',
-    goodwill: 'Goodwill',
-};
-
-const refundReasons = Object.entries(refundReasonLabels).map(
-    ([value, label]) => ({
-        value: value as Konventix.Commerce.Enums.RefundReason,
-        label,
-    }),
-);
-
-/**
  * Two orders can be refunded (#6, ADR-0057 point 9): a paid one, and a
  * cancelled one still holding money nobody could apply — the PSP success
  * that landed after a sweep had already called the order off. The second is
@@ -265,85 +215,15 @@ const refundReasons = Object.entries(refundReasonLabels).map(
  * through the account it came from, the order stays cancelled, and no
  * document is written, because a cancelled order has none to correct.
  *
- * Until this the console could only *show* that money and send the operator
- * to the provider's dashboard, which is the manual step the issue was filed
- * about.
+ * The form itself — the reason, the note and D-0.8.2-1's line-and-quantity
+ * picker — is `OrderRefundDialog.vue`. It owns its own `useForm`, so
+ * nothing of it is left on this page but the button that opens it.
  */
 const canRefund = computed(
     () => props.order.status === 'paid' || props.unappliedPayment !== null,
 );
 
 const refundOpen = ref(false);
-
-/**
- * Deliberately no pre-picked reason. `#[Required]` on
- * `RefundOrderData::$reasonCode` refuses an empty submission and the 422
- * lands on the field's own `InputError` (ADR-0055): defaulting to the most
- * common answer would let an irreversible money movement be justified by an
- * opinion nobody formed. It also keeps `isDirty` honest, so ADR-0038's
- * "Unsaved changes" note appears exactly when something has been entered.
- */
-const refundForm = useForm<{
-    reasonCode: Konventix.Commerce.Enums.RefundReason | null;
-    reasonNote: string | null;
-}>({
-    reasonCode: null,
-    reasonNote: null,
-});
-
-// Only while the dialog is open (ADR-0038): a closed dialog's untouched
-// draft is not unsaved work, the same scoping `products/Index.vue` uses.
-useUnsavedChanges(() => refundOpen.value && refundForm.isDirty);
-
-/**
- * Every refusal `RefundOrder` makes — the ADR-0037 check-in guard, "only a
- * paid order can be refunded", a provider with nothing refundable — arrives
- * as a validation error under `order`, which is not one of this form's own
- * fields, so it is read by name like `products/Index.vue` reads `brand`.
- */
-const refundRefusal = computed(
-    () => (refundForm.errors as Record<string, string>).order,
-);
-
-function submitRefund(): void {
-    refundForm
-        // A textarea that was typed into and then emptied posts `''`; the
-        // note the credit note keeps is either words or nothing.
-        .transform((data) => ({
-            ...data,
-            reasonNote: data.reasonNote || null,
-        }))
-        .post(refund(props.order.id).url, {
-            preserveScroll: true,
-            onSuccess: () => {
-                refundForm.reset();
-                refundOpen.value = false;
-                returnFocusAfterRefund();
-            },
-        });
-}
-
-/**
- * Where the keyboard goes once the refund has gone through (ADR-0055 point
- * 1, whole-branch review finding 6).
- *
- * The dialog restores focus to the trigger it captured, and that trigger is
- * `v-if="order.status === 'paid'"` — the refund has just flipped the status,
- * so reka-ui calls `.focus()` on a detached node and focus lands on `<body>`.
- * A keyboard operator was silently returned to the top of the document
- * after the console's most consequential action. `main#main-content` is the
- * layout's own landing place for exactly this (`.ai/rules/js.md`, #181), it
- * carries `tabindex="-1"`, and it is where the refreshed order — now
- * "Refunded", with its credit note — is.
- *
- * After `nextTick`, because the props that remove the trigger have not been
- * applied when `onSuccess` runs.
- */
-function returnFocusAfterRefund(): void {
-    void nextTick(() => {
-        document.getElementById('main-content')?.focus();
-    });
-}
 </script>
 
 <template>
@@ -380,7 +260,7 @@ function returnFocusAfterRefund(): void {
                 {{
                     unappliedPayment
                         ? 'Refund unapplied payment'
-                        : 'Refund whole order'
+                        : 'Refund order'
                 }}
             </Button>
             <Button
@@ -393,128 +273,19 @@ function returnFocusAfterRefund(): void {
             </Button>
         </AdminPageHeader>
 
-        <!-- #73: the money goes back for the whole order, and the places it
-             paid for are released with it — a direct registration order
-             through `OrderRefunded`, a cart order's registration lines
-             through `OrderLineCancelled` (whole-branch review finding 3).
-             Partial refunds and transfers are the issue's other open
-             items. -->
-        <Dialog
-            :open="refundOpen"
-            @update:open="
-                (value: boolean) => {
-                    refundOpen = value;
-                    if (!value) {
-                        refundForm.reset();
-                        refundForm.clearErrors();
-                    }
-                }
-            "
-        >
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>{{
-                        unappliedPayment
-                            ? 'Refund unapplied payment'
-                            : 'Refund whole order'
-                    }}</DialogTitle>
-                    <DialogDescription>
-                        Return the full {{ order.totalGross }}
-                        {{ order.currency }} through the account that took it.
-                        Where an invoice exists it is credited. The reason and
-                        the note below are recorded against this order for you
-                        and the next operator — they are not printed on the
-                        credit note the payer receives. This cannot be undone
-                        here.
-                    </DialogDescription>
-                </DialogHeader>
-                <form
-                    class="flex flex-col gap-4"
-                    @submit.prevent="submitRefund"
-                >
-                    <InputError :message="refundRefusal" />
-                    <div class="grid gap-2">
-                        <Label for="refund-reason">Reason</Label>
-                        <select
-                            id="refund-reason"
-                            v-model="refundForm.reasonCode"
-                            class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
-                            :aria-invalid="
-                                refundForm.errors.reasonCode ? true : undefined
-                            "
-                            :aria-describedby="
-                                refundForm.errors.reasonCode
-                                    ? 'refund-reason-error'
-                                    : undefined
-                            "
-                        >
-                            <!-- Disabled, so it can be read but not chosen:
-                                 the operator picks a reason or the server
-                                 refuses the refund. -->
-                            <option :value="null" disabled>
-                                Choose a reason
-                            </option>
-                            <option
-                                v-for="reason in refundReasons"
-                                :key="reason.value"
-                                :value="reason.value"
-                            >
-                                {{ reason.label }}
-                            </option>
-                        </select>
-                        <InputError
-                            id="refund-reason-error"
-                            :message="refundForm.errors.reasonCode"
-                        />
-                    </div>
-                    <div class="grid gap-2">
-                        <Label for="refund-note">Note (optional)</Label>
-                        <textarea
-                            id="refund-note"
-                            v-model="refundForm.reasonNote"
-                            rows="3"
-                            class="rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                            :aria-invalid="
-                                refundForm.errors.reasonNote ? true : undefined
-                            "
-                            :aria-describedby="
-                                refundForm.errors.reasonNote
-                                    ? 'refund-note-error'
-                                    : undefined
-                            "
-                        />
-                        <InputError
-                            id="refund-note-error"
-                            :message="refundForm.errors.reasonNote"
-                        />
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            :disabled="refundForm.processing"
-                            @click="refundOpen = false"
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            type="submit"
-                            variant="destructive"
-                            :disabled="refundForm.processing"
-                        >
-                            Refund {{ order.totalGross }} {{ order.currency }}
-                        </Button>
-                        <span
-                            v-if="refundForm.isDirty"
-                            role="status"
-                            class="text-sm text-warning"
-                        >
-                            Unsaved changes
-                        </span>
-                    </div>
-                </form>
-            </DialogContent>
-        </Dialog>
+        <!-- #73/#7: the money goes back for the whole order or for the
+             lines the operator picked, and the places a *whole* refund paid
+             for are released with it — a direct registration order through
+             `OrderRefunded`, a cart order's registration lines through
+             `OrderLineCancelled`. A partial one releases nothing and leaves
+             the order `paid`. -->
+        <OrderRefundDialog
+            v-model:open="refundOpen"
+            :order="order"
+            :lines="lines"
+            :unapplied="unappliedPayment !== null"
+            :creditable="invoice !== null"
+        />
 
         <Alert v-if="unappliedPayment">
             <AlertCircle class="size-4" />

@@ -7,6 +7,7 @@ namespace Konventix\Commerce\Actions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Actions\Concerns\LocksMoneyRowsInOneOrder;
+use Konventix\Commerce\Data\CreditNoteLineSelectionData;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderRefunded;
@@ -53,6 +54,23 @@ use Konventix\Commerce\Models\Payment;
  * idempotent on it even though the order status can no longer serve as the
  * claim. `$amountNet`/`$amountTax` travel with it so the document states the
  * rate that was actually charged instead of the invoice's totals (#7).
+ *
+ * **`$creditLines` is the console's partial** (D-0.8.2-1): the operator
+ * picked invoice lines and quantities, and `IssueCreditNote` computes the
+ * amounts per line rather than being told a sum. It leaves the order `paid`
+ * for the same reason a reduction does — the buyer keeps what was not
+ * credited, a second partial of the same order is legitimate, and
+ * `OrderStatus::Refunded` would tell every list, export and sweep that the
+ * sale is over. A selection that comes to the order's whole gross is not a
+ * partial at all and takes the ordinary road: `refunded`, the per-line
+ * cancellations, `whole: true`.
+ *
+ * That is deliberately narrower than the pre-existing rule for a partial
+ * *amount* with no lines, which still moves the order to `refunded`
+ * whatever it comes to. An operator typing a sum, and a provider reporting
+ * one dashboard refund back in instalments, both mean the sale is over; a
+ * named subset of lines means precisely the opposite, and saying so is the
+ * point of naming them.
  *
  * Escapes BrandScope explicitly (ADR-0010): the reversal caller runs on the
  * stateless api surface, where no brand is resolved from the host.
@@ -110,6 +128,8 @@ final class RecordRefund
      * domain leg already done gets the order back untouched rather than an
      * exception: the money moved exactly once either way, and there is
      * nothing for the operator to act on.
+     *
+     * @param  list<CreditNoteLineSelectionData>|null  $creditLines  D-0.8.2-1's line-and-quantity selection.
      */
     public function handle(
         Order $order,
@@ -121,8 +141,9 @@ final class RecordRefund
         ?string $reductionKey = null,
         ?string $amountNet = null,
         ?string $amountTax = null,
+        ?array $creditLines = null,
     ): Order {
-        return DB::transaction(function () use ($order, $reasonCode, $reasonNote, $amount, $payment, $providerReference, $reductionKey, $amountNet, $amountTax): Order {
+        return DB::transaction(function () use ($order, $reasonCode, $reasonNote, $amount, $payment, $providerReference, $reductionKey, $amountNet, $amountTax, $creditLines): Order {
             // **The order row is the claim** (blocker 1), and it is the
             // first lock every money path takes (`LocksMoneyRowsInOneOrder`). Everything below
             // writes paperwork that cannot be taken back — a credit note is
@@ -203,6 +224,10 @@ final class RecordRefund
                         totalNet: $amountNet,
                         totalTax: $amountTax,
                         reductionKey: $reductionKey,
+                        // The console's line-and-quantity pick (D-0.8.2-1);
+                        // when it is given it computes the three amounts
+                        // itself and the ones above are not consulted.
+                        lines: $creditLines,
                     )
                     : null;
 
@@ -229,7 +254,7 @@ final class RecordRefund
             // the sale is over even though no single leg equals the total.
             // `OrderRefunded.whole` is what tells Registration the
             // difference, and it always has been.
-            if ($reductionKey === null) {
+            if ($reductionKey === null && ! ($creditLines !== null && ! $whole)) {
                 $order->forceFill(['status' => OrderStatus::Refunded])->save();
             }
 

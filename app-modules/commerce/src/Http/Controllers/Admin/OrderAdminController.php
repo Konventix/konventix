@@ -16,6 +16,7 @@ use Konventix\Commerce\Actions\BookManualPayment;
 use Konventix\Commerce\Actions\CancelOrderForUnpaidReversal;
 use Konventix\Commerce\Actions\RefundOrder;
 use Konventix\Commerce\Data\AddOrderBillingAddressData;
+use Konventix\Commerce\Data\OrderCreditLineData;
 use Konventix\Commerce\Data\OrderReversalData;
 use Konventix\Commerce\Data\RefundOrderData;
 use Konventix\Commerce\Data\UnappliedPaymentData;
@@ -26,6 +27,7 @@ use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Exceptions\RefundEventRelayFailedException;
 use Konventix\Commerce\Models\CreditNote;
+use Konventix\Commerce\Models\CreditNoteLine;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
@@ -195,6 +197,16 @@ class OrderAdminController
             ->orderByDesc('received_at')
             ->first();
 
+        $lines = OrderLine::withoutBrandScope()
+            ->where('order_id', $model->getKey())
+            ->orderBy('position')
+            ->get();
+
+        $creditedQuantities = CreditNoteLine::creditedQuantitiesFor(
+            $model->brand_id,
+            array_values($lines->map(fn (OrderLine $line): string => (string) $line->getKey())->all()),
+        );
+
         return Inertia::render('admin/orders/Show', [
             'order' => [
                 'id' => $model->getKey(),
@@ -228,19 +240,17 @@ class OrderAdminController
                     'hasPostalAddress' => $model->billing_party->hasPostalAddress(),
                 ],
             ],
-            'lines' => OrderLine::withoutBrandScope()
-                ->where('order_id', $model->getKey())
-                ->orderBy('position')
-                ->get()
-                ->map(fn (OrderLine $line): array => [
-                    'id' => $line->getKey(),
-                    'label' => $line->label,
-                    'quantity' => $line->quantity,
-                    'unitAmountNet' => $line->unit_amount_net,
-                    'taxRate' => $line->tax_rate,
-                    'lineNet' => $line->line_net,
-                    'lineGross' => $line->line_gross,
-                ])
+            // Each line with what is left of it to credit (#7,
+            // D-0.8.2-1) — the refund dialog's line picker reads the
+            // remaining quantity off this, and it is a `Data` class with
+            // `#[TypeScript]` rather than the inline array it used to be
+            // (ADR-0009), because a page that offers to move money must
+            // not be typed by hand.
+            'lines' => $lines
+                ->map(fn (OrderLine $line): array => OrderCreditLineData::ofLine(
+                    $line,
+                    $creditedQuantities[$line->getKey()] ?? 0,
+                )->toArray())
                 ->values()
                 ->all(),
             'invoice' => $invoice === null ? null : [
@@ -417,10 +427,20 @@ class OrderAdminController
      * `RefundOrder` was reachable only from tests and tinker; this is the
      * console surface the issue's first open item asks for.
      *
-     * Whole order, no amount: `RefundOrder` accepts a partial one, but a
-     * partial credit note still splits the tax like the full invoice (#7),
-     * so the button that exists is the one that produces a correct
-     * document. Transfers and seat release are the issue's other items.
+     * **Whole order, or the lines the operator picked** (D-0.8.2-1, #7).
+     * There is still no amount field: a partial refund names lines and
+     * quantities and the server computes what they come to, per line, at
+     * each line's own snapshotted rate. That is the only shape that is
+     * exact when an invoice mixes rates, and it is why `RefundOrderData`
+     * refuses to grow an amount input.
+     *
+     * A selection that cannot be credited — a line already credited in
+     * full, more units than were sold, a line from another order — is
+     * refused before the provider is called and arrives here as a
+     * `RuntimeException`, so the operator gets a 422 naming what is wrong
+     * and nothing has moved. It is never clamped to what is left: a credit
+     * note cannot be corrected afterwards (ADR-0031), so a document nobody
+     * asked for is worse than a refusal.
      *
      * Its own capability, deliberately not `BookManualPayment`: taking
      * money in and giving it back are different decisions (ADR-0013,
@@ -495,6 +515,12 @@ class OrderAdminController
                 // writes the row, so the sweep and the console commands that
                 // also refund leave one too.
                 actorUserId: (string) $request->user()->getAuthIdentifier(),
+                // The operator's line-and-quantity pick (D-0.8.2-1), or
+                // null for the whole order. No amount travels with it: the
+                // Action resolves the selection to the gross it sends back,
+                // so what the browser showed and what the Gutschrift says
+                // are one computation (#7).
+                creditLines: $data->creditLines(),
             );
         } catch (ProviderRefusedRefundException $e) {
             throw ValidationException::withMessages([
@@ -532,6 +558,14 @@ class OrderAdminController
             // "Order refunded." here would describe something that did not
             // happen (#6).
             $unapplied => ['type' => 'success', 'message' => __('Unapplied payment refunded.')],
+            // A line selection that did not come to the whole order leaves
+            // it `paid` (D-0.8.2-1): the sale stands for what the buyer
+            // kept, and "Order refunded." would describe something that did
+            // not happen — the same distinction the unapplied arm makes.
+            $data->creditLines() !== null && $model->refresh()->status === OrderStatus::Paid => [
+                'type' => 'success',
+                'message' => __('Selected lines refunded; the rest of the order stands.'),
+            ],
             default => ['type' => 'success', 'message' => __('Order refunded.')],
         });
 

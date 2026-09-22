@@ -14,6 +14,7 @@ use horstoeko\zugferd\ZugferdDocumentPdfBuilder;
 use horstoeko\zugferd\ZugferdProfiles;
 use Konventix\Commerce\Enums\TaxTreatment;
 use Konventix\Commerce\Models\CreditNote;
+use Konventix\Commerce\Models\CreditNoteLine;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Platform\Operators\OperatorDateTimeFormat;
 
@@ -24,11 +25,29 @@ use Konventix\Platform\Operators\OperatorDateTimeFormat;
  * the same immutable `CreditNote` snapshot for the machine half, merged
  * into one PDF/A-3.
  *
- * Unlike `InvoiceDocumentRenderer`, this never reads `Order`/`OrderLine`:
- * a credit note carries no per-line snapshot of its own (`IssueCreditNote`
- * only snapshots the invoice's totals), so both halves render one summary
- * position rather than a line-by-line breakdown — a real German Gutschrift
- * commonly reads this way ("Gutschrift zu Rechnung Nr. …").
+ * **Two shapes, decided by whether the note has lines** (#7, D-0.8.2-1).
+ *
+ * A credit note that names lines — every partial one — renders them, in
+ * both halves: the visual table reads like the invoice's, position by
+ * position with each line's own VAT rate, and the Factur-X document carries
+ * one position per line and **one `BG-23` tax group per rate**. That is the
+ * whole point of #7. While a credit note carried totals alone, this class
+ * derived the rate it printed by dividing the tax by the net, which is
+ * exactly right for one rate and a fiction for two: crediting the 7% line
+ * of a 19%/7% invoice printed the blended quotient, and a document that
+ * states a rate nobody charged is a bookkeeping defect rather than a
+ * rounding one.
+ *
+ * A credit note without lines — a whole-invoice one, and every note issued
+ * before `credit_note_lines` existed — renders the single summary position
+ * it always did ("Gutschrift zu Rechnung Nr. …") at the rate derived from
+ * its two totals. That derivation is sound there: one document correcting
+ * one invoice in full needs no allocation at all, and for a mixed-rate
+ * invoice credited whole the totals are still the invoice's own.
+ *
+ * It still never reads `Order`/`OrderLine`: the credited lines are the
+ * credit note's **own** snapshot (ADR-0031), so the document re-renders
+ * identically after the order line has been repriced or relabelled.
  */
 final class CreditNoteDocumentRenderer
 {
@@ -40,20 +59,37 @@ final class CreditNoteDocumentRenderer
             ->whereKey($creditNote->invoice_id)
             ->first();
 
+        // `.ai/rules/app-modules-src.md`: a relation read would re-apply
+        // BrandScope and come back empty on the operator host, which is
+        // where a refund is made — so the document would silently lose its
+        // lines and fall back to the summary position.
+        /** @var list<CreditNoteLine> $lines */
+        $lines = CreditNoteLine::withoutBrandScope()
+            ->where('brand_id', $creditNote->brand_id)
+            ->where('credit_note_id', $creditNote->getKey())
+            ->orderBy('position')
+            ->get()
+            ->all();
+
         $visualPdf = Pdf::loadView('commerce::credit-notes.document', [
             'creditNote' => $creditNote,
             'invoice' => $invoice,
+            'lines' => $lines,
+            'taxGroups' => $this->taxGroups($lines),
             'dates' => $this->dates,
         ])->output();
 
-        $xml = $this->buildFacturX($creditNote, $invoice);
+        $xml = $this->buildFacturX($creditNote, $invoice, $lines);
 
         $pdfBuilder = new ZugferdDocumentPdfBuilder($xml, $visualPdf);
 
         return $pdfBuilder->generateDocument()->downloadString();
     }
 
-    private function buildFacturX(CreditNote $creditNote, ?Invoice $invoice): ZugferdDocumentBuilder
+    /**
+     * @param  list<CreditNoteLine>  $lines
+     */
+    private function buildFacturX(CreditNote $creditNote, ?Invoice $invoice, array $lines): ZugferdDocumentBuilder
     {
         $seller = $creditNote->seller;
         $party = $creditNote->billing_party;
@@ -97,24 +133,55 @@ final class CreditNoteDocumentRenderer
         }
 
         $category = $this->taxCategoryFor($creditNote->tax_treatment);
-        $rate = $this->effectiveTaxRate($creditNote);
+        $exemptionReason = $this->exemptionReasonFor($creditNote->tax_treatment);
 
-        $document
-            ->addNewPosition('1')
-            ->setDocumentPositionProductDetails($this->positionLabel($creditNote, $invoice))
-            ->setDocumentPositionNetPrice((float) $creditNote->total_net)
-            ->setDocumentPositionQuantity(1.0, ZugferdUnitCodes::REC20_PIECE)
-            ->addDocumentPositionTax($category, 'VAT', $rate)
-            ->setDocumentPositionLineSummation((float) $creditNote->total_net);
+        if ($lines === []) {
+            $rate = $this->effectiveTaxRate($creditNote);
 
-        $document->addDocumentTax(
-            $category,
-            'VAT',
-            (float) $creditNote->total_net,
-            (float) $creditNote->total_tax,
-            $rate,
-            $this->exemptionReasonFor($creditNote->tax_treatment),
-        );
+            $document
+                ->addNewPosition('1')
+                ->setDocumentPositionProductDetails($this->positionLabel($creditNote, $invoice))
+                ->setDocumentPositionNetPrice((float) $creditNote->total_net)
+                ->setDocumentPositionQuantity(1.0, ZugferdUnitCodes::REC20_PIECE)
+                ->addDocumentPositionTax($category, 'VAT', $rate)
+                ->setDocumentPositionLineSummation((float) $creditNote->total_net);
+
+            $document->addDocumentTax(
+                $category,
+                'VAT',
+                (float) $creditNote->total_net,
+                (float) $creditNote->total_tax,
+                $rate,
+                $exemptionReason,
+            );
+        } else {
+            $position = 0;
+
+            foreach ($lines as $line) {
+                $document
+                    ->addNewPosition((string) ++$position)
+                    ->setDocumentPositionProductDetails($line->label)
+                    ->setDocumentPositionNetPrice((float) $line->unit_amount_net)
+                    ->setDocumentPositionQuantity((float) $line->quantity, ZugferdUnitCodes::REC20_PIECE)
+                    ->addDocumentPositionTax($category, 'VAT', (float) $line->tax_rate)
+                    ->setDocumentPositionLineSummation((float) $line->line_net);
+            }
+
+            // One BG-23 group per rate, which is what makes a mixed-rate
+            // partial credit note readable at all: an EN 16931 document
+            // states its VAT per rate, and a single blended group would be
+            // the same wrong number the derived quotient used to print.
+            foreach ($this->taxGroups($lines) as $group) {
+                $document->addDocumentTax(
+                    $category,
+                    'VAT',
+                    (float) $group['net'],
+                    (float) $group['tax'],
+                    (float) $group['rate'],
+                    $exemptionReason,
+                );
+            }
+        }
 
         // A credit note's amounts are positive (ADR-0048 point 2) — the
         // document is a Gutschrift, not a negative invoice — and it settles
@@ -132,6 +199,38 @@ final class CreditNoteDocumentRenderer
         return $document;
     }
 
+    /**
+     * The credited lines summed per VAT rate — what both halves of the
+     * document print as its tax breakdown, highest rate first so the
+     * standard rate leads the way a German invoice reads.
+     *
+     * bcmath at scale 2 throughout: the rows are `decimal(12,2)` and these
+     * are additions of already-rounded cents, never a re-rounding.
+     * `TaxCalculator` rounded each line once, at issuance; summing is all
+     * that is left to do and a float sum would lose the last cent of a long
+     * document.
+     *
+     * @param  list<CreditNoteLine>  $lines
+     * @return list<array{rate: string, net: string, tax: string, gross: string}>
+     */
+    private function taxGroups(array $lines): array
+    {
+        $groups = [];
+
+        foreach ($lines as $line) {
+            $rate = (string) $line->tax_rate;
+
+            $groups[$rate] ??= ['rate' => $rate, 'net' => '0.00', 'tax' => '0.00', 'gross' => '0.00'];
+            $groups[$rate]['net'] = bcadd($groups[$rate]['net'], (string) $line->line_net, 2);
+            $groups[$rate]['tax'] = bcadd($groups[$rate]['tax'], (string) $line->line_tax, 2);
+            $groups[$rate]['gross'] = bcadd($groups[$rate]['gross'], (string) $line->line_gross, 2);
+        }
+
+        uasort($groups, fn (array $a, array $b): int => bccomp($b['rate'], $a['rate'], 2));
+
+        return array_values($groups);
+    }
+
     private function positionLabel(CreditNote $creditNote, ?Invoice $invoice): string
     {
         return $invoice !== null
@@ -140,18 +239,16 @@ final class CreditNoteDocumentRenderer
     }
 
     /**
-     * A credit note snapshots aggregate totals, not per-line tax rates
-     * (unlike an invoice's `OrderLine`s) — the effective rate is derived
-     * from the two totals it does carry. Zero net (reverse charge, §19
+     * The fallback rate for a credit note that names **no** lines — a
+     * whole-invoice one, or one issued before `credit_note_lines` existed.
+     * It is derived from the two totals such a note does carry. Zero net (reverse charge, §19
      * UStG) is zero tax by construction, so there is no division to guard.
      *
-     * The derivation is only as true as the totals, which is what #7 was
-     * about: while `IssueCreditNote` copied the invoice's net and tax and
-     * overrode the gross alone, a partial credit note printed the whole
-     * invoice's rate beside a smaller amount and the document stated a VAT
-     * figure nobody had charged. Since D-REG-15 a partial note carries its
-     * own net and tax, computed at the order line's snapshotted rate, so
-     * this quotient comes back to exactly that rate.
+     * It is a quotient, so it can only ever describe one rate — which is
+     * why a partial credit note no longer comes through here at all (#7).
+     * A note that names lines states each line's own snapshotted rate and
+     * one tax group per rate; this path is reached only where there is
+     * nothing to allocate.
      */
     private function effectiveTaxRate(CreditNote $creditNote): float
     {

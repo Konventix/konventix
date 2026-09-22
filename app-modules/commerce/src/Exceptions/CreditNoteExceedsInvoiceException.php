@@ -31,4 +31,29 @@ final class CreditNoteExceedsInvoiceException extends RuntimeException
             $invoiceGross,
         ));
     }
+
+    /**
+     * The per-line half of the same criterion (#7, D-0.8.2-1).
+     *
+     * The invoice total is necessary but not sufficient once a credit note
+     * names lines: an invoice of 200.00 + 100.00 has 100.00 of room left
+     * after its first line is credited in full, and without this the second
+     * credit note could spend that room on the *same* line again — twice
+     * the units, at the right total, against a sale that only ever happened
+     * once. `credit_note_lines` is the ledger this reads.
+     *
+     * Refused, never clamped to what is left: a request to credit three of
+     * two units is a mistake about what was sold, and silently crediting
+     * two would turn it into a document nobody meant to issue.
+     */
+    public static function forLine(string $label, int $attempted, int $alreadyCredited, int $sold): self
+    {
+        return new self(sprintf(
+            'Crediting %d unit(s) of "%s" would exceed the line: %d of %d unit(s) is already credited.',
+            $attempted,
+            $label,
+            $alreadyCredited,
+            $sold,
+        ));
+    }
 }

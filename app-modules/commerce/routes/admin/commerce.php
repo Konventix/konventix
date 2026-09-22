@@ -32,9 +32,10 @@ Route::post('/orders/{order}/payment', [OrderAdminController::class, 'bookPaymen
 // never came back (ADR-0057 point 4) — the deadline sweep does the same
 // thing automatically, this lets the operator do it earlier.
 Route::post('/orders/{order}/cancel-reversed', [OrderAdminController::class, 'cancelReversed'])->name('admin.orders.cancel-reversed');
-// #73: the whole-order refund, the first console surface `RefundOrder` has
-// ever had (ADR-0037). Whole only — a partial one still splits the tax like
-// the full invoice (#7).
+// #73: the operator's refund, the first console surface `RefundOrder` has
+// ever had (ADR-0037). Whole by default; a partial one names invoice lines
+// and quantities and is computed per line through `TaxCalculator` (#7,
+// D-0.8.2-1), never from an amount anybody typed.
 Route::post('/orders/{order}/refund', [OrderAdminController::class, 'refund'])->name('admin.orders.refund');
 // #4: the operator's retrofit for an order the small-amount threshold caught
 // with no billing address — completes the party and, for an already-paid

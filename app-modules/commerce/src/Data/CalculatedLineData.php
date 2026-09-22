@@ -14,6 +14,17 @@ use Spatie\LaravelData\Data;
  */
 final class CalculatedLineData extends Data
 {
+    /**
+     * The money fields are `numeric-string`, not merely `string`: every
+     * consumer adds them with bcmath, and a plain `string` would let a
+     * non-numeric value reach an addition that is only defined for digits.
+     *
+     * @param  numeric-string  $unitAmountNet
+     * @param  numeric-string  $taxRate
+     * @param  numeric-string  $lineNet
+     * @param  numeric-string  $lineTax
+     * @param  numeric-string  $lineGross
+     */
     public function __construct(
         public readonly string $label,
         public readonly int $quantity,

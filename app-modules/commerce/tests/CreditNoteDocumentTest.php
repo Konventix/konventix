@@ -10,10 +10,13 @@ use Illuminate\Support\Str;
 use Konventix\Commerce\Actions\IssueCreditNote;
 use Konventix\Commerce\Actions\SendCreditNoteMail;
 use Konventix\Commerce\Data\BillingPartyData;
+use Konventix\Commerce\Data\CreditNoteLineSelectionData;
 use Konventix\Commerce\Documents\CreditNoteDocumentRenderer;
 use Konventix\Commerce\Enums\Permission;
+use Konventix\Commerce\Enums\TaxClass;
 use Konventix\Commerce\Jobs\GenerateCreditNoteDocument;
 use Konventix\Commerce\Models\CreditNote;
+use Konventix\Commerce\Models\CreditNoteLine;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
@@ -22,6 +25,7 @@ use Konventix\Messaging\Mail\TemplatedMail;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
@@ -519,4 +523,189 @@ it('states the line\'s own VAT rate on a partial credit note (#7)', function ():
     expect($grandTotal)->toEqualWithDelta(59.5, 0.001)
         ->and($taxBasis)->toEqualWithDelta(50.0, 0.001)
         ->and($tax)->toEqualWithDelta(9.5, 0.001);
+});
+
+/**
+ * #7 / D-0.8.2-1: the document half of the mixed-rate case.
+ *
+ * Two lines, 19% and 7%. The invoice's own allocation blends to 15.00%,
+ * and while a credit note carried totals alone that blend is what the
+ * Factur-X document stated for *any* partial one — a `BG-23` group at a
+ * rate nobody charged. Now the document carries one position per credited
+ * line and one tax group per rate.
+ */
+function creditNoteDocMixedRateOrder(): array
+{
+    $order = Order::factory()->paid()->create([
+        'total_net' => '300.00',
+        'total_tax' => '45.00',
+        'total_gross' => '345.00',
+    ]);
+
+    $standard = OrderLine::factory()->forOrder($order)->create([
+        'position' => 1,
+        'label' => 'Konferenzticket',
+        'quantity' => 2,
+        'unit_amount_net' => '100.00',
+        'tax_class' => TaxClass::Standard,
+        'tax_rate' => '19.00',
+        'line_net' => '200.00',
+        'line_tax' => '38.00',
+        'line_gross' => '238.00',
+    ]);
+
+    $reduced = OrderLine::factory()->forOrder($order)->create([
+        'position' => 2,
+        'label' => 'Tagungsband',
+        'quantity' => 1,
+        'unit_amount_net' => '100.00',
+        'tax_class' => TaxClass::Reduced,
+        'tax_rate' => '7.00',
+        'line_net' => '100.00',
+        'line_tax' => '7.00',
+        'line_gross' => '107.00',
+    ]);
+
+    creditNoteDocInvoice($order);
+
+    return [$order, $standard, $reduced];
+}
+
+it('states one tax group per rate on a partial credit note of a mixed-rate invoice (#7)', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('invoices');
+    Mail::fake();
+
+    [$order, $standard, $reduced] = creditNoteDocMixedRateOrder();
+
+    // One unit of each line: 100.00 at 19% and 100.00 at 7%.
+    $note = app(IssueCreditNote::class)->handle(
+        order: $order,
+        reasonCode: IssueCreditNote::REASON_REFUND,
+        lines: [
+            new CreditNoteLineSelectionData($standard->getKey(), 1),
+            new CreditNoteLineSelectionData($reduced->getKey(), 1),
+        ],
+    );
+
+    (new GenerateCreditNoteDocument($note->id, $brand->id))
+        ->handle(app(CreditNoteDocumentRenderer::class), app(SendCreditNoteMail::class));
+
+    $bytes = Storage::disk('invoices')->get($note->refresh()->document_path);
+    $reader = ZugferdDocumentPdfReader::readAndGuessFromContent($bytes);
+
+    $groups = [];
+    $reader->firstDocumentTax();
+
+    do {
+        $reader->getDocumentTax($categoryCode, $typeCode, $basisAmount, $calculatedAmount, $rate, $exemptionReason, $exemptionReasonCode, $lineTotalBasisAmount, $allowanceChargeBasisAmount, $taxPointDate, $dueDateTypeCode);
+
+        $groups[number_format($rate, 2, '.', '')] = [
+            'basis' => round($basisAmount, 2),
+            'tax' => round($calculatedAmount, 2),
+        ];
+    } while ($reader->nextDocumentTax());
+
+    // The whole point of the issue: two groups, each at the rate that was
+    // charged. One blended group at 15.00% is what this used to be.
+    expect($groups)->toBe([
+        '19.00' => ['basis' => 100.0, 'tax' => 19.0],
+        '7.00' => ['basis' => 100.0, 'tax' => 7.0],
+    ]);
+
+    $positions = 0;
+    $reader->firstDocumentPosition();
+
+    do {
+        $positions++;
+    } while ($reader->nextDocumentPosition());
+
+    expect($positions)->toBe(2);
+
+    $reader->getDocumentSummation($grandTotal, $duePayable, $lineTotal, $charge, $allowance, $taxBasis, $tax, $rounding, $totalPrepaid);
+
+    expect($grandTotal)->toEqualWithDelta(226.0, 0.001)
+        ->and($taxBasis)->toEqualWithDelta(200.0, 0.001)
+        // 19.00 + 7.00, summed from the printed lines — not 15% of 200.00,
+        // which would have been 30.00.
+        ->and($tax)->toEqualWithDelta(26.0, 0.001);
+});
+
+it('prints the credited subset line by line with a per-rate breakdown (#7)', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('invoices');
+    Mail::fake();
+
+    [$order, $standard, $reduced] = creditNoteDocMixedRateOrder();
+
+    $note = app(IssueCreditNote::class)->handle(
+        order: $order,
+        reasonCode: IssueCreditNote::REASON_REFUND,
+        lines: [
+            new CreditNoteLineSelectionData($standard->getKey(), 1),
+            new CreditNoteLineSelectionData($reduced->getKey(), 1),
+        ],
+    );
+
+    // The visual half, asserted on the Blade output rather than the PDF
+    // bytes — a rendered PDF is asserted on its magic bytes and never
+    // string-matched (`.ai/rules/tickets.md`), so the readable half of this
+    // document is checked where it is still text.
+    $html = view('commerce::credit-notes.document', [
+        'creditNote' => $note->refresh(),
+        'invoice' => Invoice::withoutBrandScope()->whereKey($note->invoice_id)->first(),
+        'lines' => CreditNoteLine::withoutBrandScope()
+            ->where('credit_note_id', $note->getKey())
+            ->orderBy('position')
+            ->get()
+            ->all(),
+        'taxGroups' => [
+            ['rate' => '19.00', 'net' => '100.00', 'tax' => '19.00', 'gross' => '119.00'],
+            ['rate' => '7.00', 'net' => '100.00', 'tax' => '7.00', 'gross' => '107.00'],
+        ],
+        'dates' => app(OperatorDateTimeFormat::class),
+    ])->render();
+
+    expect($html)->toContain('Konferenzticket')
+        ->toContain('Tagungsband')
+        // Each line's own rate, in the same column the invoice prints it in.
+        ->toContain('19,00 %')
+        ->toContain('7,00 %')
+        // The per-rate breakdown a mixed-rate subset needs: one sum cannot
+        // be checked against two bases.
+        ->toContain('Umsatzsteuer 19,00 % auf 100,00 €')
+        ->toContain('Umsatzsteuer 7,00 % auf 100,00 €')
+        ->toContain('226,00');
+});
+
+it('keeps the summary position for a credit note that names no lines (#7)', function (): void {
+    // A whole-invoice credit note has nothing to allocate, so it keeps the
+    // shape it always had — one position, one group, the rate derived from
+    // its two totals. Every note issued before `credit_note_lines` existed
+    // renders this way too, which is a state and not a gap.
+    $brand = $this->withBrand();
+    Storage::fake('invoices');
+    Mail::fake();
+
+    $note = creditNoteDocNote(creditNoteDocOrder());
+
+    (new GenerateCreditNoteDocument($note->id, $brand->id))
+        ->handle(app(CreditNoteDocumentRenderer::class), app(SendCreditNoteMail::class));
+
+    $bytes = Storage::disk('invoices')->get($note->refresh()->document_path);
+    $reader = ZugferdDocumentPdfReader::readAndGuessFromContent($bytes);
+
+    $positions = 0;
+    $reader->firstDocumentPosition();
+
+    do {
+        $positions++;
+    } while ($reader->nextDocumentPosition());
+
+    $reader->firstDocumentTax();
+    $reader->getDocumentTax($categoryCode, $typeCode, $basisAmount, $calculatedAmount, $rate, $exemptionReason, $exemptionReasonCode, $lineTotalBasisAmount, $allowanceChargeBasisAmount, $taxPointDate, $dueDateTypeCode);
+
+    expect($positions)->toBe(1)
+        ->and($rate)->toEqualWithDelta(19.0, 0.001)
+        ->and($reader->nextDocumentTax())->toBeFalse();
 });

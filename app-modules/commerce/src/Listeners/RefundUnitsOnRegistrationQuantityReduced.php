@@ -8,6 +8,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Actions\RefundOrder;
+use Konventix\Commerce\Data\CreditNoteLineSelectionData;
 use Konventix\Commerce\Data\OperationsNoticeData;
 use Konventix\Commerce\Enums\OperationsNoticeKind;
 use Konventix\Commerce\Enums\OrderStatus;
@@ -43,15 +44,29 @@ use Throwable;
  * **What is refunded.** The order line that settles this registration —
  * `settles_kind: 'registration'` with the registration's own ULID as
  * `settles_ref`, which both a direct registration order and a cart order
- * write (`PlaceOrderFromSettlementRequest`, `PlaceOrderFromCart`). The
- * amount is `removedUnits × unit_amount_net` plus tax at the **line's own**
- * `tax_rate`, through `TaxCalculator`'s exact formula (scale 4, rounded
- * half-up to cents) rather than a re-resolution of the tax class: the rate
- * is a settlement-time snapshot (ADR-0017) and an order refunded next year
- * must be refunded at the rate it was charged at. That is also what makes
- * the credit note computable per unit at all — #7's general per-line
- * allocation stays open, because one line at one rate is the only case this
- * flow can produce.
+ * write (`PlaceOrderFromSettlementRequest`, `PlaceOrderFromCart`). Since
+ * D-0.8.2-1 that is said the way every partial credit note says it: **this
+ * line, this many units** (`CreditNoteLineSelectionData`), handed to
+ * `RefundOrder`, which resolves it through `ResolveCreditNoteLines` and
+ * `TaxCalculator::lineAtRate()` — `removedUnits × unit_amount_net` plus tax
+ * at the **line's own** `tax_rate`, never a re-resolution of the tax class,
+ * because the rate is a settlement-time snapshot (ADR-0017) and an order
+ * refunded next year must be refunded at the rate it was charged at.
+ *
+ * The amounts are unchanged; what changed is that this listener no longer
+ * carries its own copy of the calculator's arithmetic, and that the units it
+ * credits land in `credit_note_lines`. Both matter. One rounding policy
+ * cannot drift from itself, and a reduction now takes part in the per-line
+ * credited-quantity ledger — so a later console partial cannot credit units
+ * of this line that this refund already sent back while the invoice's total
+ * still has room for them.
+ *
+ * The cap against the line's own quantity stays (`min()`): Registration
+ * counts units of a registration and this counts units of the line that
+ * settled it, and the two can legitimately differ. It is a cap on what is
+ * *asked for*, not on what is credited — the per-line guard downstream
+ * refuses rather than clamps once the ledger says there is not that much
+ * left.
  *
  * **No order, no refund.** A `free` or `external` registration never caused
  * a Commerce record (ADR-0026), and an unpaid one has nothing to send back.
@@ -88,6 +103,7 @@ final class RefundUnitsOnRegistrationQuantityReduced implements ShouldQueue
 
     public function __construct(
         private readonly RefundOrder $refundOrder,
+        private readonly TaxCalculator $taxCalculator,
         private readonly AuditRecorder $auditRecorder,
         private readonly SendMessage $sendMessage,
         private readonly PermissionHolders $permissionHolders,
@@ -112,9 +128,17 @@ final class RefundUnitsOnRegistrationQuantityReduced implements ShouldQueue
             return;
         }
 
-        [$net, $tax, $gross] = $this->amountsFor($line, $event->removedUnits);
+        $units = min($event->removedUnits, $line->quantity);
 
-        if ($gross === '0.00') {
+        $credited = $this->taxCalculator->lineAtRate(
+            label: $line->label,
+            quantity: $units,
+            unitAmountNet: (string) $line->unit_amount_net,
+            taxClass: $line->tax_class,
+            taxRate: (string) $line->tax_rate,
+        );
+
+        if ($credited->lineGross === '0.00') {
             return;
         }
 
@@ -123,12 +147,18 @@ final class RefundUnitsOnRegistrationQuantityReduced implements ShouldQueue
                 order: $order,
                 reasonCode: self::REASON_QUANTITY_REDUCED,
                 reasonNote: $event->reasonCode,
-                amount: $gross,
                 reductionKey: $event->reductionId,
-                amountNet: $net,
-                amountTax: $tax,
                 registrationId: $event->registrationId,
                 units: $event->removedUnits,
+                // The selection *is* the amount (D-0.8.2-1): `RefundOrder`
+                // resolves it to the gross it asks the provider for and
+                // `IssueCreditNote` to the net and tax the document states,
+                // so all three come from one computation rather than from
+                // this listener and that Action separately.
+                creditLines: [new CreditNoteLineSelectionData(
+                    orderLineId: (string) $line->getKey(),
+                    quantity: $units,
+                )],
             );
 
             // The explicit half of the audit trail (Round 6, D-BATCH), the
@@ -146,22 +176,22 @@ final class RefundUnitsOnRegistrationQuantityReduced implements ShouldQueue
                     'registration_id' => $event->registrationId,
                     'reduction_id' => $event->reductionId,
                     'units' => $event->removedUnits,
-                    'amount' => $gross,
-                    'amount_net' => $net,
-                    'amount_tax' => $tax,
+                    'amount' => $credited->lineGross,
+                    'amount_net' => $credited->lineNet,
+                    'amount_tax' => $credited->lineTax,
                     'currency' => $order->currency,
                 ],
                 actorUserId: $event->reducedByUserId,
             );
         } catch (Throwable $exception) {
-            $this->notifyOperators($event, $order, $gross, $exception);
+            $this->notifyOperators($event, $order, $credited->lineGross, $exception);
 
             Log::error('The refund for a reduced registration did not go through; the reduction stands (D-REG-15).', [
                 'order_id' => $order->id,
                 'brand_id' => $order->brand_id,
                 'registration_id' => $event->registrationId,
                 'reduction_id' => $event->reductionId,
-                'amount' => $gross,
+                'amount' => $credited->lineGross,
                 'reason' => $exception->getMessage(),
             ]);
         }
@@ -180,33 +210,6 @@ final class RefundUnitsOnRegistrationQuantityReduced implements ShouldQueue
             ->where('settles_ref', $event->registrationId)
             ->orderBy('position')
             ->first();
-    }
-
-    /**
-     * `units × unit_amount_net`, taxed at the line's snapshotted rate —
-     * `TaxCalculator`'s own arithmetic, restated on one line because the
-     * calculator resolves a *class* to a rate and this must not re-resolve
-     * anything (ADR-0017: the order records what was charged).
-     *
-     * A zero-rate line (reverse charge, §19 UStG) comes out with zero tax
-     * by construction, so the treatment needs no branch of its own.
-     *
-     * @return array{0: numeric-string, 1: numeric-string, 2: numeric-string}
-     */
-    private function amountsFor(OrderLine $line, int $units): array
-    {
-        $capped = min($units, $line->quantity);
-
-        $net = bcround(bcmul((string) $line->unit_amount_net, (string) $capped, TaxCalculator::SCALE), 2);
-        $tax = bcround(
-            bcdiv(bcmul($net, (string) $line->tax_rate, TaxCalculator::SCALE), '100', TaxCalculator::SCALE),
-            2,
-        );
-
-        /** @var array{0: numeric-string, 1: numeric-string, 2: numeric-string} $amounts */
-        $amounts = [$net, $tax, bcadd($net, $tax, 2)];
-
-        return $amounts;
     }
 
     /**

@@ -1344,3 +1344,163 @@ it('403s a refund without the issue-refunds capability', function (): void {
 
     expect($order->refresh()->status)->toBe(OrderStatus::Paid);
 });
+
+/**
+ * #7 / D-0.8.2-1: the console's line-and-quantity picker. The form has no
+ * amount field and never gains one — the operator names lines and units,
+ * and the server computes what they come to per line.
+ */
+function orderAdminMixedRateOrder(): array
+{
+    $order = Order::factory()->paid()->create([
+        'total_net' => '300.00',
+        'total_tax' => '45.00',
+        'total_gross' => '345.00',
+    ]);
+
+    $standard = OrderLine::factory()->forOrder($order)->create([
+        'position' => 1,
+        'label' => 'Konferenzticket',
+        'quantity' => 2,
+        'unit_amount_net' => '100.00',
+        'tax_rate' => '19.00',
+        'line_net' => '200.00',
+        'line_tax' => '38.00',
+        'line_gross' => '238.00',
+    ]);
+
+    $reduced = OrderLine::factory()->forOrder($order)->create([
+        'position' => 2,
+        'label' => 'Tagungsband',
+        'quantity' => 1,
+        'unit_amount_net' => '100.00',
+        'tax_class' => 'reduced',
+        'tax_rate' => '7.00',
+        'line_net' => '100.00',
+        'line_tax' => '7.00',
+        'line_gross' => '107.00',
+    ]);
+
+    Invoice::factory()->create([
+        'order_id' => $order->id,
+        'total_net' => $order->total_net,
+        'total_tax' => $order->total_tax,
+        'total_gross' => $order->total_gross,
+    ]);
+
+    return [$order, $standard, $reduced];
+}
+
+it('refunds the lines the operator picked, at their own rates, leaving the order paid (#7)', function (): void {
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    [$order, , $reduced] = orderAdminMixedRateOrder();
+
+    Event::fake([OrderRefunded::class, OrderLineCancelled::class]);
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+            'lines' => [['orderLineId' => $reduced->getKey(), 'quantity' => 1]],
+        ])
+        ->assertRedirect();
+
+    /** @var CreditNote $creditNote */
+    $creditNote = CreditNote::withoutBrandScope()->where('order_id', $order->id)->sole();
+
+    // The 7% line's own figures, not the invoice's 15% blend.
+    expect((string) $creditNote->total_net)->toBe('100.00')
+        ->and((string) $creditNote->total_tax)->toBe('7.00')
+        ->and((string) $creditNote->total_gross)->toBe('107.00')
+        // The sale stands for the two conference tickets the buyer kept.
+        ->and($order->refresh()->status)->toBe(OrderStatus::Paid);
+
+    Event::assertDispatched(
+        OrderRefunded::class,
+        fn (OrderRefunded $e): bool => $e->orderId === $order->id && $e->whole === false,
+    );
+    Event::assertNotDispatched(OrderLineCancelled::class);
+});
+
+it('422s a picked line that has already been credited in full, refunding nothing (#7)', function (): void {
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    [$order, , $reduced] = orderAdminMixedRateOrder();
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+            'lines' => [['orderLineId' => $reduced->getKey(), 'quantity' => 1]],
+        ])
+        ->assertRedirect();
+
+    // Refused, not clamped to the nothing that is left: the invoice still
+    // has 238.00 of room, so only the per-line ledger can say no.
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+            'lines' => [['orderLineId' => $reduced->getKey(), 'quantity' => 1]],
+        ])
+        ->assertStatus(422)
+        ->assertInvalid(['order' => 'Tagungsband']);
+
+    expect(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+});
+
+it('422s a fractional or oversized quantity before anything moves (#7)', function (): void {
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    [$order, $standard] = orderAdminMixedRateOrder();
+
+    // Half a ticket is not a quantity this form can express: the rule is
+    // an integer of at least one, and the refusal names the field.
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+            'lines' => [['orderLineId' => $standard->getKey(), 'quantity' => 0.5]],
+        ])
+        ->assertStatus(422)
+        ->assertInvalid(['lines.0.quantity']);
+
+    // Three of two sold is a mistake about the sale, refused rather than
+    // silently reduced to two.
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+            'lines' => [['orderLineId' => $standard->getKey(), 'quantity' => 3]],
+        ])
+        ->assertStatus(422)
+        ->assertInvalid(['order' => 'Konferenzticket']);
+
+    expect(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Paid);
+});
+
+it('shows each order line with what is left of it to credit (#7)', function (): void {
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    [$order, $standard, $reduced] = orderAdminMixedRateOrder();
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+            'lines' => [['orderLineId' => $standard->getKey(), 'quantity' => 1]],
+        ])
+        ->assertRedirect();
+
+    $this->actingAs($admin)
+        ->get("http://admin.commerce.test/admin/orders/{$order->id}")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('admin/orders/Show')
+            ->where('lines.0.id', $standard->getKey())
+            ->where('lines.0.creditedQuantity', 1)
+            ->where('lines.0.remainingQuantity', 1)
+            ->where('lines.1.id', $reduced->getKey())
+            ->where('lines.1.creditedQuantity', 0)
+            ->where('lines.1.remainingQuantity', 1));
+});

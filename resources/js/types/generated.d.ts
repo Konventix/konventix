@@ -251,6 +251,17 @@ declare namespace Konventix {
                 readonly orderUrl: string;
                 readonly payUrl: string | null;
             };
+            export type OrderCreditLineData = {
+                readonly id: string;
+                readonly label: string;
+                readonly quantity: number;
+                readonly unitAmountNet: string;
+                readonly taxRate: string;
+                readonly lineNet: string;
+                readonly lineGross: string;
+                readonly creditedQuantity: number;
+                readonly remainingQuantity: number;
+            };
             export type OrderReversalData = {
                 readonly id: string;
                 readonly provider: string;

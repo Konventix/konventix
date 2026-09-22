@@ -225,22 +225,48 @@
       gap, not a "not a screen" skip. Have the seed refund one paid order per
       archetype once a natural spot for it exists in the seeding flow.
 - [x] Partial credit notes with their own tax split (round 4, Task 23,
-      D-REG-15, #7). `IssueCreditNote` takes explicit net/tax/gross instead
-      of copying the invoice's, so the rate
-      `CreditNoteDocumentRenderer` derives from those totals is the one that
-      was charged, and it guards "the sum of an invoice's credit notes never
-      exceeds its gross". `RefundUnitsOnRegistrationQuantityReduced` computes
-      the amounts from the order line's snapshotted `unit_amount_net` and
-      `tax_rate` with `TaxCalculator`'s formula;
-      `RecordRefund`'s partial branch keeps the order `paid`, allows a
-      second partial, emits no `OrderLineCancelled` and is idempotent on
-      `credit_notes.reduction_key`. #7's three acceptance criteria are met
-      for the case this flow produces — **still open**, and why #7 is not
-      closed by itself: a general per-line allocation across an order with
-      *mixed* tax rates, which needs a caller that names which lines a
-      partial refund touches. #73's remaining console work (a partial-refund
-      form on the order page) is untouched — the console button still
-      refunds whole.
+      D-REG-15, #7). `IssueCreditNote` took explicit net/tax/gross instead
+      of copying the invoice's, `RefundUnitsOnRegistrationQuantityReduced`
+      computed the amounts from the order line's snapshotted
+      `unit_amount_net` and `tax_rate`, and `RecordRefund`'s partial branch
+      kept the order `paid`, allowed a second partial, emitted no
+      `OrderLineCancelled` and was idempotent on
+      `credit_notes.reduction_key`. Completed for the general, mixed-rate
+      case by D-0.8.2-1 below, which is what closes #7.
+- [x] Partial credit notes with line-level tax (#7, D-0.8.2-1, release
+      0.8.2). A partial credit note is expressed as **lines and
+      quantities**, never a gross sum: `Data\CreditNoteLineSelectionData`,
+      `Actions\ResolveCreditNoteLines`, `TaxCalculator::lineAtRate()` (the
+      calculator's own arithmetic at the line's *snapshotted* rate, so
+      ADR-0017 is not re-resolved and there is one rounding policy), and
+      `credit_note_lines` as the snapshot the document renders from.
+      `CreditNoteDocumentRenderer` prints one position per credited line and
+      one `BG-23` tax group per rate; the Blade template prints the subset
+      line by line with a per-rate breakdown. Two guards, both refusing
+      rather than clamping: the invoice's gross, and — new — the units of
+      each line, which `credit_note_lines` makes answerable. The console's
+      refund dialog gained the picker
+      (`components/admin/OrderRefundDialog.vue`, extracted from
+      `admin/orders/Show.vue`), and
+      `RefundUnitsOnRegistrationQuantityReduced` now states its refund as a
+      selection like every other caller, so a reduction's units join the
+      same ledger.
+- [ ] A partial refund of an order that was never invoiced credits nothing
+      and therefore records nothing on `credit_note_lines` (#7). The console
+      hides the picker for such an order (`creditable`), but `RefundOrder`
+      itself still accepts a selection there and would return the money
+      without paperwork — and with no ledger entry, a second partial could
+      send the same units back again. Either refuse the selection where
+      there is no invoice, or give an uninvoiced order somewhere to record
+      credited units.
+- [ ] The console's line-selected partial refund keeps the **whole-order**
+      check-in guard (ADR-0037): one checked-in admission blocks a partial
+      refund of a line that has nothing to do with it. D-REG-15's per-unit
+      path already has the per-admission guard
+      (`RefundOrder::guardEnoughUnusedAdmissions()`); wiring the console's
+      selection into it means mapping picked lines back to registrations and
+      units, which is its own piece of work. Refusing too much is the safe
+      direction, so it is a follow-up rather than a bug.
 - [x] Cancellation as a domain flow (distinct from refund, which was
       already built): `OrderCancelled` now has a producer,
       `CancelOrderForUnpaidReversal` (ADR-0057 point 4) — reached from the
