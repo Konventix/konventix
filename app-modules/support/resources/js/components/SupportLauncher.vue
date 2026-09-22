@@ -40,6 +40,12 @@ import { useSupportDialog } from './useSupportDialog';
  * open"; this application has no banner, only the settings dialog the
  * footer and the console open, so that is what is honoured here.)
  *
+ * Toasts share this corner (#319): both shells lift their toaster's bottom
+ * edge above this button while it is mounted (`@/lib/toasterOffset`). That
+ * file knows the button's distance from the bottom and its minimum height,
+ * and its test reads both classes off the button below — change them
+ * together.
+ *
  * The known issues behind the dialog's banner are fetched here, on open and
  * on the brand host only (§9.4): the console registers no such route, and
  * a report filed there is about the console rather than about a brand whose

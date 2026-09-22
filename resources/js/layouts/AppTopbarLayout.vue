@@ -6,6 +6,7 @@ import EnvironmentRibbon from '@/components/EnvironmentRibbon.vue';
 import SkipToContent from '@/components/SkipToContent.vue';
 import { Toaster } from '@/components/ui/sonner';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
+import { toasterOffsets } from '@/lib/toasterOffset';
 
 // Support's floating report button (ADR-0063, #88), contributed by the
 // module and resolved by name — the shell learns nothing about it and
@@ -41,7 +42,8 @@ const supportLauncher = resolveRegisteredComponent('support/SupportLauncher');
             <slot />
         </main>
         <AppFooter />
-        <Toaster />
+        <!-- Clears the feedback button while it is mounted (#319). -->
+        <Toaster v-bind="toasterOffsets(supportLauncher !== null)" />
         <component :is="supportLauncher" v-if="supportLauncher" />
     </div>
 </template>

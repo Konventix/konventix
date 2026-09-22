@@ -17,6 +17,7 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/sonner';
 import { useCookieSettingsDialog } from '@/composables/useCookieSettingsDialog';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
+import { toasterOffsets } from '@/lib/toasterOffset';
 import type { BreadcrumbItem } from '@/types';
 
 withDefaults(
@@ -57,7 +58,8 @@ const supportLauncher = resolveRegisteredComponent('support/SupportLauncher');
                 <slot />
             </div>
         </AppContent>
-        <Toaster />
+        <!-- Clears the feedback button while it is mounted (#319). -->
+        <Toaster v-bind="toasterOffsets(supportLauncher !== null)" />
         <component
             :is="cookieSettingsDialog"
             v-if="cookieSettingsDialog"
