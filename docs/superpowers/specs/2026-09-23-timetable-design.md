@@ -17,7 +17,7 @@ Verified 2026-09-23 on `develop` (7bdd0987).
 
 - **`app-modules/agenda/` is a `make:module` scaffold**: `AgendaServiceProvider` with `moduleName() = 'agenda'`, every `src/*` a `.gitkeep`, `routes/web/agenda.php` empty. `SPEC.md` is written but carries five open questions and a "post-release module, do not start" banner; §11 answers the questions and this design supersedes the banner.
 - **Competition has no start time.** `Competition::$fillable` is `discipline_id, event_id, name, slug, format, signup_opens_at, signup_closes_at, published_at` — there is no `starts_at`, no `CompetitionStatus` enum, and the module emits only `EntrantRegistered`, `MatchScheduled`, `MatchFinished`, `MatchResultCorrected`. The start time and the lifecycle events arrive with **#296** (D-CMP-15). Agenda may not query Competition's tables (ADR-0004), so the competition half of this design waits on that slice.
-- **Resources emits no resource lifecycle.** Its twelve events are bookings, plans and seat claims (`ResourceBookingConfirmed`, `PlanPublished`, `SeatClaimPlaced`, …); nothing announces that a `Resource` was created, renamed or unpublished. `Resource` carries `label`, `ref`, `capacity`, `is_published`, `accessible`, `resource_type_id`, `venue_id`; `ResourceType` carries `name`, `slug`, `event_id`.
+- **There is no room entity in the platform, and Resources' `Resource` is a seat.** Its docblock: "One bookable thing. In unit mode that is literally one seat" — a 40-seat room is 40 resources. Places are created in bulk by `SavePlan`'s chunked upsert; `PublishPlan`/`UnpublishPlan` bulk-update `is_published` across a whole plan. There is no per-room lifecycle to listen to, and a per-resource event would fire once per seat. Event's `Venue` is a building with an address (`name`, `slug`, `address_line1`, `postal_code`, `city`, `country_code`), not a hall inside one; `zone_id`/`group_id` on a resource are plan-internal groupings with no names of their own. **Agenda therefore owns its own locations** (§4.3).
 - **Event days exist**: `event_days` with `date`, `sequence` (1-based), `label`, and since sub-project A `day_ends_at` (`HH:MM`, nullable). `EventDaysChanged` carries the complete current set. `Event` holds `starts_at`/`ends_at` as wall-clock plus `timezone`, read through `startsAtInstant()`/`endsAtInstant()` (ADR-0027).
 - **The hub's card registry is live** (sub-project A): a module registers a `HubCard(module, key, label, component, Closure $payload, ?permission, order)` or a `HubLink` from `registerHub()` on its service provider; `HubPage` resolves the payload only for cards the operator's layout keeps, and contains a throwing card rather than failing the page. Components live at `app-modules/<module>/resources/js/components/hub/<Name>.vue` and are resolved by the name `<module>/hub/<Name>`. `tests/Feature/HubComponentBoundaryTest.php` enforces that such a component imports no other module's code.
 - **Public event pages**: `/events/{event:slug}` (`EventLandingController::show`) and `/events/{event:slug}/calendar.ics` exist in Event's `routes/web/`.
@@ -28,13 +28,12 @@ Verified 2026-09-23 on `develop` (7bdd0987).
 ```
 EVENT           EventDaysChanged ─────────────┐   (day set for the switcher)
                                               ▼
-RESOURCES       ResourcePublished ────┐   AGENDA
-                ResourceRenamed ──────┼──► agenda_locations (read model)
-                ResourceUnpublished ──┘        │
-                                               ▼
+                                          AGENDA
+                agenda_locations ─ the module's own places: name + optional
+                                   venue_id (Event, by ULID, no FK)
                 agenda_tracks    ─ the grid's columns, ordered, per event
                 agenda_items     ─ title, description, starts_at?/ends_at?,
-                                   track, location (resource id + label),
+                                   track, location (own row + free note),
                                    state: draft | published | cancelled
                 agenda_competition_entries ─ which competitions appear (half 2)
                                                │
@@ -49,7 +48,7 @@ COMPETITION     CompetitionPublished / Rescheduled / Cancelled ──► agenda_
 (half 2, #296)  (Competition owns starts_at; Agenda never writes it)   (read model)
 ```
 
-Ownership follows the truth: Resources knows its rooms, Competition knows when a tournament starts, Event knows the days — each publishes, Agenda projects. Agenda owns the *programme*: which of those things is announced, in what order, under what heading. It reads no other module's tables.
+Ownership follows the truth: Competition knows when a tournament starts, Event knows the days — each publishes, Agenda projects. Agenda owns the *programme* — which things are announced, in what order, under what heading — and, because the platform has no room concept, the places they happen in. It reads no other module's tables.
 
 ## 4. The model
 
@@ -69,8 +68,8 @@ A track is a column of the grid — "Bühne", "Turniere", "Workshops". An entity
 id ulid, brand_id, event_id (plain ulid), track_id (nullable, FK within module)
 title, description nullable
 starts_at timestamptz nullable, ends_at timestamptz nullable
-location_resource_id ulid nullable   -- Resources, no FK (ADR-0014)
-location_label string nullable       -- free text, and the fallback
+location_id ulid nullable            -- agenda_locations, FK within module
+location_note string nullable        -- free text, for a place that is not worth a row
 speaker string nullable              -- plain value; external speakers need no account
 state enum(draft|published|cancelled), cancelled_reason nullable
 timestamps
@@ -87,28 +86,21 @@ index (event_id, starts_at)
 
 The open-ended shape is what a competition needs until the duration estimator exists, and what "Einlass ab 12:00" needs for ever.
 
-**Location** is the pair `location_resource_id` + `location_label`. The resource id is the link; the label is what renders when Resources is off for the brand, when the projection has not caught up, or when the organizer typed a place that is not a bookable resource ("Parkplatz"). A resource that is unpublished or gone keeps rendering from the label, and the editor flags it.
+**Location** is `location_id` — a row of Agenda's own `agenda_locations` (§4.3) — with `location_note` for the one-off that is not worth a row ("Parkplatz", "vor der Halle"). Both nullable: an item may name no place at all. Renaming a location renames it everywhere it is used, which is the whole reason it is a row rather than a string.
 
-### 4.3 `agenda_locations` — Agenda's read model of rooms
+### 4.3 `agenda_locations` — Agenda's own places
 
 ```
-id ulid, brand_id, resource_id (ulid, unique per brand), label, type_name nullable,
-accessible bool, is_published bool, timestamps
+id ulid, brand_id, event_id (plain ulid), name, venue_id ulid nullable,
+position smallint, timestamps
+unique (event_id, name)
 ```
 
-Projected from three **new Resources events** (§4.4). The picker lists `is_published = true`; the renderer uses `label`. Nothing else in Agenda reads it.
+"Halle 3", "Bühne", "Workshopraum", "Foyer" — maintained by the organizer in the programme editor beside the tracks. `venue_id` optionally names Event's venue the place sits in, by ULID and without a foreign key (ADR-0014); it is display context, nothing depends on it.
 
-### 4.4 Three new events in Resources
+Agenda owns this because **the platform has no room concept to borrow** (§2): Resources models bookable seats, and Event's `Venue` is a building. Owning it costs one small table and gives the programme what a reference is for — pick from a list, rename once, no typos — without inventing a cross-module contract for an entity that does not exist. If a room ever becomes a first-class thing elsewhere, `agenda_locations` is the seam that adopts it: one nullable column, no change to items.
 
-Resources gains what it should have had: the lifecycle of its own rooms, as scalars.
-
-| Event | Emitted when | Payload |
-|---|---|---|
-| `ResourcePublished` | a resource is created published, or published later | `resource_id, brand_id, event_id (nullable), label, type_name, accessible` |
-| `ResourceRenamed` | its `label` changes | `resource_id, brand_id, label` |
-| `ResourceUnpublished` | `is_published` goes false, or the resource is deleted | `resource_id, brand_id` |
-
-Emitted from the Actions that already write `Resource` rows. This is an additive change to a stable module: no column, no behaviour change, three classes plus their emit points. Agenda's listeners are idempotent and short-circuit when `agenda` is off for the brand (ADR-0003).
+Deleting a location leaves its items with `location_id = null`; the editor asks first and offers to move them.
 
 ### 4.5 `agenda_competition_entries` and `agenda_competitions` *(half two — after #296)*
 
@@ -139,7 +131,7 @@ agenda_competitions (read model): competition_id (unique), brand_id, event_id, n
 | Surface | Route | Who | What |
 |---|---|---|---|
 | Public programme | `/events/{event:slug}/programm` | everyone, no auth | the grid, the day switcher, a track filter; published and cancelled items |
-| Programme editor | `admin/events/{event}/agenda` | `ManageAgenda` | items CRUD with the three time shapes, track management (add/rename/reorder/remove), the location picker over `agenda_locations`, publish/cancel, and — half two — the competition selection |
+| Programme editor | `admin/events/{event}/agenda` | `ManageAgenda` | items CRUD with the three time shapes, track management (add/rename/reorder/remove), location management (add/rename/reorder/remove) and the picker over them, publish/cancel, and — half two — the competition selection |
 | Hub card | via A's `HubRegistry`, key `agenda.now-next` | admitted participants | **"Jetzt / Gleich"**: what is running now and what starts next, link to the full programme |
 
 The public page is genuinely public: a programme is an announcement, and gating it behind an account would defeat its purpose. Reading needs no capability; only editing does.
@@ -157,7 +149,7 @@ Nothing consumes these in 0.9.0. They exist so Messaging can notify a participan
 ## 8. Capabilities, activation, GDPR, observability
 
 - **Capability**: one — `ManageAgenda` (`agenda.manage-agenda`), covering items, tracks and the competition selection. Reading is public. Added to `permissions:sync` (ADR-0013); granted to the Event Admin default role.
-- **Activation**: Pennant feature `agenda`, gated at all four enforcement points (ADR-0003). With it off: no public programme route, no admin page, no hub card, and the Resources and Competition listeners short-circuit. Nothing else degrades — no module depends on Agenda.
+- **Activation**: Pennant feature `agenda`, gated at all four enforcement points (ADR-0003). With it off: no public programme route, no admin page, no hub card, and the Competition listeners short-circuit. Nothing else degrades — no module depends on Agenda.
 - **GDPR**: none. A programme holds no personal data — `speaker` is a plain value an organizer typed, published deliberately on a public page, and is not a user reference. If speaker accounts ever arrive, they arrive with a handler.
 - **Observability** (ADR-0059): counter `agenda_items_published_total{brand}`; a panel on the platform dashboard. No alert — an unpublished programme is a planning state, not an incident.
 
@@ -166,7 +158,7 @@ Nothing consumes these in 0.9.0. They exist so Messaging can notify a participan
 - Three time shapes round-trip through the Action and render correctly (span, single row, single row).
 - An item with neither start nor end is refused.
 - Row derivation: the distinct times of a day, sorted, with a 14:15 item and an item that ends after the last start.
-- Resource renamed → the programme shows the new name; resource unpublished → the label survives and the editor flags it; Resources off for the brand → the label renders and no listener fires.
+- A renamed location renames everywhere it is used; a deleted location leaves its items placeless rather than deleting them; an item with only a `location_note` renders that note.
 - Cancelled item is visible and struck; draft item is absent from the public page and present in the editor.
 - Multi-day: the switcher lists the event's days and each renders only its own items.
 - Hub card: "Jetzt / Gleich" picks the running item and the next one; empty state when the programme is empty; absent when `agenda` is off.
@@ -174,8 +166,8 @@ Nothing consumes these in 0.9.0. They exist so Messaging can notify a participan
 
 ## 10. Definition of done
 
-1. An organizer creates tracks, adds items in all three time shapes, picks a room from the Resources-backed picker, publishes, and the public page shows the grid on a phone and on a desktop.
-2. Renaming a hall in Resources changes the programme.
+1. An organizer creates tracks, adds items in all three time shapes, picks a location from the programme's own list, publishes, and the public page shows the grid on a phone and on a desktop.
+2. Renaming a location in the editor changes every item that uses it.
 3. Cancelling an item leaves it visible and struck.
 4. A multi-day event switches days; the running day is preselected.
 5. An admitted participant's hub shows "Jetzt / Gleich" and reaches the programme from it.
@@ -192,7 +184,7 @@ Nothing consumes these in 0.9.0. They exist so Messaging can notify a participan
 | D-AGD-04 | An agenda item carries **start and/or end** — at least one, not necessarily both. |
 | D-AGD-05 | **Slot grid**: time rows × track columns, an item spanning its rows; a plain table, no absolute positioning. Phone collapses to one chronological list. Keep the UX simple. |
 | D-AGD-06 | **Track is an entity** per event (name + position); rows are the distinct times that occur, not fixed slots. *(controller's call)* |
-| D-AGD-07 | **Location is an optional Resources reference with a label fallback** — and Resources gains `ResourcePublished` / `ResourceRenamed` / `ResourceUnpublished` so Agenda can project a room read model rather than query Resources (ADR-0004). |
+| D-AGD-07 | **Agenda owns its locations** (`agenda_locations`: name + optional `venue_id`), maintained in the programme editor. Revised 2026-09-23 after finding that Resources' `Resource` is a seat, not a room — the original plan (three new Resources lifecycle events feeding a read model) would have fired once per seat and pointed the programme at seat `A-14`. No cross-module contract; no Resources change. |
 | D-AGD-08 | **Per-item publication state only** (draft / published / cancelled); no programme-level switch — the event's own lifecycle already gates public pages. Cancelled stays visible and struck. |
 | D-AGD-09 | Out of scope: personal agendas and bookmarks (Community, later), item capacity or sign-up (Registration when it matters), speaker accounts, and mirroring individual matches (whole competitions only). |
 
@@ -200,6 +192,6 @@ Nothing consumes these in 0.9.0. They exist so Messaging can notify a participan
 
 - *Personal agenda here or Community?* — **Community, later** (D-AGD-09).
 - *Mirrored matches: projection or reference at render?* — **neither; whole competitions only**, as a selection plus a read model projected from Competition's events (D-AGD-02, D-AGD-03).
-- *How does an item name its location without Resources?* — **`location_label`**, always present as the fallback (D-AGD-07).
+- *How does an item name its location without Resources?* — the question dissolves: **Agenda owns `agenda_locations`** and never involved Resources (D-AGD-07).
 - *Multi-day and timezones?* — one grid per `event_day`, times wall-clock in the event's zone (ADR-0027), §5.
 - *Do external speakers need accounts?* — **no**, a plain value (D-AGD-09).
