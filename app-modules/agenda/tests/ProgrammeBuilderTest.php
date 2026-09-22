@@ -42,10 +42,37 @@ it('makes a row per distinct time and spans an item across the rows it covers', 
         ->and($days[0]->rows)->toHaveCount(3)
         ->and($days[0]->rows[0]->time)->toBe('14:00')
         ->and($days[0]->rows[0]->cells[0][0]->title)->toBe('Eröffnung')
-        ->and($days[0]->rows[0]->cells[0][0]->rowSpan)->toBe(3)   // 14:00 → 15:00 spans the 14:15 row too
+        // Half-open: 14:00 → 15:00 covers the 14:00 and 14:15 rows and stops
+        // at the 15:00 boundary, which belongs to whatever starts there.
+        ->and($days[0]->rows[0]->cells[0][0]->rowSpan)->toBe(2)
         ->and($days[0]->rows[1]->time)->toBe('14:15')
         ->and($days[0]->rows[1]->cells[1][0]->title)->toBe('Lötkurs')
         ->and($days[0]->rows[1]->cells[1][0]->rowSpan)->toBe(1);  // no end → one row
+});
+
+it('gives two back-to-back items in one track a row each', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    $stage = Track::factory()->create(['event_id' => $eventId, 'name' => 'Bühne', 'position' => 1]);
+
+    AgendaItem::factory()->create(['event_id' => $eventId, 'track_id' => $stage->id, 'state' => ItemState::Published,
+        'title' => 'Eröffnung', 'starts_at' => '2026-11-20T13:00:00Z', 'ends_at' => '2026-11-20T14:00:00Z']);
+    AgendaItem::factory()->create(['event_id' => $eventId, 'track_id' => $stage->id, 'state' => ItemState::Published,
+        'title' => 'Bandcheck', 'starts_at' => '2026-11-20T14:00:00Z', 'ends_at' => '2026-11-20T15:00:00Z']);
+
+    $day = app(ProgrammeBuilder::class)
+        ->forEvent($eventId, $brand->id, [agendaDay('2026-11-20')], 'Europe/Berlin')[0];
+
+    // 14:00 → 15:00 → 16:00 local. The one who ends at 15:00 must not claim
+    // the row the one who starts at 15:00 stands in; 16:00 closes the day.
+    expect(collect($day->rows)->pluck('time')->all())->toBe(['14:00', '15:00', '16:00'])
+        ->and($day->rows[0]->cells[0])->toHaveCount(1)
+        ->and($day->rows[0]->cells[0][0]->title)->toBe('Eröffnung')
+        ->and($day->rows[0]->cells[0][0]->rowSpan)->toBe(1)
+        ->and($day->rows[1]->cells[0])->toHaveCount(1)
+        ->and($day->rows[1]->cells[0][0]->title)->toBe('Bandcheck')
+        ->and($day->rows[1]->cells[0][0]->rowSpan)->toBe(1)
+        ->and($day->rows[2]->cells[0])->toBe([]);
 });
 
 it('hides drafts, keeps cancelled items visible with their reason', function (): void {
@@ -181,13 +208,15 @@ it('spans an item that runs past midnight down to the day\'s last row', function
     $day = app(ProgrammeBuilder::class)
         ->forEvent($eventId, $brand->id, [agendaDay('2026-11-20')], 'Europe/Berlin')[0];
 
-    // The 02:00 end belongs to the next day and starts no row here.
+    // The 02:00 end belongs to the next day and starts no row here, so the
+    // concert has no closing boundary and runs through all three rows —
+    // while the reading stops at the 23:00 row it ends on.
     expect(collect($day->rows)->pluck('time')->all())->toBe(['21:00', '22:00', '23:00'])
         ->and($day->rows[0]->cells[0][0]->title)->toBe('Nachtkonzert')
         ->and($day->rows[0]->cells[0][0]->rowSpan)->toBe(3)
         ->and($day->rows[0]->cells[0][0]->endsAt)->toBe('02:00')
         ->and($day->rows[1]->cells[1][0]->title)->toBe('Lesung')
-        ->and($day->rows[1]->cells[1][0]->rowSpan)->toBe(2);
+        ->and($day->rows[1]->cells[1][0]->rowSpan)->toBe(1);
 });
 
 it('puts an item with only an end in the row of that end', function (): void {

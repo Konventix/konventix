@@ -27,8 +27,10 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  *   clock time in `endsAt` — "bis 02:00" is what a participant reads.
  * - `rowSpan` is how many rows of *this day's* grid the item covers, ready
  *   for the `rowspan` attribute of a plain HTML table; see
- *   `ProgrammeBuilder`. It is 1 wherever there is no grid — the untracked
- *   band and the hub card.
+ *   `ProgrammeBuilder`. The span is half-open — the row an item ends on
+ *   belongs to whatever starts there — so 14:00–15:00 and 15:00–16:00 in
+ *   one track are one row each and never fight over the 15:00 row. It is 1
+ *   wherever there is no grid: the untracked band and the hub card.
  * - `cancelled` and `cancelledReason` carry D-AGD-08: a called-off item
  *   stays on the page, struck through and with its reason, instead of
  *   quietly disappearing on somebody who planned an afternoon around it.

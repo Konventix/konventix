@@ -25,19 +25,30 @@ use Konventix\Agenda\Models\Track;
  * item occupies the row it begins in and spans the rows it runs through,
  * as `rowspan` on a plain HTML table: the browser does the layout, so
  * there is no overlap arithmetic and no absolute positioning anywhere.
- * The span is inclusive of both boundary rows — an item from 14:00 to
- * 15:00, on a day whose rows are 14:00, 14:15 and 15:00, spans all three,
- * because its own end is one of the times that occur and the block has to
- * reach it. Two items beginning in the same track at the same time sit
- * side by side in one cell, which is why every cell is a *list*.
+ *
+ * **The span is half-open, `[start, end)`.** A row is a *boundary*, not a
+ * slot, so the row an item ends on belongs to whatever comes after it:
+ * `rowSpan` counts the rows from the item's start up to, but not
+ * including, the first row at or after its end. That is the only
+ * arithmetic under which a track can hold 14:00–15:00 followed by
+ * 15:00–16:00 — rows 14:00, 15:00, 16:00, one row each, 16:00 left as the
+ * closing boundary. Counting the end row too would have both of them claim
+ * the 15:00 row, and the table would either double up that cell or
+ * overflow its `rowspan`. It is also how a printed timetable reads. So an
+ * item from 14:00 to 15:00, on a day whose rows are 14:00, 14:15 and
+ * 15:00, spans the first two.
+ *
+ * Two items beginning in the same track at the same time sit side by side
+ * in one cell, which is why every cell is a *list*.
  *
  * Three cases the rule has to answer, and its answers:
  *
  * - An item with no end (D-AGD-04's "ab 12:00") occupies exactly one row.
  * - An item with only an end ("bis 08:00") sits in the row of that end.
- * - An item that runs past midnight spans to the day's last row. Its end
- *   falls on the next day, so it starts no row here; `endsAt` still shows
- *   the next day's clock time, because "bis 02:00" is what it means.
+ * - An item that runs past midnight has no closing boundary on this day,
+ *   so it spans through the last row: its end falls on the next day and
+ *   starts no row here. `endsAt` still shows the next day's clock time,
+ *   because "bis 02:00" is what it means.
  *
  * Items with no track are not a column: they go to `untracked`, the
  * full-width "Ohne Track" band above the grid. A day with no items at all
@@ -147,7 +158,6 @@ final class ProgrammeBuilder
     ): ProgrammeDayData {
         $times = $this->rowTimes($dayItems, $date, $timezone);
         $rowOf = array_flip($times);
-        $lastRow = count($times) - 1;
 
         /** @var array<int, array<int, list<ProgrammeCellData>>> $grid */
         $grid = [];
@@ -157,9 +167,9 @@ final class ProgrammeBuilder
 
         foreach ($dayItems as ['item' => $item, 'anchor' => $anchor]) {
             $startRow = $rowOf[$anchor->setTimezone($timezone)->format('H:i')];
-            $endRow = $this->endRowOf($item, $anchor, $startRow, $rowOf, $lastRow, $date, $timezone);
+            $closingRow = $this->closingRowOf($item, $anchor, $startRow, $rowOf, count($times), $date, $timezone);
 
-            $cell = ProgrammeCellData::ofItem($item, $timezone, max(1, $endRow - $startRow + 1));
+            $cell = ProgrammeCellData::ofItem($item, $timezone, max(1, $closingRow - $startRow));
 
             if ($item->track_id === null || ! isset($columnOf[$item->track_id])) {
                 $untracked[] = $cell;
@@ -233,36 +243,45 @@ final class ProgrammeBuilder
     }
 
     /**
-     * The row an item reaches down to. Its own row when it has no end, or
-     * only an end; the row of its end when that end is on this day; the
-     * day's last row when it runs past midnight. An end that lies *before*
-     * the item's anchor is data the editor's `after:startsAt` rule refuses
-     * — the check constraint only demands one of the two times, not their
-     * order — and is treated as no end rather than as a negative span.
+     * The first row *at or after* the item's end — the exclusive boundary
+     * the half-open span stops short of, so that `rowSpan` is
+     * `closingRow - startRow`.
+     *
+     * Every end that falls on this day is itself one of the row times, so
+     * "at or after" is just that row. The other cases:
+     *
+     * - No end, or only an end: the very next row closes it — one row.
+     * - Past midnight: there is no closing boundary on this day, so the
+     *   boundary is one past the last row and the item spans through it.
+     * - An end *before* the item's anchor is data the editor's
+     *   `after:startsAt` rule refuses — the check constraint only demands
+     *   one of the two times, not their order. It closes on the next row
+     *   rather than producing a zero or negative span.
      *
      * @param  array<string, int>  $rowOf  wall-clock time to row index
+     * @param  int  $rowCount  one past the day's last row
      */
-    private function endRowOf(
+    private function closingRowOf(
         AgendaItem $item,
         CarbonImmutable $anchor,
         int $startRow,
         array $rowOf,
-        int $lastRow,
+        int $rowCount,
         string $date,
         string $timezone,
     ): int {
         $end = $item->ends_at;
 
         if ($end === null || $item->starts_at === null) {
-            return $startRow;
+            return $startRow + 1;
         }
 
         $local = $end->setTimezone($timezone);
 
         if ($local->toDateString() === $date) {
-            return $rowOf[$local->format('H:i')] ?? $startRow;
+            return $rowOf[$local->format('H:i')] ?? $startRow + 1;
         }
 
-        return $end->greaterThan($anchor) ? $lastRow : $startRow;
+        return $end->greaterThan($anchor) ? $rowCount : $startRow + 1;
     }
 }
