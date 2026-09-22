@@ -232,6 +232,22 @@ Two commands, safe to re-run, neither one specific to a single event:
   count every admission on the dashboards a second time. Run it once after
   the deploy that brings the table, after `event:replay-details`.
 
+For an event created before `entrance_event_profiles` shipped
+(`2026_08_12_170000`), "fills `entrance_event_profiles.days`" understates
+what `event:replay-details` does: such an event has no profile row at all —
+`CreateEvent` emits `EventReentryPolicyChanged` at creation, so every event
+created since that migration already has one, and the replay only completes
+its `days` column — and for it the replay's `EventDaysChanged` **creates**
+the row. If that event also has `event_days` rows, the new profile changes
+what the door does in both directions: it newly rejects a scan on a date
+outside the event's calendar as `OutsideEventDay`, where it was silently
+accepted before, and it fixes the opposite bug — every day-scoped ticket at
+that event had been rejected `NotValidOnThisDay`, because a missing profile
+always resolved to no day. Both are D-ADM-04's intended semantics, not a
+regression, but they are a door-behaviour change nonetheless. Run
+`event:replay-details` before an event's doors open, never during one, for
+any event old enough to be missing this row.
+
 ### Backfilling the media library's variants — the post-deploy step for 0.7.0
 
 A variant is cut when a picture is uploaded, so every picture already in a
