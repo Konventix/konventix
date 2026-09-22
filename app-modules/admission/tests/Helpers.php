@@ -6,6 +6,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Konventix\Admission\Actions\RotateEntranceSigningKey;
+use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\Checkpoint;
 use Konventix\Admission\Models\EntranceDevice;
@@ -207,4 +208,27 @@ function entranceTestLane(?string $eventId = null): array
 function entranceTestHeaders(string $plainToken): array
 {
     return ['Authorization' => 'Bearer '.$plainToken, 'Accept' => 'application/json'];
+}
+
+/**
+ * One accepted scan for `$admission`, shaped the way `RecordScan` emits it
+ * (design §4.2): `AdmissionCheckedIn` carries no day or checkpoint here
+ * because the presence projection reads neither — it resolves the day from
+ * `EntranceEventProfile` by the scan instant. Shared by the presence
+ * projection, hub-access and sweep tests (.ai/rules/tests.md), so it lives
+ * here and not in any one of them.
+ */
+function presenceScan(Admission $admission, string $direction = 'in', string $at = '2026-10-16T20:00:00+02:00'): AdmissionCheckedIn
+{
+    return new AdmissionCheckedIn(
+        checkInId: (string) Str::ulid(),
+        admissionId: $admission->id,
+        registrationId: $admission->registration_id ?? (string) Str::ulid(),
+        eventId: $admission->event_id,
+        brandId: $admission->brand_id,
+        eventDayId: null,
+        checkpointId: null,
+        direction: $direction,
+        scannedAt: $at,
+    );
 }

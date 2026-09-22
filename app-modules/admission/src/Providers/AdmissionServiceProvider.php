@@ -9,6 +9,7 @@ use Konventix\Admission\Actions\SendClaimLink;
 use Konventix\Admission\Console\AnnounceAdmissionOwnershipCommand;
 use Konventix\Admission\Console\RotateEntranceSigningKeyCommand;
 use Konventix\Admission\Enums\Permission;
+use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Admission\Events\AdmissionHolderAssigned;
 use Konventix\Admission\Events\AdmissionHolderUnassigned;
 use Konventix\Admission\Events\CheckInRejected;
@@ -27,6 +28,7 @@ use Konventix\Admission\Listeners\ProjectAdmissionSeat;
 use Konventix\Admission\Listeners\ProjectEventDaysOnEventDaysChanged;
 use Konventix\Admission\Listeners\ProjectEventSummary;
 use Konventix\Admission\Listeners\ProjectPerson;
+use Konventix\Admission\Listeners\ProjectPresenceOnAdmissionCheckedIn;
 use Konventix\Admission\Listeners\ProjectReentryPolicyOnEventReentryPolicyChanged;
 use Konventix\Admission\Listeners\RevokeAdmissionsOnRegistrationCancelled;
 use Konventix\Admission\Listeners\RevokeUnitsOnRegistrationQuantityReduced;
@@ -230,6 +232,14 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         Event::listen(ClaimLinkIssued::class, [RecordHolderMetrics::class, 'handleIssued']);
         Event::listen(ClaimLinkSent::class, [RecordHolderMetrics::class, 'handleSent']);
         Event::listen(ClaimLinkRevoked::class, [RecordHolderMetrics::class, 'handleRevoked']);
+
+        // D-HUB-01: an accepted scan at the door is what admits the holder
+        // to the live hub; the presence row and the participant events
+        // Platform and Community consume come from here alone.
+        Event::listen(
+            AdmissionCheckedIn::class,
+            ProjectPresenceOnAdmissionCheckedIn::class,
+        );
 
         // Admission's own metric (ADR-0059, design doc §9): the one
         // rejection reason among CheckInRejected's nine that answers
