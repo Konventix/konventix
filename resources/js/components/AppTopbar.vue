@@ -18,6 +18,7 @@ import {
 import UserInfo from '@/components/UserInfo.vue';
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
+import { livePillFor } from '@/lib/livePill';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { home, login, register } from '@/routes';
 import type { BrandNavItem } from '@/types/navigation';
@@ -41,6 +42,11 @@ import type { BrandNavItem } from '@/types/navigation';
  * the shared `cart` prop `HandleInertiaRequests` already puts on every
  * response — a build without Commerce (impossible; Commerce is Core) would
  * simply never have a "Cart" entry to match.
+ *
+ * The live pill follows the same rule (D-HUB-04, design §7.2): it is data,
+ * not a module import. Whether the viewer is at an event arrives as the
+ * shared `activeEvent` prop, and the pill only renders what that prop says —
+ * the topbar never asks the Admission module anything.
  */
 const page = usePage();
 const mobileMenuOpen = ref(false);
@@ -49,6 +55,7 @@ const user = computed(() => page.props.auth?.user ?? null);
 const navItems = computed(() => page.props.nav ?? []);
 const brandMenu = computed(() => page.props.brandMenu ?? []);
 const cartCount = computed(() => page.props.cart?.count ?? 0);
+const livePill = computed(() => livePillFor(page.props.activeEvent ?? null));
 
 /**
  * Overrides the link's own accessible name with the count for the one nav
@@ -118,6 +125,22 @@ function handleLogout(): void {
                     class="mx-auto flex max-w-7xl flex-col gap-1 px-4 py-4 sm:px-6"
                     aria-label="Main"
                 >
+                    <Link
+                        v-if="livePill"
+                        :href="livePill.href"
+                        data-test="live-pill"
+                        class="rounded-lg px-3 py-2 text-sm font-medium text-text"
+                    >
+                        <span
+                            class="mr-1 inline-block size-2 rounded-full"
+                            :class="
+                                livePill.onSite ? 'bg-success' : 'bg-text-muted'
+                            "
+                            aria-hidden="true"
+                        />
+                        {{ livePill.label }}
+                    </Link>
+
                     <component
                         :is="item.external ? 'a' : Link"
                         v-for="item in navItems"
@@ -203,6 +226,22 @@ function handleLogout(): void {
             </div>
 
             <div class="flex items-center gap-2">
+                <Link
+                    v-if="livePill"
+                    :href="livePill.href"
+                    data-test="live-pill"
+                    class="inline-flex items-center gap-2 rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-sm font-medium text-text hover:bg-accent/20"
+                >
+                    <span
+                        class="size-2 rounded-full"
+                        :class="
+                            livePill.onSite ? 'bg-success' : 'bg-text-muted'
+                        "
+                        aria-hidden="true"
+                    />
+                    {{ livePill.label }}
+                </Link>
+
                 <component :is="NotificationBell" v-if="NotificationBell" />
 
                 <DropdownMenu v-if="user">
