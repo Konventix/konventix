@@ -49,6 +49,9 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $submitted_by_user_id
  * @property CarbonInterface|null $verified_at
  * @property string|null $verified_by_user_id
+ * @property CarbonInterface|null $rejected_at
+ * @property string|null $rejected_by_user_id
+ * @property string|null $rejection_note
  * @property string|null $note
  * @property CarbonInterface|null $created_at
  * @property CarbonInterface|null $updated_at
@@ -64,13 +67,26 @@ class ScoreEntry extends Model
 
     protected $fillable = [
         'stage_id', 'entrant_id', 'heat', 'value', 'proof_media_id',
-        'submitted_by_user_id', 'verified_at', 'verified_by_user_id', 'note',
+        'submitted_by_user_id', 'verified_at', 'verified_by_user_id',
+        'rejected_at', 'rejected_by_user_id', 'rejection_note', 'note',
     ];
 
     /** Whether this entry counts towards the standings (§8.3). */
     public function isVerified(): bool
     {
         return $this->verified_at !== null;
+    }
+
+    /**
+     * Whether an organizer turned this entry down, with a reason (§8.3).
+     *
+     * Not the opposite of verified — "nobody has looked at it yet" and "an
+     * organizer said no" are different things to show a participant, and only
+     * the second comes with `rejection_note` to show them.
+     */
+    public function isRejected(): bool
+    {
+        return $this->rejected_at !== null;
     }
 
     /**
@@ -102,6 +118,7 @@ class ScoreEntry extends Model
             'heat' => 'integer',
             'value' => 'float',
             'verified_at' => 'datetime',
+            'rejected_at' => 'datetime',
         ];
     }
 

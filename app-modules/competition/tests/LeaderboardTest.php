@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Konventix\Competition\Actions\CalculateStandings;
+use Konventix\Competition\Actions\RejectScoreEntry;
 use Konventix\Competition\Actions\SubmitScoreEntry;
 use Konventix\Competition\Actions\VerifyScoreEntry;
 use Konventix\Competition\Data\LeaderboardSettings;
@@ -12,6 +13,8 @@ use Konventix\Competition\Data\ScoreEntryData;
 use Konventix\Competition\Enums\LeaderboardAggregate;
 use Konventix\Competition\Enums\LeaderboardDirection;
 use Konventix\Competition\Enums\ProofPolicy;
+use Konventix\Competition\Enums\ResultSubmissionMode;
+use Konventix\Competition\Exceptions\ResultSubmissionException;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionTeam;
 use Konventix\Competition\Models\Entrant;
@@ -111,9 +114,21 @@ function leaderboardTestOrder(array $entries): array
  *
  * @return array{0: Stage, 1: list<Entrant>}
  */
-function leaderboardTestStage(LeaderboardSettings $settings, int $entrants = 3, ProofPolicy $proofPolicy = ProofPolicy::None): array
-{
-    $competition = Competition::factory()->create(['proof_policy' => $proofPolicy]);
+function leaderboardTestStage(
+    LeaderboardSettings $settings,
+    int $entrants = 3,
+    ProofPolicy $proofPolicy = ProofPolicy::None,
+    ResultSubmissionMode $submissionMode = ResultSubmissionMode::Participants,
+): array {
+    // `participants` explicitly, because the column defaults to `desk_only`
+    // and §8.1's knob is enforced in `SubmitScoreEntry`: a score entry is a
+    // participant reporting a result, so a `desk_only` competition refuses
+    // one. The tests below that submit as a participant need a competition
+    // that takes participant submissions.
+    $competition = Competition::factory()->create([
+        'proof_policy' => $proofPolicy,
+        'result_submission_mode' => $submissionMode,
+    ]);
 
     $field = [];
 
@@ -485,6 +500,115 @@ describe('submitting and verifying (§8.3)', function (): void {
         );
 
         expect($entry->proof_media_id)->not->toBeNull();
+    });
+
+    it('refuses a participant score entry when the competition is desk_only', function (): void {
+        // §8.1's first knob, on the leaderboard side. "Whether participants
+        // may report" covers §8.3's score entry, and the refusal is in the
+        // Action rather than only on the form — otherwise a `desk_only`
+        // organizer's verification queue fills with numbers typed by the
+        // competitors.
+        $this->withBrand();
+
+        [$stage, $field] = leaderboardTestStage(
+            new LeaderboardSettings,
+            submissionMode: ResultSubmissionMode::DeskOnly,
+        );
+
+        expect(fn () => app(SubmitScoreEntry::class)
+            ->handle($stage, $field[0], new ScoreEntryData(value: 42.0), (string) Str::ulid()))
+            ->toThrow(ResultSubmissionException::class);
+
+        // "The desk can always record, whatever this says."
+        $desk = app(SubmitScoreEntry::class)->handle(
+            $stage,
+            $field[0],
+            new ScoreEntryData(value: 42.0),
+            (string) Str::ulid(),
+            asOrganizer: true,
+        );
+
+        expect($desk->isVerified())->toBeTrue()
+            ->and(ScoreEntry::query()->where('stage_id', $stage->id)->count())->toBe(1);
+    });
+
+    it('rejects an entry with a note, keeps the row, and lets the participant resubmit', function (): void {
+        // §8.3's other half: an organizer "rejects it with a note". The row
+        // stays so the participant can see what was wrong with it.
+        $this->withBrand();
+
+        [$stage, $field] = leaderboardTestStage(new LeaderboardSettings(
+            direction: LeaderboardDirection::Lower,
+            aggregate: LeaderboardAggregate::Best,
+        ));
+
+        $player = (string) Str::ulid();
+        $desk = (string) Str::ulid();
+
+        $entry = app(SubmitScoreEntry::class)
+            ->handle($stage, $field[0], new ScoreEntryData(value: 12.000), $player);
+
+        $rejected = app(RejectScoreEntry::class)->handle($entry, $desk, 'Der Screenshot zeigt eine andere Strecke.');
+
+        expect($rejected->isRejected())->toBeTrue()
+            ->and($rejected->isVerified())->toBeFalse()
+            ->and($rejected->rejection_note)->toBe('Der Screenshot zeigt eine andere Strecke.')
+            ->and($rejected->rejected_by_user_id)->toBe($desk)
+            // The value is still there to look at; rejecting is not deleting.
+            ->and($rejected->value)->toBe(12.000);
+
+        // Resubmitting replaces the value and clears the rejection with it.
+        $resubmitted = app(SubmitScoreEntry::class)
+            ->handle($stage, $field[0], new ScoreEntryData(value: 41.900), $player);
+
+        expect($resubmitted->isRejected())->toBeFalse()
+            ->and($resubmitted->rejection_note)->toBeNull()
+            ->and($resubmitted->value)->toBe(41.900)
+            ->and(ScoreEntry::query()->where('stage_id', $stage->id)->count())->toBe(1);
+    });
+
+    it('refuses a rejection with no note', function (): void {
+        $this->withBrand();
+
+        [$stage, $field] = leaderboardTestStage(new LeaderboardSettings);
+
+        $entry = app(SubmitScoreEntry::class)
+            ->handle($stage, $field[0], new ScoreEntryData(value: 1.0), (string) Str::ulid());
+
+        expect(fn () => app(RejectScoreEntry::class)->handle($entry, (string) Str::ulid(), '  '))
+            ->toThrow(ValidationException::class);
+    });
+
+    it('takes a rejected score back out of the standings', function (): void {
+        // An organizer who verified a number and then found it wrong must not
+        // leave the table standing on it.
+        $this->withBrand();
+
+        [$stage, $field] = leaderboardTestStage(new LeaderboardSettings(
+            direction: LeaderboardDirection::Higher,
+            aggregate: LeaderboardAggregate::Best,
+        ), entrants: 2);
+
+        $desk = (string) Str::ulid();
+
+        app(SubmitScoreEntry::class)
+            ->handle($stage, $field[0], new ScoreEntryData(value: 10.0), $desk, asOrganizer: true);
+
+        $inflated = app(SubmitScoreEntry::class)
+            ->handle($stage, $field[1], new ScoreEntryData(value: 100.0), $desk, asOrganizer: true);
+
+        // 100 beats 10, so seed 2 leads while the number counts.
+        expect(Standing::query()->where('stage_id', $stage->id)
+            ->pluck('placement', 'entrant_id')->all()[$field[1]->id])->toBe(1);
+
+        app(RejectScoreEntry::class)->handle($inflated, $desk, 'Nicht nachvollziehbar.');
+
+        $after = Standing::query()->where('stage_id', $stage->id)->pluck('placement', 'entrant_id')->all();
+
+        // Only seed 1's ten is left counting, so seed 1 is first — and seed 2
+        // has no verified entry at all, so the leaderboard ranks it last.
+        expect($after[$field[0]->id])->toBe(1)
+            ->and($after[$field[1]->id])->toBe(2);
     });
 
     it('refuses a score entry on a stage that plays matches', function (): void {

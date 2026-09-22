@@ -18,6 +18,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Competition\Http\Controllers\InterestController;
 use Konventix\Competition\Http\Controllers\MyTournamentsController;
+use Konventix\Competition\Http\Controllers\ProofUploadController;
 use Konventix\Competition\Http\Controllers\TeamJoinController;
 
 /*
@@ -73,4 +74,20 @@ Route::middleware(['auth'])->group(function (): void {
     Route::delete('/tournaments/{competition}/interest', [InterestController::class, 'destroy'])
         ->whereUlid('competition')
         ->name('competition.interest.destroy');
+
+    /*
+     * A proof image for a reported result or a score entry (design §8.7).
+     *
+     * Its own endpoint rather than a file field on the report, because the
+     * competition's `proof_policy` has to be able to refuse **before** the
+     * file is stored: `proof_media_id` is a ULID, so a policy of `none`
+     * checked only at submission time would accept the upload, reject the
+     * whole result over the attachment, and leave the object behind.
+     *
+     * `auth` and nothing else, like the rest of this file: who may attach a
+     * proof is membership in the side, which the Action checks (§11).
+     */
+    Route::post('/tournaments/{competition}/proofs', [ProofUploadController::class, 'store'])
+        ->whereUlid('competition')
+        ->name('competition.proofs.store');
 });

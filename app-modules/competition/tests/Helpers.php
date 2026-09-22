@@ -3,6 +3,15 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Str;
+use Konventix\Competition\Actions\GenerateBracket;
+use Konventix\Competition\Enums\TeamRole;
+use Konventix\Competition\Models\Competition;
+use Konventix\Competition\Models\CompetitionMatch;
+use Konventix\Competition\Models\CompetitionTeam;
+use Konventix\Competition\Models\CompetitionTeamMember;
+use Konventix\Competition\Models\Entrant;
+use Konventix\Competition\Models\MatchSlot;
+use Konventix\Competition\Models\Stage;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
@@ -145,4 +154,105 @@ function competitionParticipantName(string $userId, string $displayName, string 
         locale: 'de',
         updatedAt: now()->toIso8601String(),
     ));
+}
+
+/**
+ * A competition, a field of `$entrants` entrants seeded 1..n, and a real
+ * roster behind each one (design §8, §11).
+ *
+ * The rosters are the point. Reporting, confirming and disputing are
+ * membership rights rather than capabilities (§11), so a test of §8 that used
+ * entrants without members would prove the happy path only by skipping the
+ * guard that decides who may speak for a side. One member per team, made
+ * captain, because §8 never asks for more than one.
+ *
+ * Lives here rather than in a test file because both of §8's test files call
+ * it: under `--parallel` each worker loads only the files it was handed
+ * (.ai/rules/tests.md).
+ *
+ * @param  array<string, mixed>  $competitionAttributes
+ * @return array{0: Competition, 1: list<Entrant>, 2: array<string, string>} the
+ *                                                                           competition, the field in seed order, and entrant ULID => its member's user ULID
+ */
+function competitionFieldWithRosters(int $entrants, array $competitionAttributes = []): array
+{
+    $competition = Competition::factory()->create($competitionAttributes);
+
+    $field = [];
+    $members = [];
+
+    for ($seed = 1; $seed <= $entrants; $seed++) {
+        $team = CompetitionTeam::factory()->forEvent($competition->event_id)->create();
+
+        $userId = (string) Str::ulid();
+
+        $member = new CompetitionTeamMember([
+            'competition_team_id' => $team->getKey(),
+            'user_id' => $userId,
+            'role' => TeamRole::Captain,
+        ]);
+        $member->forceFill(['brand_id' => $team->brand_id])->save();
+
+        $entrant = Entrant::factory()->create([
+            'competition_id' => $competition->getKey(),
+            'competition_team_id' => $team->getKey(),
+            'seed' => $seed,
+        ]);
+
+        $field[] = $entrant;
+        $members[$entrant->getKey()] = $userId;
+    }
+
+    return [$competition, $field, $members];
+}
+
+/**
+ * A generated stage over a competition's field: the bracket, its slots and
+ * its progression graph, exactly as the desk would draw it.
+ */
+function competitionGeneratedStage(Competition $competition, string $format = 'single_elimination'): Stage
+{
+    $stage = Stage::factory()->format($format)->create(['competition_id' => $competition->getKey()]);
+
+    app(GenerateBracket::class)->handle($stage);
+
+    return $stage->refresh();
+}
+
+/**
+ * One match of a stage, by the coordinates the generator gave it.
+ */
+function competitionMatchAt(Stage $stage, int $round, int $position): CompetitionMatch
+{
+    /** @var CompetitionMatch $match */
+    $match = CompetitionMatch::query()
+        ->where('stage_id', $stage->getKey())
+        ->where('round', $round)
+        ->where('position', $position)
+        ->firstOrFail();
+
+    return $match;
+}
+
+/**
+ * A match's sides as `position => entrant ULID`, unfilled slots left out.
+ *
+ * Tests read the sides out rather than assuming which seed the generator put
+ * where: the seeding construction is `BracketMathematicsTest`'s subject, and a
+ * §8 test that hard-coded it would fail for the wrong reason if it ever
+ * changed.
+ *
+ * @return array<int, string>
+ */
+function competitionSidesOf(CompetitionMatch $match): array
+{
+    $sides = [];
+
+    foreach (MatchSlot::query()->where('competition_match_id', $match->getKey())->orderBy('position')->get() as $slot) {
+        if ($slot->entrant_id !== null) {
+            $sides[$slot->position] = (string) $slot->entrant_id;
+        }
+    }
+
+    return $sides;
 }

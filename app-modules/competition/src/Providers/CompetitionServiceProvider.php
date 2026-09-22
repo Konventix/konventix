@@ -204,7 +204,7 @@ class CompetitionServiceProvider extends ModuleServiceProvider
     }
 
     /**
-     * The two messages §5.4 owes people, and nothing else.
+     * The two messages §5.4 owes people, plus the one §8.2 does.
      *
      * Participant copy is German (ADR-0001) and so is the default locale;
      * the English bodies exist for an account whose locale says so.
@@ -246,6 +246,50 @@ class CompetitionServiceProvider extends ModuleServiceProvider
                 'competitionName' => 'Counter-Strike 2 — 5v5',
                 'teamName' => 'Die Kellerkinder',
                 'detail' => 'Die Orga hat dich für dieses Turnier ins Team aufgenommen.',
+            ],
+        ));
+
+        /*
+         * "…the other side is notified" (§8.2, step 1). Sent to every roster
+         * member of the opposing side rather than to its captain alone: the
+         * person who can confirm is whoever is sitting at a keyboard, and a
+         * match waiting on one absent captain is the stall this exists to
+         * avoid.
+         *
+         * The desk is *not* notified here, although §8.2 says it is told
+         * about a dispute. Competition keeps no list of who is on the desk —
+         * capabilities are per brand role (ADR-0013) and `SendMessage`
+         * addresses a person — so the desk hears about a dispute from its own
+         * screen and from §13's open-dispute alert. Recorded in the design's
+         * §14.
+         */
+        $registry->register(new MessageTemplate(
+            key: 'competition.result-reported',
+            subjects: [
+                'de' => 'Ergebnis gemeldet: {{ $competitionName }}',
+                'en' => 'A result was reported: {{ $competitionName }}',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Hallo,</p>
+                    <p>{{ $detail }}</p>
+                    <p>Turnier: <strong>{{ $competitionName }}</strong><br>
+                    Gegner: <strong>{{ $teamName }}</strong></p>
+                    <p>Unter „Meine Turniere" kannst du das Ergebnis bestaetigen oder widersprechen.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello,</p>
+                    <p>{{ $detail }}</p>
+                    <p>Tournament: <strong>{{ $competitionName }}</strong><br>
+                    Opponent: <strong>{{ $teamName }}</strong></p>
+                    <p>Confirm it or report your own result under "My tournaments".</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: [
+                'competitionName' => 'Counter-Strike 2 — 5v5',
+                'teamName' => 'Die Kellerkinder',
+                'detail' => 'Euer Gegner hat ein Ergebnis gemeldet.',
             ],
         ));
 

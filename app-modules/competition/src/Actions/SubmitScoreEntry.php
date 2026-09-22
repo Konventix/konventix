@@ -7,11 +7,13 @@ namespace Konventix\Competition\Actions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Konventix\Competition\Data\ScoreEntryData;
-use Konventix\Competition\Enums\ProofPolicy;
+use Konventix\Competition\Enums\ResultSubmissionMode;
+use Konventix\Competition\Exceptions\ResultSubmissionException;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\ScoreEntry;
 use Konventix\Competition\Models\Stage;
+use Konventix\Competition\Proofs\ProofGate;
 use RuntimeException;
 
 /**
@@ -46,11 +48,21 @@ use RuntimeException;
  * throw. A heat the stage does not have, and a missing proof where the
  * competition requires one, are things a person can get wrong on a form and
  * come back as field errors.
+ *
+ * **`desk_only` shuts the participant path entirely** (§8.1). The knob is
+ * "whether participants may report", and §8.3's score entry is a participant
+ * reporting a result; an organizer running a jury-scored contest who set
+ * `desk_only` should not find the verification queue filling with numbers
+ * typed by the competitors. The desk path (`asOrganizer`) is never refused —
+ * "the desk can always record" — and the refusal is here rather than only on
+ * the form, because a client that ignores the interface must still be turned
+ * away.
  */
 final class SubmitScoreEntry
 {
     public function __construct(
         private readonly CalculateStandings $standings,
+        private readonly ProofGate $proofs,
     ) {}
 
     public function handle(
@@ -61,9 +73,13 @@ final class SubmitScoreEntry
         bool $asOrganizer = false,
     ): ScoreEntry {
         return DB::transaction(function () use ($stage, $entrant, $data, $submittedByUserId, $asOrganizer): ScoreEntry {
+            $competition = $this->competitionOf($stage);
+
             $this->guardStage($stage, $entrant);
+            $this->guardSubmissionMode($competition, $asOrganizer);
             $this->guardHeat($stage, $data);
-            $this->guardProof($stage, $data);
+
+            $proofMediaId = $this->proofs->resolve($competition, $data->proofMediaId);
 
             $entry = $this->existing($stage, $entrant, $data->heat);
 
@@ -80,7 +96,7 @@ final class SubmitScoreEntry
                 'entrant_id' => $entrant->id,
                 'heat' => $data->heat,
                 'value' => $data->value,
-                'proof_media_id' => $data->proofMediaId,
+                'proof_media_id' => $proofMediaId,
                 'submitted_by_user_id' => $submittedByUserId,
                 'note' => $data->note,
                 // A replacement starts unverified again, whoever wrote it:
@@ -89,11 +105,18 @@ final class SubmitScoreEntry
                 // number it replaced.
                 'verified_at' => $asOrganizer ? now() : null,
                 'verified_by_user_id' => $asOrganizer ? $submittedByUserId : null,
+                // A new number is not the number that was turned down, so
+                // the rejection and its reason go with the old one (§8.3).
+                'rejected_at' => null,
+                'rejected_by_user_id' => null,
+                'rejection_note' => null,
             ]);
 
             // brand_id from the stage, not ambient context (ADR-0010): the
             // desk runs on the operator host, where no brand resolves.
             $entry->forceFill(['brand_id' => $stage->brand_id])->save();
+
+            $this->proofs->recordUsage($proofMediaId, $stage->brand_id, 'score_entry', $entry->id);
 
             if ($entry->isVerified()) {
                 $this->standings->handle($stage);
@@ -159,25 +182,30 @@ final class SubmitScoreEntry
         ]);
     }
 
-    private function guardProof(Stage $stage, ScoreEntryData $data): void
+    /**
+     * The competition behind the stage. Null where the row is gone, which
+     * `ProofGate` reads as "no policy to apply" rather than as a reason to
+     * refuse a score somebody played for.
+     */
+    private function competitionOf(Stage $stage): ?Competition
     {
         /** @var Competition|null $competition */
         $competition = Competition::withoutBrandScope()->whereKey($stage->competition_id)->first();
 
-        // `??` already isolates a null competition; `?->` on its left is
-        // redundant and phpstan says so.
-        $policy = $competition->proof_policy ?? ProofPolicy::Optional;
+        return $competition;
+    }
 
-        if ($policy === ProofPolicy::Required && $data->proofMediaId === null) {
-            throw ValidationException::withMessages([
-                'proofMediaId' => __('This competition needs a proof image with every score.'),
-            ]);
+    /**
+     * §8.1's first knob (see the class note). The desk is never refused.
+     */
+    private function guardSubmissionMode(?Competition $competition, bool $asOrganizer): void
+    {
+        if ($asOrganizer || $competition === null) {
+            return;
         }
 
-        if ($policy === ProofPolicy::None && $data->proofMediaId !== null) {
-            throw ValidationException::withMessages([
-                'proofMediaId' => __('This competition does not take proof images.'),
-            ]);
+        if ($competition->result_submission_mode !== ResultSubmissionMode::Participants) {
+            throw ResultSubmissionException::deskOnly($competition->id);
         }
     }
 }
