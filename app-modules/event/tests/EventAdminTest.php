@@ -315,3 +315,69 @@ it('offers the shoutbox desk only to a brand that has Community on', function ()
         ->get("http://admin.eventsadmin.test/admin/events/{$event->id}")
         ->assertInertia(fn (AssertableInertia $page) => $page->where('modules.community', true));
 });
+
+// #309: the legacy slug is saved from the edit form and handed back to it;
+// within the brand, slugs and legacy slugs are one namespace, so every
+// collision between the two columns is a form error on the field that
+// collides.
+it('saves a legacy slug and hands it back to the editor', function (): void {
+    [$admin, $event, $payload] = eventsAdminEditable();
+
+    $this->actingAs($admin)
+        ->put("http://admin.eventsadmin.test/admin/events/{$event->id}", [...$payload, 'legacySlug' => 'sxlan-2026'])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect($event->fresh()->legacy_slug)->toBe('sxlan-2026');
+
+    $this->actingAs($admin)
+        ->get("http://admin.eventsadmin.test/admin/events/{$event->id}/edit")
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('event.legacySlug', 'sxlan-2026'));
+});
+
+it("refuses a legacy slug equal to another event's slug", function (): void {
+    [$admin, $event, $payload] = eventsAdminEditable();
+    Event::factory()->create(['slug' => 'sxlan-26']);
+
+    $this->actingAs($admin)
+        ->from("http://admin.eventsadmin.test/admin/events/{$event->id}/edit")
+        ->put("http://admin.eventsadmin.test/admin/events/{$event->id}", [...$payload, 'legacySlug' => 'sxlan-26'])
+        ->assertSessionHasErrors('legacySlug');
+
+    expect($event->fresh()->legacy_slug)->toBeNull();
+});
+
+it("refuses a legacy slug equal to another event's legacy slug", function (): void {
+    [$admin, $event, $payload] = eventsAdminEditable();
+    Event::factory()->create(['slug' => 'sxlan-26', 'legacy_slug' => 'sxlan-2026']);
+
+    $this->actingAs($admin)
+        ->from("http://admin.eventsadmin.test/admin/events/{$event->id}/edit")
+        ->put("http://admin.eventsadmin.test/admin/events/{$event->id}", [...$payload, 'legacySlug' => 'sxlan-2026'])
+        ->assertSessionHasErrors('legacySlug');
+
+    expect($event->fresh()->legacy_slug)->toBeNull();
+});
+
+it("refuses a legacy slug equal to the event's own slug", function (): void {
+    [$admin, $event, $payload] = eventsAdminEditable();
+
+    $this->actingAs($admin)
+        ->from("http://admin.eventsadmin.test/admin/events/{$event->id}/edit")
+        ->put("http://admin.eventsadmin.test/admin/events/{$event->id}", [...$payload, 'legacySlug' => $event->slug])
+        ->assertSessionHasErrors('legacySlug');
+
+    expect($event->fresh()->legacy_slug)->toBeNull();
+});
+
+it("refuses a slug equal to another event's legacy slug", function (): void {
+    [$admin, $event, $payload] = eventsAdminEditable();
+    Event::factory()->create(['slug' => 'sxlan-26', 'legacy_slug' => 'sxlan-2026']);
+
+    $this->actingAs($admin)
+        ->from("http://admin.eventsadmin.test/admin/events/{$event->id}/edit")
+        ->put("http://admin.eventsadmin.test/admin/events/{$event->id}", [...$payload, 'slug' => 'sxlan-2026'])
+        ->assertSessionHasErrors('slug');
+
+    expect($event->fresh()->slug)->toBe($payload['slug']);
+});

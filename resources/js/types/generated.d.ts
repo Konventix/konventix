@@ -836,6 +836,7 @@ declare namespace Konventix {
                 readonly predecessorEventId: string | null;
                 readonly bannerMediaId: string | null;
                 readonly attendeeListVisibility: Konventix.Event.Enums.AttendeeListVisibility;
+                readonly legacySlug: string | null;
             };
             export type HubLayoutEntryData = {
                 readonly key: string;

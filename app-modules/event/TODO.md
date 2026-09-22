@@ -30,6 +30,16 @@
 
 ## Done
 
+- [x] Legacy slug for the cutover (#309). `events.legacy_slug`, nullable,
+      unique per brand; `Actions\Concerns\GuardsEventSlugs` makes `slug` and
+      `legacy_slug` one namespace per brand (a legacy slug never equals any
+      event's slug, its own included, nor another's legacy slug, and a slug
+      never equals another event's legacy slug). `GET /events/{slug}` for a
+      slug nobody carries 301s onto the canonical URL through the route's
+      `missing()` hook (query string kept, hidden events still 404). Edit
+      form field "Legacy slug (redirect)". Only the landing route; the old
+      system's other paths are not redirected.
+
 - [x] The live hub's per-event half (0.9.0 sub-project A, design 2026-09-22,
       tasks 1, 11 and 12). `event_days.day_ends_at` (`HH:MM`, nullable,
       default 00:00 of the next day) in the days editor and on

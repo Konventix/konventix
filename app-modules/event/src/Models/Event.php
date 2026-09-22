@@ -34,6 +34,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $brand_id
  * @property string $name
  * @property string $slug
+ * @property string|null $legacy_slug
  * @property string|null $description
  * @property string|null $banner_media_id
  * @property Carbon $starts_at
@@ -62,6 +63,7 @@ class Event extends Model
     protected $fillable = [
         'name',
         'slug',
+        'legacy_slug',
         'description',
         'banner_media_id',
         'starts_at',

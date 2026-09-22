@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Konventix\Event\Http\Controllers;
 
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Carbon;
 use Inertia\Inertia;
@@ -84,6 +86,27 @@ final class EventLandingController
             'timezone' => $event->timezone,
             'venue' => $primary?->city,
         ];
+    }
+
+    /**
+     * `GET /events/{slug}` for a slug no event of this brand carries (#309):
+     * when an event holds it as its `legacy_slug`, answer 301 onto that
+     * event's canonical URL so old links and search engines move over;
+     * otherwise the same 404 the binding would have given. A hidden event
+     * 404s here too, so the redirect never reveals a slug `show()` would
+     * not render. Brand scoping is the ambient `BrandScope`, as for the
+     * binding itself; the query string rides along.
+     */
+    public function redirectLegacySlug(Request $request): RedirectResponse
+    {
+        $event = Event::query()->where('legacy_slug', (string) $request->route('event'))->first();
+
+        abort_if($event === null || ! $event->isVisibleOnLanding(), 404);
+
+        $query = $request->getQueryString();
+        $target = route('event.show', ['event' => $event->slug]).($query === null ? '' : '?'.$query);
+
+        return redirect()->to($target, 301);
     }
 
     public function show(Event $event, MediaLibrary $media): Response

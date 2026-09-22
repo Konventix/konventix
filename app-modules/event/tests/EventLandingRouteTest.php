@@ -81,3 +81,55 @@ it('hands the landing page the banner, and null when there is none or it no long
     $this->get('/events/'.$stale->slug)
         ->assertInertia(fn ($page) => $page->where('event.bannerUrl', null));
 });
+
+// #309: an event keeps the slug an older system published it under, and the
+// old link answers 301 onto the canonical URL rather than serving the page
+// twice. The canonical slug still renders; a slug nobody carries still 404s.
+it('answers a legacy slug with a 301 onto the canonical slug, and the canonical slug with the page', function (): void {
+    $this->withBrand();
+
+    Event::factory()->published()->create(['slug' => 'sxlan-26', 'legacy_slug' => 'sxlan-2026']);
+
+    $this->get('/events/sxlan-2026')
+        ->assertStatus(301)
+        ->assertRedirect('/events/sxlan-26');
+
+    $this->get('/events/sxlan-26')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->component('event/Landing'));
+});
+
+it('keeps the query string on the legacy redirect', function (): void {
+    $this->withBrand();
+
+    Event::factory()->published()->create(['slug' => 'sxlan-26', 'legacy_slug' => 'sxlan-2026']);
+
+    $this->get('/events/sxlan-2026?utm_source=newsletter')
+        ->assertStatus(301)
+        ->assertRedirect('/events/sxlan-26?utm_source=newsletter');
+});
+
+it('behaves as before for an event without a legacy slug', function (): void {
+    $this->withBrand();
+
+    $event = Event::factory()->published()->create(['slug' => 'sxlan-26']);
+
+    expect($event->legacy_slug)->toBeNull();
+
+    $this->get('/events/sxlan-26')->assertOk();
+    $this->get('/events/sxlan-2026')->assertNotFound();
+});
+
+it('404s a legacy slug whose event the landing page would not show, and one of another brand', function (): void {
+    $this->withBrand();
+
+    // A draft with public visibility: `show()` 404s it, so the redirect
+    // must not reveal its canonical slug either.
+    Event::factory()->create(['slug' => 'draft-26', 'legacy_slug' => 'draft-2026']);
+    Event::factory()->published()->create(['slug' => 'sxlan-26', 'legacy_slug' => 'sxlan-2026']);
+
+    Brand::factory()->withDomain('other-legacy.test')->create();
+
+    $this->get('/events/draft-2026')->assertNotFound();
+    $this->get('http://other-legacy.test/events/sxlan-2026')->assertNotFound();
+});

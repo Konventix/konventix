@@ -6,6 +6,7 @@ namespace Konventix\Event\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Konventix\Event\Actions\Concerns\GuardsEventSlugs;
 use Konventix\Event\Data\EventData;
 use Konventix\Event\Events\EventAttendeeListPolicyChanged;
 use Konventix\Event\Events\EventCreated;
@@ -25,6 +26,8 @@ use Konventix\Platform\Media\MediaLibrary;
  */
 final class CreateEvent
 {
+    use GuardsEventSlugs;
+
     public function __construct(
         private readonly SyncEventDays $syncEventDays,
         private readonly MediaLibrary $media,
@@ -36,12 +39,13 @@ final class CreateEvent
     public function handle(string $brandId, EventData $data, array $days = []): Event
     {
         return DB::transaction(function () use ($brandId, $data, $days): Event {
-            $this->guardSlugUnique($brandId, $data->slug);
+            $this->guardSlugs($brandId, $data->slug, $data->legacySlug);
             $this->guardOwnedBanner($brandId, $data->bannerMediaId);
 
             $event = new Event([
                 'name' => $data->name,
                 'slug' => $data->slug,
+                'legacy_slug' => $data->legacySlug,
                 'description' => $data->description,
                 'banner_media_id' => $data->bannerMediaId,
                 'starts_at' => $data->startsAt,
@@ -106,20 +110,6 @@ final class CreateEvent
         if ($mediaId !== null && ! $this->media->belongsToBrand($mediaId, $brandId)) {
             throw ValidationException::withMessages([
                 'bannerMediaId' => __('That file belongs to a different brand.'),
-            ]);
-        }
-    }
-
-    private function guardSlugUnique(string $brandId, string $slug): void
-    {
-        $taken = Event::withoutBrandScope()
-            ->where('brand_id', $brandId)
-            ->where('slug', $slug)
-            ->exists();
-
-        if ($taken) {
-            throw ValidationException::withMessages([
-                'slug' => __('This slug is already used by another event of this brand.'),
             ]);
         }
     }

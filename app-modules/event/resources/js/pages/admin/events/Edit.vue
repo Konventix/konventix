@@ -40,6 +40,8 @@ type Props = {
         state: string;
         name: string;
         slug: string;
+        /** #309: the old system's slug, answered with a 301 onto `slug`. */
+        legacySlug: string | null;
         description: string | null;
         startsAt: string;
         endsAt: string;
@@ -69,6 +71,7 @@ const { canManageMedia } = useAdminCapabilities();
 const form = useForm({
     name: props.event.name,
     slug: props.event.slug,
+    legacySlug: props.event.legacySlug,
     description: props.event.description,
     startsAt: props.event.startsAt,
     endsAt: props.event.endsAt,
@@ -219,6 +222,26 @@ function promoteVenue(venueId: string): void {
                             <Input id="edit-slug" v-model="form.slug" />
                             <InputError :message="form.errors.slug" />
                         </div>
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="edit-legacy-slug">
+                            Legacy slug (redirect)
+                        </Label>
+                        <Input
+                            id="edit-legacy-slug"
+                            v-model="form.legacySlug"
+                            aria-describedby="edit-legacy-slug-hint"
+                        />
+                        <p
+                            id="edit-legacy-slug-hint"
+                            class="text-xs text-text-muted"
+                        >
+                            Optional. The slug a previous system published this
+                            event under: /events/&lt;legacy slug&gt; redirects
+                            permanently to this event's page. It must not match
+                            any event's slug or another event's legacy slug.
+                        </p>
+                        <InputError :message="form.errors.legacySlug" />
                     </div>
                     <div class="grid gap-2">
                         <Label for="edit-description">Description</Label>

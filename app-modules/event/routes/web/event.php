@@ -15,6 +15,8 @@ declare(strict_types=1);
  * never register these routes from routes/web.php.
  */
 
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Konventix\Event\Http\Controllers\EventLandingController;
 use Konventix\Event\Http\Controllers\VenueLandingController;
@@ -33,8 +35,14 @@ Route::get('/events', [EventLandingController::class, 'index'])
 // display convenience for the one public route, not a second key. Brand
 // scoping comes from `BelongsToBrand`'s global scope, already in effect by
 // the time implicit binding runs.
+//
+// A slug no event carries may still be an event's legacy slug (#309): the
+// `missing()` hook runs only when the binding found nothing, and answers
+// 301 onto the canonical URL instead of the 404. Only this route: the old
+// system's other paths are out of the issue's scope.
 Route::get('/events/{event:slug}', [EventLandingController::class, 'show'])
-    ->name('event.show');
+    ->name('event.show')
+    ->missing(fn (Request $request): RedirectResponse => app(EventLandingController::class)->redirectLegacySlug($request));
 
 // The event's calendar file (spec §6.2): public, no authentication, the
 // same visibility rule `show()` enforces. `.ics` sits in the URI itself,

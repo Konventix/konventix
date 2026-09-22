@@ -62,6 +62,14 @@ final class EventData extends Data
         public readonly ?string $bannerMediaId = null,
         /** ADR-0064 §1: the per-event attendee-list switch; `Off` when the form does not say. */
         public readonly AttendeeListVisibility $attendeeListVisibility = AttendeeListVisibility::Off,
+        /**
+         * #309: the slug an older system published this event under;
+         * `/events/{legacySlug}` answers 301 onto the canonical `slug`.
+         * Null for none. The Actions refuse a collision with any event's
+         * `slug` or another event's `legacySlug` in the brand.
+         */
+        #[Nullable, StringType, Max(255), Regex('/^[a-z0-9]+(-[a-z0-9]+)*$/')]
+        public readonly ?string $legacySlug = null,
     ) {}
 
     /**
@@ -96,6 +104,7 @@ final class EventData extends Data
             predecessorEventId: $event->predecessor_event_id,
             bannerMediaId: $event->banner_media_id,
             attendeeListVisibility: $event->attendee_list_visibility,
+            legacySlug: $event->legacy_slug,
         );
     }
 }

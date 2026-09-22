@@ -6,6 +6,7 @@ namespace Konventix\Event\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Konventix\Event\Actions\Concerns\GuardsEventSlugs;
 use Konventix\Event\Data\EventData;
 use Konventix\Event\Events\EventAttendeeListPolicyChanged;
 use Konventix\Event\Events\EventDetailsUpdated;
@@ -22,12 +23,14 @@ use Konventix\Platform\Media\MediaLibrary;
  */
 final class UpdateEventDetails
 {
+    use GuardsEventSlugs;
+
     public function __construct(private readonly MediaLibrary $media) {}
 
     public function handle(Event $event, EventData $data): Event
     {
         return DB::transaction(function () use ($event, $data): Event {
-            $this->guardSlugUnique($event, $data->slug);
+            $this->guardSlugs($event->brand_id, $data->slug, $data->legacySlug, $event->id);
             $this->guardOwnedBanner($event->brand_id, $data->bannerMediaId);
 
             $previousBanner = $event->banner_media_id;
@@ -42,6 +45,7 @@ final class UpdateEventDetails
             $event->forceFill([
                 'name' => $data->name,
                 'slug' => $data->slug,
+                'legacy_slug' => $data->legacySlug,
                 'description' => $data->description,
                 'banner_media_id' => $data->bannerMediaId,
                 'starts_at' => $data->startsAt,
@@ -128,21 +132,6 @@ final class UpdateEventDetails
         if ($mediaId !== null && ! $this->media->belongsToBrand($mediaId, $brandId)) {
             throw ValidationException::withMessages([
                 'bannerMediaId' => __('That file belongs to a different brand.'),
-            ]);
-        }
-    }
-
-    private function guardSlugUnique(Event $event, string $slug): void
-    {
-        $taken = Event::withoutBrandScope()
-            ->where('brand_id', $event->brand_id)
-            ->where('slug', $slug)
-            ->whereKeyNot($event->id)
-            ->exists();
-
-        if ($taken) {
-            throw ValidationException::withMessages([
-                'slug' => __('This slug is already used by another event of this brand.'),
             ]);
         }
     }
