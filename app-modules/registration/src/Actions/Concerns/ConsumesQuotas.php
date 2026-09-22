@@ -35,6 +35,9 @@ trait ConsumesQuotas
 {
     private function consumeQuotas(RegistrationType $registrationType, int $units = 1): void
     {
+        // In `quotas.id` order, declared on `RegistrationType::quotas()`
+        // (#233): two concurrent submissions on two types sharing two
+        // quotas used to lock them in opposite pivot-scan orders.
         /** @var Collection<int, Quota> $quotas */
         $quotas = $registrationType->quotas()->lockForUpdate()->get();
 

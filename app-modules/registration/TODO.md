@@ -122,6 +122,15 @@
       name beside — never around — the row's own link. `EventOffers.vue`
       stays unlinked on purpose: it renders on the event's landing page and
       inside the `tickets-for-event` block, which names its event itself.
+- [x] #233 — every quota lock takes its rows in `quotas.id` order (release
+      0.8.1, Task 3, Commerce owns the rest of the issue). The order is
+      declared on `RegistrationType::quotas()`, not at the call sites:
+      `ConsumesQuotas`, `ReleasesQuotas`, `SubmitRegistration::guardQuantity()`,
+      `ReduceRegistrationQuantity`, `PromoteFromWaitlist` and
+      `ExpireWaitlistOffers` all inherit it, and so does whatever takes the
+      lock next. Unordered, two concurrent submissions on two types sharing
+      two quotas locked them in opposite pivot-scan orders and deadlocked.
+      `QuotaLockOrderTest`.
 - [x] #234 / D-COM-20 — one end price on every public surface (round 4,
       Task 21): `PublicOfferData` and `RegistrationFormData` carry
       `endPrice` (`Platform\Data\EndPriceData`), computed by

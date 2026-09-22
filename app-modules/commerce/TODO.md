@@ -269,9 +269,30 @@
       are told when either horizon releases an order. Unzer still cannot be
       asked about a pending Paypage — its `external_id` is a Paypage id and
       the API takes a payment id — so those orders are cancelled as before.
-- [ ] #233 — `cart_lines` deadlock risk: an FK `KEY SHARE` → `NO KEY UPDATE`
-      lock escalation on `carts` at four sites, plus two unordered
-      multi-row lock sites. Filed, code untouched.
+- [x] #233 — the cart writes take their locks in one order (release 0.8.1,
+      Task 3): `Actions\Concerns\LocksTheCartBeforeItsLines` is the one
+      place that locks the parent `carts` row, and
+      `PlaceRegistrationLineInCart`, `AddProductToCart`,
+      `ChangeCartLineQuantity` and `RemoveCartLine` call it inside their own
+      transaction before the first `cart_lines` write — the FK's
+      `KEY SHARE` → `NO KEY UPDATE` escalation `touchExpiry()` used to force
+      is gone. `ExpireCarts::releaseCartLines()` reads the lines in
+      `position` order (the order `Cart::lines()` declares, which its raw
+      query bypassed) and locks every variant in one pass in key order.
+      Registration's side is one `orderBy('quotas.id')` on
+      `RegistrationType::quotas()`, which every lock taker inherits.
+      `CartLockOrderTest`, `QuotaLockOrderTest`.
+- [ ] The sweep and the shop take `carts` and `product_variants` in opposite
+      orders (noticed while fixing #233, left alone in a patch release):
+      `AddProductToCart`, `ChangeCartLineQuantity` and `RemoveCartLine` lock
+      the variant and then the cart, `ExpireCarts` locks the cart and then
+      the variants its lines name — it cannot know which variants those are
+      until it has read the lines under the cart's own lock. The window is
+      narrow (the sweep only touches a cart whose `expires_at` has passed,
+      which is the moment the shopper is least likely to be writing) and
+      closing it means splitting the sweep into an unlocked read, a sorted
+      variant lock and a re-read under the cart lock. Worth doing when the
+      sweep is next opened; not worth a behaviour change in 0.8.1.
 - [ ] PlaceRegistrationLineInCart's read-then-insert can lose a race to cart_lines_request_key_unique and throw a QueryException out of a listener, the same shape PlaceOrderFromSettlementRequest carries. The 2026-08-27 rush never surfaced it (0 × 5xx across 754 arrivals), so this stays a converge-on-conflict cleanup — catch the violation and re-read the line the winner created, as OpenCart::for() already does.
 - [ ] The reversal mail still sends a cart order the neutral interim text
       rather than a pay link, though the link works since #186 — see

@@ -156,11 +156,28 @@ class RegistrationType extends Model
     }
 
     /**
+     * The quotas this type draws on, **in primary-key order** (#233).
+     *
+     * The order is declared here rather than at each call site because the
+     * callers are lock takers: `ConsumesQuotas`, `ReleasesQuotas`,
+     * `SubmitRegistration::guardQuantity()`, `ReduceRegistrationQuantity`,
+     * `PromoteFromWaitlist` and `ExpireWaitlistOffers` all run
+     * `->quotas()->lockForUpdate()->get()`. Unordered, Postgres hands the
+     * rows back in pivot-scan order, which differs per type — so two
+     * concurrent submissions on two types that share the same two quotas
+     * locked them in opposite orders and deadlocked. One `orderBy` on the
+     * relation is one place to get it right; six at the call sites is six
+     * places to forget it, and the next one would not be reviewed against
+     * this bug at all.
+     *
+     * Ascending `quotas.id` (a ULID) is a total order over every quota in
+     * the database, so it holds across types and not merely within one.
+     *
      * @return BelongsToMany<Quota, $this>
      */
     public function quotas(): BelongsToMany
     {
-        return $this->belongsToMany(Quota::class, 'registration_type_quota');
+        return $this->belongsToMany(Quota::class, 'registration_type_quota')->orderBy('quotas.id');
     }
 
     /**

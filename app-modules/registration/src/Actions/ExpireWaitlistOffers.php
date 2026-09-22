@@ -40,6 +40,7 @@ final class ExpireWaitlistOffers
                 // query, not just the type's (#236 fix round 1): this runs
                 // from a console command with no brand in context, where a
                 // relation call would read an empty set and release nothing.
+                // Locked in the relation's own `quotas.id` order (#233).
                 $quotas = $entry->registrationType()->withoutGlobalScopes()->firstOrFail()
                     ->quotas()->withoutGlobalScope(BrandScope::class)->lockForUpdate()->get();
 

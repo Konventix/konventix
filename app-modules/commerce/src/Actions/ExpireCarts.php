@@ -246,23 +246,50 @@ final class ExpireCarts
      * Shared by both passes: a product line's stock is released silently;
      * a registration line emits `CartLineExpired` so Registration can
      * cancel the still-pending registration it was holding.
+     *
+     * **Both reads are ordered (#233).** The lines come back in `position`
+     * order, the one `Cart::lines()` declares — this raw query bypasses the
+     * relation (`withoutBrandScope()`, the sweep runs with no brand in
+     * context) and used to take whatever order the heap happened to hand
+     * back, which made the events it emits and the locks it takes depend on
+     * physical row placement. The variants are then locked in one pass in
+     * primary-key order, not in line order: two carts holding the same two
+     * variants at opposite positions would otherwise lock them in opposite
+     * orders and block each other.
      */
     private function releaseCartLines(Cart $cart): void
     {
         /** @var list<CartLine> $lines */
         $lines = CartLine::withoutBrandScope()
             ->where('cart_id', $cart->getKey())
+            ->orderBy('position')
             ->get()
             ->all();
 
+        $variantIds = array_values(array_unique(array_map(
+            static fn (CartLine $line): string => $line->ref_id,
+            array_filter($lines, static fn (CartLine $line): bool => $line->kind === CartLineKind::Product),
+        )));
+        sort($variantIds);
+
+        /** @var array<string, ProductVariant> $variants */
+        $variants = [];
+
+        if ($variantIds !== []) {
+            $locked = ProductVariant::withoutBrandScope()
+                ->whereKey($variantIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($locked as $variant) {
+                $variants[$variant->getKey()] = $variant;
+            }
+        }
+
         foreach ($lines as $line) {
             if ($line->kind === CartLineKind::Product) {
-                $locked = ProductVariant::withoutBrandScope()
-                    ->whereKey($line->ref_id)
-                    ->lockForUpdate()
-                    ->first();
-
-                $locked?->releaseStock($line->quantity);
+                ($variants[$line->ref_id] ?? null)?->releaseStock($line->quantity);
 
                 continue;
             }

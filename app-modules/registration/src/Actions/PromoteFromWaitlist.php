@@ -79,6 +79,7 @@ final class PromoteFromWaitlist
             // the reason above: escaping it on the type alone would have held
             // *zero* quotas here, passed the capacity check vacuously and
             // promoted an entry without consuming anything (#236).
+            // Locked in the relation's own `quotas.id` order (#233).
             $quotas = $entry->registrationType()->withoutGlobalScopes()->firstOrFail()
                 ->quotas()->withoutGlobalScope(BrandScope::class)->lockForUpdate()->get();
 

@@ -7,6 +7,7 @@ namespace Konventix\Commerce\Actions;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Konventix\Commerce\Actions\Concerns\LocksTheCartBeforeItsLines;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Events\RegistrationLinePlacedInCart;
 use Konventix\Commerce\Exceptions\SaleWindowClosedException;
@@ -81,6 +82,8 @@ use Konventix\Commerce\Models\CartLine;
  */
 final class PlaceRegistrationLineInCart
 {
+    use LocksTheCartBeforeItsLines;
+
     /**
      * @param  list<array{label: string, quantity: int, unit_amount_net: numeric-string, tax_class: string}>  $lines
      * @param  array<string, mixed>  $bindingContext  opaque scalars from the request, stored and never read (ADR-0066 D-CPL-06)
@@ -113,6 +116,12 @@ final class PlaceRegistrationLineInCart
         $this->guardSaleWindow($registrationId, $saleStartsAt, $saleEndsAt);
 
         $cartLine = DB::transaction(function () use ($cart, $registrationId, $requestKey, $lines, $saleStartsAt, $saleEndsAt, $bindingContext): CartLine {
+            // The parent row first, before anything writes `cart_lines`
+            // (#233): `OpenCart::for()` above ran outside this transaction,
+            // so two concurrent settlement requests of one buyer are both
+            // holding this same cart.
+            $this->lockCart($cart->getKey());
+
             $first = $lines[0];
 
             // One quantity for the whole line, and only when every request

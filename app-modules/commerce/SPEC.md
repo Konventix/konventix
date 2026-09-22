@@ -80,6 +80,21 @@ BaFin/ZAG licensing.
   the checkout multiplies — but the registration holds exactly that many
   quota units, so changing the number here would move the money without
   moving the hold.
+  **One lock order for every cart write** (#233,
+  `Actions\Concerns\LocksTheCartBeforeItsLines`): the `ProductVariant` row
+  where there is one, then the `carts` row, then the `cart_lines` writes.
+  `PlaceRegistrationLineInCart`, `AddProductToCart`,
+  `ChangeCartLineQuantity` and `RemoveCartLine` all take the parent lock
+  inside their own transaction, before the first child write — on Postgres
+  the foreign key makes every `cart_lines` write take `FOR KEY SHARE` on the
+  parent and `touchExpiry()` then asks the same row for `FOR NO KEY UPDATE`,
+  so two concurrent writes on one cart each held a share the other's
+  escalation waited for. `OpenCart::for()` runs outside the transaction, so
+  two settlement requests of one buyer really do arrive on the same row.
+  The sweep's own order is the opposite pair — the cart first, then the
+  variants its lines name, which it cannot know before it has read them —
+  and it locks those variants in one pass in `product_variants.id` order,
+  after reading the lines in `position` order.
   **The sweep** (`commerce:expire-carts`, scheduled every fifteen minutes
   with `->withoutOverlapping()`, mirroring
   `Registration\Actions\ExpireWaitlistOffers`) is two passes over the same

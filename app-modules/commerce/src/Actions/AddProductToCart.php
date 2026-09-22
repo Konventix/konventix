@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Commerce\Actions\Concerns\LocksTheCartBeforeItsLines;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Events\StockExhausted;
 use Konventix\Commerce\Exceptions\StockExhaustedException;
@@ -28,6 +29,8 @@ use Konventix\Commerce\Models\ProductVariant;
  */
 final class AddProductToCart
 {
+    use LocksTheCartBeforeItsLines;
+
     public function handle(Cart $cart, ProductVariant $variant, int $quantity): CartLine
     {
         return DB::transaction(function () use ($cart, $variant, $quantity): CartLine {
@@ -42,6 +45,14 @@ final class AddProductToCart
             }
 
             $locked->consumeStock($quantity);
+
+            // The cart row after the variant and before the first
+            // `cart_lines` write (#233): `product_variants`, then `carts`,
+            // then the line. The FK on `cart_lines` used to take the weaker
+            // share lock on this row first and `touchExpiry()` below had to
+            // raise it, which is the escalation two concurrent adds
+            // deadlocked on.
+            $this->lockCart($cart->getKey());
 
             $line = CartLine::query()
                 ->where('cart_id', $cart->getKey())

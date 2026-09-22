@@ -122,6 +122,11 @@ is entitled to what*; other modules materialize those entitlements.
   Resources seat category — a plain ULID, no FK (ADR-0014) — set on the quota
   form so one quota can be a category's ceiling: `AdjustQuotaOnPlaceSupplyChanged`
   is the only reader.
+  **Every quota lock is taken in `quotas.id` order** (#233), declared once on
+  `RegistrationType::quotas()` rather than at each of the six call sites that
+  run `->quotas()->lockForUpdate()->get()`. Unordered, the rows came back in
+  pivot-scan order, which differs per type: two concurrent submissions on two
+  types sharing two quotas locked them in opposite orders and deadlocked.
 - **The approval workflow** — submission, review, approval, rejection, and the
   record of who decided what and when.
 - **Grant definitions** — how many admissions of which role, which resource

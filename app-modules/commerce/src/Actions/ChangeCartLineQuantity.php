@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Commerce\Actions\Concerns\LocksTheCartBeforeItsLines;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Events\StockExhausted;
 use Konventix\Commerce\Exceptions\StockExhaustedException;
@@ -22,6 +23,8 @@ use LogicException;
  */
 final class ChangeCartLineQuantity
 {
+    use LocksTheCartBeforeItsLines;
+
     public function handle(CartLine $line, int $quantity): CartLine
     {
         if ($line->kind !== CartLineKind::Product) {
@@ -33,6 +36,13 @@ final class ChangeCartLineQuantity
                 ->whereKey($line->ref_id)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            // The cart row after the variant and before the line is
+            // written (#233): `product_variants`, then `carts`, then
+            // `cart_lines`. `$line->cart->touchExpiry()` below writes this
+            // same row, and the FK on the update below would otherwise take
+            // the weaker share lock on it first.
+            $this->lockCart($line->cart_id);
 
             $delta = $quantity - $line->quantity;
 

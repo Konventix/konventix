@@ -35,6 +35,8 @@ trait ReleasesQuotas
 
     private function releaseQuotas(Registration $registration): void
     {
+        // Locked in the relation's own `quotas.id` order (#233).
+        //
         // Explicit load: Model::shouldBeStrict() (non-production) forbids
         // lazy-loading an unloaded relation through the magic property, and
         // a caller here only ever has the registration's ID. The type is
