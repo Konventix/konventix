@@ -13,6 +13,7 @@ use Konventix\Community\Actions\RemoveMessage;
 use Konventix\Community\Data\PostMessageData;
 use Konventix\Community\Models\EventPresence;
 use Konventix\Community\Models\Message;
+use Konventix\Community\Models\MessageReport;
 use Konventix\Community\Models\Room;
 use Konventix\Event\Events\EventConcluded;
 use Konventix\Identity\Models\User;
@@ -82,15 +83,23 @@ function shoutboxActivationAdmitted(string $brandId, string $eventId): User
 it('has no routes and no card for a brand with community off, and the hub still renders', function (): void {
     $brand = $this->withBrand();
 
+    Exceptions::fake();
+
     $eventId = (string) Str::ulid();
     $ada = shoutboxActivationAdmitted($brand->getKey(), $eventId);
+
+    // A real line in this event's room, left from when the module was on:
+    // with the module on, reporting it answers 204, so the 404 below is the
+    // gate's and not a message that does not exist.
+    $room = Room::factory()->create(['subject_id' => $eventId]);
+    $line = Message::factory()->for($room)->create();
 
     // Admitted, so everything below is refused for the module and not for
     // the person — a stranger would see the same 404s for another reason.
     $this->actingAs($ada)->get('/live/shoutbox')->assertNotFound();
-    $this->actingAs($ada)->getJson('/live/shoutbox/messages?after='.Str::ulid())->assertNotFound();
+    $this->actingAs($ada)->getJson('/live/shoutbox/messages?after='.$line->id)->assertNotFound();
     $this->actingAs($ada)->postJson('/live/shoutbox/messages', ['body' => 'Hallo?'])->assertNotFound();
-    $this->actingAs($ada)->postJson('/live/shoutbox/messages/'.Str::ulid().'/report', [])->assertNotFound();
+    $this->actingAs($ada)->postJson("/live/shoutbox/messages/{$line->id}/report", [])->assertNotFound();
     $this->actingAs($ada)->postJson('/live/shoutbox/presence', ['status' => 'online'])->assertNotFound();
     $this->actingAs($ada)->deleteJson('/live/shoutbox/presence')->assertNotFound();
 
@@ -103,8 +112,20 @@ it('has no routes and no card for a brand with community off, and the hub still 
     });
 
     expect($keys)->not->toContain('community.shoutbox')
-        ->and(Room::withoutBrandScope()->count())->toBe(0)
-        ->and(Message::withoutBrandScope()->count())->toBe(0);
+        ->and(Room::withoutBrandScope()->count())->toBe(1)
+        ->and(Message::withoutBrandScope()->count())->toBe(1)
+        ->and(MessageReport::withoutBrandScope()->count())->toBe(0);
+
+    // "No errors": every refusal above was the gate's quiet 404, and the
+    // hub rendered without anything thrown and swallowed on the way.
+    Exceptions::assertNothingReported();
+
+    // The discriminator: the same report on the same line, module on.
+    $this->activateModule('community', $brand);
+
+    $this->actingAs($ada)->postJson("/live/shoutbox/messages/{$line->id}/report", [])->assertNoContent();
+
+    expect(MessageReport::withoutBrandScope()->where('message_id', $line->id)->count())->toBe(1);
 });
 
 /**
