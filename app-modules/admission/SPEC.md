@@ -220,6 +220,7 @@ maintains from them.
 
 | Event | Owning module | Why |
 |---|---|---|
+| `BrandCreated` | Platform | A brand can issue tickets from its first minute (#287): `MintEntranceSigningKeyOnBrandCreated` mints the brand's Ed25519 entrance signing key (ADR-0033) if it has none that can still sign. Without one `IssueAdmissionToken` refuses to sign at all, so the first ticket download of every brand was a 500. Idempotent — a replay never retires a working key — and only half the fix: brands built without going through `Platform\Actions\CreateBrand` are covered by `admission:rotate-signing-key --all` on the deploy path |
 | `RegistrationConfirmed` (proposed) | Registration | The trigger: issue one admission per granted admission in the payload, with the granted role — and, since ADR-0066, stamp `entry_condition_keys` on each of them as opaque scalars (D-ADM-06) |
 | `RegistrationAmended` | Registration | Grants were added to an already-confirmed registration (ADR-0036): issue **exactly the delta**. Idempotency is keyed on `amendment_id` (null for the original confirmation) rather than "does this registration have any admissions?", which would swallow every amendment |
 | `EventDaysChanged` | Event | Projects the event-day calendar into `EntranceEventProfile` so a door can resolve the current day locally (D-ADM-04, ADR-0033). Replaces rather than patches — the payload always carries the complete set |

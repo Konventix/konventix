@@ -227,6 +227,16 @@ class InstallCommand extends Command
             $this->ensureBrand($operator, $brandName, $brandDomain);
         }
 
+        // #287: a brand with no active entrance signing key answers 500 on
+        // the first ticket download. `ensureBrand()` above builds the row
+        // directly rather than through `CreateBrand`, so `BrandCreated` —
+        // and with it Admission's minting listener — never fires for it;
+        // this is what gives the first brand a key. `--all` only fills gaps,
+        // so a re-run rotates nothing.
+        if ($this->call('admission:rotate-signing-key', ['--all' => true]) !== self::SUCCESS) {
+            $this->warn('Entrance signing keys could not be minted — ticket downloads will fail until `admission:rotate-signing-key --all` succeeds.');
+        }
+
         // The operator-wide AGB and Widerrufsbelehrung the checkout resolves
         // (#200, #76). Only `konventix:seed` ran this before, and a real
         // deployment never runs the demo seed — so a fresh instance could

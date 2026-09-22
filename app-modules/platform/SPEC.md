@@ -163,12 +163,12 @@ what describes the brand itself.
 Events are the only way other modules may react to this one (ADR-0004).
 Payloads carry ULIDs and scalars — never Eloquent models.
 
-No code exists yet. Every row below is a proposal and becomes binding when the
-event class lands.
+A row is a proposal until its event class lands; `BrandCreated` is the first
+that has, and it is binding.
 
 | Event | Emitted when | Payload | Status |
 |---|---|---|---|
-| `BrandCreated` | A brand is created under an operator | `brand_id`, `operator_id`, `slug`, `name` | proposed |
+| `BrandCreated` | A brand is created under an operator — raised by `Actions\CreateBrand` *after* its transaction commits, so a consumer writing brand-owned rows of its own is not rolled back underneath it. Paths that build a `Brand` row directly (`konventix:install`, the dev and demo seeders, the factory) do not raise it; a consumer that cannot live without provisioning backfills those on the deploy path, as Admission's `admission:rotate-signing-key --all` does for the entrance signing key (#287) | `brand_id`, `operator_id`, `slug`, `name` | implemented |
 | `BrandRenamed` | A brand's public name or slug changes | `brand_id`, `slug`, `name` | proposed |
 | `BrandDomainAdded` | A domain is attached to a brand | `brand_id`, `domain`, `is_canonical` | proposed |
 | `BrandDomainRemoved` | A domain is detached from a brand | `brand_id`, `domain` | proposed |
@@ -181,7 +181,7 @@ event class lands.
 | `RoleGrantsChanged` | A brand role's permission grants are edited | `brand_id`, `role_id`, `role_name` | proposed |
 
 Activation materializes the module's default roles directly (ADR-0045); the
-events stay proposed until a consumer outside Platform needs them.
+remaining events stay proposed until a consumer outside Platform needs them.
 
 `BrandResolved` is deliberately absent. Resolution happens on every request;
 publishing it would invite queued listeners on the hot path. Modules read the

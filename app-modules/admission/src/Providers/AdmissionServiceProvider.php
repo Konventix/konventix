@@ -7,6 +7,7 @@ namespace Konventix\Admission\Providers;
 use Illuminate\Support\Facades\Event;
 use Konventix\Admission\Actions\SendClaimLink;
 use Konventix\Admission\Console\AnnounceAdmissionOwnershipCommand;
+use Konventix\Admission\Console\RotateEntranceSigningKeyCommand;
 use Konventix\Admission\Enums\Permission;
 use Konventix\Admission\Events\AdmissionHolderAssigned;
 use Konventix\Admission\Events\AdmissionHolderUnassigned;
@@ -21,6 +22,7 @@ use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
 use Konventix\Admission\Listeners\IssueCrewAdmissionOnAssignmentAccepted;
 use Konventix\Admission\Listeners\Metrics\RecordAdmissionTokenMetrics;
 use Konventix\Admission\Listeners\Metrics\RecordHolderMetrics;
+use Konventix\Admission\Listeners\MintEntranceSigningKeyOnBrandCreated;
 use Konventix\Admission\Listeners\ProjectAdmissionSeat;
 use Konventix\Admission\Listeners\ProjectEventDaysOnEventDaysChanged;
 use Konventix\Admission\Listeners\ProjectEventSummary;
@@ -43,6 +45,7 @@ use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
+use Konventix\Platform\Events\BrandCreated;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
@@ -92,8 +95,12 @@ class AdmissionServiceProvider extends ModuleServiceProvider
 
         $this->registerMetrics();
 
-        // The Resources read-model backfill (#292); see the command.
-        $this->commands([AnnounceAdmissionOwnershipCommand::class]);
+        // The Resources read-model backfill (#292) and the entrance signing
+        // key's own lifecycle command (#287); see each command.
+        $this->commands([
+            AnnounceAdmissionOwnershipCommand::class,
+            RotateEntranceSigningKeyCommand::class,
+        ]);
     }
 
     /**
@@ -131,6 +138,17 @@ class AdmissionServiceProvider extends ModuleServiceProvider
      */
     protected function registerListeners(): void
     {
+        // #287: a brand with no entrance signing key cannot issue a single
+        // ticket — `IssueAdmissionToken` refuses to sign without one
+        // (ADR-0033) — so the first ticket download of every brand was a
+        // 500. Idempotent, and the deploy-path backfill
+        // (`admission:rotate-signing-key --all`) covers every brand that
+        // never passed through `CreateBrand`.
+        Event::listen(
+            BrandCreated::class,
+            MintEntranceSigningKeyOnBrandCreated::class,
+        );
+
         Event::listen(
             RegistrationConfirmed::class,
             IssueAdmissionsOnRegistrationConfirmed::class,

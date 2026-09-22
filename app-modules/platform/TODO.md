@@ -6,6 +6,15 @@
 
 ## Next
 
+- [x] `Events\BrandCreated` — the first of SPEC's proposed brand events to
+      land (#287). Raised by `Actions\CreateBrand` after its transaction
+      commits; Admission mints the brand's entrance signing key on it. The
+      paths that build a `Brand` row directly (`konventix:install`, the dev
+      and demo seeders, the factory) deliberately do not raise it — the host
+      seeders run under `WithoutModelEvents`, so a model hook would be muted
+      there anyway, and a consumer that needs those brands covered backfills
+      on the deploy path instead.
+
 - [x] `Targets\TargetDirectory` beside `Legal\PublicLegalTexts` (round 4,
       Task 32, ADR-0066 §7.3, D-CPL-11): a boot-time registry each owning
       module contributes a `TargetProvider` to from its own

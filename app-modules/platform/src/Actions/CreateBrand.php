@@ -7,6 +7,7 @@ namespace Konventix\Platform\Actions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Konventix\Platform\Data\BrandData;
+use Konventix\Platform\Events\BrandCreated;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\BrandDomain;
 use Konventix\Platform\Models\Operator;
@@ -15,6 +16,12 @@ use Konventix\Platform\Models\Operator;
  * Creates a brand with its hosts under an operator. Reverb credentials are
  * provisioned by the model's creating hook (ADR-0025); on-demand TLS starts
  * approving the hosts the moment the rows exist (ADR-0001, ADR-0029).
+ *
+ * `BrandCreated` is raised here, once the transaction has committed, so a
+ * module can provision whatever a brand cannot function without before its
+ * first visitor arrives — Admission mints the brand's entrance signing key
+ * on it (#287), without which the first ticket download of every brand was
+ * a 500. Scalars only (ADR-0004).
  *
  * Capability: platform.manage-brands (checked at the route; the full
  * AuthorizingAction dispatcher of ADR-0015 is follow-up work).
@@ -49,6 +56,17 @@ final class CreateBrand
         // the first minute (ADR-0045). Outside the transaction: it sets its
         // own brand context and team id, and nothing here depends on it.
         $this->materialize->handle($brand);
+
+        // After the commit, for the same reason: a listener that writes
+        // brand-owned rows of its own must not have them rolled back
+        // underneath it, and "a brand was created" is not true until the row
+        // is.
+        event(new BrandCreated(
+            brandId: $brand->getKey(),
+            operatorId: (string) $brand->operator_id,
+            slug: $brand->slug,
+            name: $brand->name,
+        ));
 
         return $brand;
     }

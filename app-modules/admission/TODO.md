@@ -6,6 +6,18 @@
 
 ## Next (Phase 1 PoC — admissions produced by the one registration flow)
 
+- [x] A brand gets an entrance signing key when it is created (#287).
+      Platform raises `BrandCreated`, `MintEntranceSigningKeyOnBrandCreated`
+      mints through `Actions\EnsureEntranceSigningKey` — idempotent, so a
+      replay never retires a key that still signs.
+      `admission:rotate-signing-key {brand?} {--all}` is the other half:
+      `--all` fills gaps only and runs on the deploy path from
+      `konventix:migrate` and `konventix:install`, so brands that never went
+      through `CreateBrand` (install, seeders, everything older than this)
+      are covered too. The exception message in `IssueAdmissionToken` names a
+      command that now exists. Runbook: `docs/operations.md` → "The brand's
+      entrance signing key".
+
 - [x] Entry conditions at the door (round 4, Task 33, ADR-0066 slice B3;
       D-ADM-06/07). `admissions.entry_conditions` (json, nullable, no
       backfill) stamped by `IssueAdmissionsForRegistration` from

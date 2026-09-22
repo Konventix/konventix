@@ -131,6 +131,57 @@ a claim link is used. The buyer's own
 registration granted, holder or not, so a buyer can always retrieve every
 ticket their registration paid for, claimed or otherwise.
 
+### The brand's entrance signing key
+
+Every KVX1 code — on a ticket, on a badge, in the entrance API — is signed
+with the brand's own Ed25519 keypair, and a door verifies it against the
+published public keys without asking the server anything (ADR-0033). The
+key is per brand, not per event: one `entrance_signing_keys` row that can
+still sign is all a brand ever needs.
+
+**While a brand has none, it cannot issue a single code.**
+`IssueAdmissionToken` refuses to sign rather than mint something a door
+would reject, so every ticket download, every badge print and every ticket
+page for that brand answers 500 with `Brand [...] has no active entrance
+signing key`. This is not a slow degradation an operator notices on the
+dashboards; it is the buyer's first ticket download failing.
+
+A brand created in the console gets its key the moment it is created
+(Platform raises `BrandCreated`, Admission mints on it). A brand that came
+from `konventix:install`, from a seeder, or from before this shipped gets
+one on the deploy path: `konventix:migrate` — the migrate Job, behind the
+same `AUTO_MIGRATE` gate as the migrations and `permissions:sync` — ends
+with
+
+```
+vendor/bin/sail artisan admission:rotate-signing-key --all
+```
+
+which mints **only** for brands that have no key able to sign and reports
+how many it touched. It is safe on every release and safe to run by hand at
+any time.
+
+**Rotating one brand** is the other mode, and a deliberate act:
+
+```
+vendor/bin/sail artisan admission:rotate-signing-key <slug-or-ulid>
+```
+
+It always mints a new key and retires the brand's previous ones. Rotate
+when a private key may have leaked — a copied database dump, a shared
+`.env`, a disposed server — and otherwise leave it alone; there is no
+scheduled rotation and none is owed, because the keys never leave the
+application's own database and are encrypted at rest. **Retiring is not
+deleting.** A retired key stops signing immediately but keeps *verifying*
+until its `expires_at`, which is a month past a token's own lifetime, so
+every QR already in an attendee's wallet keeps working and no ticket needs
+reissuing. Nothing about rotation is visible to a participant.
+
+After rotating: nothing else to do. Doors refresh the published key set
+from `/api/entrance/signing-keys` on their next sync, and a door that has
+not synced yet still verifies the codes it is shown, because the key that
+signed them is retired rather than gone.
+
 ### A superseded-nonce refusal at the door
 
 `CheckInRejectionReason::NonceSuperseded` means the presented code is real
