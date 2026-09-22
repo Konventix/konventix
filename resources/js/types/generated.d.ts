@@ -122,6 +122,36 @@ declare namespace Konventix {
                 'once_only' | 'once_per_day' | 'unlimited';
         }
     }
+    namespace Agenda {
+        namespace Data {
+            export type AgendaItemData = {
+                readonly id: string | null;
+                readonly title: string;
+                readonly description: string | null;
+                readonly trackId: string | null;
+                readonly locationId: string | null;
+                readonly locationNote: string | null;
+                readonly speaker: string | null;
+                readonly startsAt: string | null;
+                readonly endsAt: string | null;
+            };
+            export type LocationData = {
+                readonly id: string | null;
+                readonly name: string;
+                readonly venueId: string | null;
+                readonly position: number;
+            };
+            export type TrackData = {
+                readonly id: string | null;
+                readonly name: string;
+                readonly position: number;
+            };
+        }
+        namespace Enums {
+            export type ItemState = 'draft' | 'published' | 'cancelled';
+            export type Permission = 'agenda.manage-agenda';
+        }
+    }
     namespace Commerce {
         namespace Data {
             export type AddToCartData = {
