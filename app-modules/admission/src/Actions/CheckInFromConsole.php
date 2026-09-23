@@ -10,7 +10,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Konventix\Admission\Enums\CheckInRejectionReason;
-use Konventix\Admission\Enums\CheckInResult;
 use Konventix\Admission\Enums\CheckpointKind;
 use Konventix\Admission\Events\ConsoleCheckInRecorded;
 use Konventix\Admission\Exceptions\ConsoleCheckInRefusedException;
@@ -18,6 +17,7 @@ use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\CheckIn;
 use Konventix\Admission\Models\Checkpoint;
 use Konventix\Admission\Models\EntranceEventProfile;
+use Konventix\Admission\Support\LatestAcceptedCheckIn;
 use Konventix\Admission\Support\OwedDoorChecks;
 use Konventix\Platform\Brands\BrandContext;
 
@@ -33,8 +33,9 @@ use Konventix\Platform\Brands\BrandContext;
  *    scoped, the admission's own brand. The door gets this guarantee from the
  *    token, which names its event; the console has only a URL, so a ticket of
  *    another event is refused (`wrong_event`) before anything is written.
- * 2. Inside the lock, `in` is refused while the last accepted check-in is
- *    `in`, and `out` while it is not. The door has no such rule, so there is
+ * 2. Inside the lock, `in` is refused while the last accepted check-in of
+ *    the current event day is `in`, and `out` while it is not
+ *    (`Support\LatestAcceptedCheckIn`). The door has no such rule, so there is
  *    no door-shaped rejection to record: the refusal throws and writes no row.
  * 3. The door checks the ticket owes today (`OwedDoorChecks`) must all be
  *    answered, `confirmed` or `refused`, and nothing else may be — refused
@@ -91,13 +92,14 @@ final class CheckInFromConsole
                 throw ConsoleCheckInRefusedException::wrongEvent(CheckInRejectionReason::WrongEvent->consoleSentence());
             }
 
-            $lastDirection = CheckIn::withoutBrandScope()
-                ->where('brand_id', $brandId)
-                ->where('admission_id', $locked->id)
-                ->where('result', CheckInResult::Accepted)
-                ->orderByDesc('scanned_at')
-                ->orderByDesc('id')
-                ->value('direction');
+            // "In" is read on the event day the check-in lands on, as the
+            // door reads it (Task 3 review I1): in on day 1 and never out
+            // does not make a guest "already in" on day 2.
+            $lastDirection = LatestAcceptedCheckIn::direction(
+                $brandId,
+                $locked->id,
+                LatestAcceptedCheckIn::dayFor($brandId, $eventId, $at),
+            );
 
             if ($direction === 'in' && $lastDirection === 'in') {
                 throw ConsoleCheckInRefusedException::alreadyIn();
