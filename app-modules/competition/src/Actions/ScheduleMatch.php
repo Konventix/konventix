@@ -72,7 +72,9 @@ final class ScheduleMatch
         ?string $scheduledByUserId = null,
     ): CompetitionMatch {
         return DB::transaction(function () use ($match, $at, $gameMode, $scheduledByUserId): CompetitionMatch {
-            $this->guardStillBeingPlayed($match->competition_id);
+            // Re-read under the lock: a match another desk lane finished a
+            // moment ago must not flip back to `scheduled`.
+            $this->lockMatchForPlay($match);
             $this->guardTransition($match);
 
             $competition = $match->competition()->withoutGlobalScopes()->firstOrFail();

@@ -7,6 +7,7 @@ namespace Konventix\Competition\Actions\Concerns;
 use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Exceptions\CompetitionLifecycleException;
 use Konventix\Competition\Models\Competition;
+use Konventix\Competition\Models\CompetitionMatch;
 
 /**
  * What a competition's lifecycle state allows the desk to do inside it
@@ -29,6 +30,19 @@ use Konventix\Competition\Models\Competition;
  *   requires a generated stage.
  * - **Playing** (schedule, record, correct, resolve, verify, reject, score)
  *   stops at `Finished` and `Cancelled`, which are history.
+ *
+ * ## The match is read again under the lock
+ *
+ * The competition lock serialises two writers, but it does not refresh the
+ * `CompetitionMatch` a controller loaded before the transaction began. Two
+ * members of a side pressing "confirm", or two desk tabs recording the same
+ * match, both loaded it as `pending`; the second waited on the lock and then
+ * passed every check on the stale copy, recorded again and sent a second
+ * `MatchFinished` (D-CMP-12; final review, part 1, I3). So every Action that
+ * writes a match takes the competition lock first — the one order every
+ * writer uses, so two of them cannot deadlock — and then re-reads the match
+ * `FOR UPDATE` into the instance it was handed (`lockMatchForPlay()`, the
+ * idiom `CheckInEntrant` uses for the entrant).
  */
 trait GuardsCompetitionLifecycle
 {
@@ -65,5 +79,33 @@ trait GuardsCompetitionLifecycle
         if ($competition->status->isTerminal()) {
             throw CompetitionLifecycleException::over($competition->id, $competition->status);
         }
+    }
+
+    /**
+     * Refuses a competition that is over, then re-reads the match under a
+     * row lock into the instance the caller holds, so every check after this
+     * line sees the match as it is now and not as the request found it.
+     */
+    private function lockMatchForPlay(CompetitionMatch $match): void
+    {
+        $this->guardStillBeingPlayed($match->competition_id);
+        $this->rereadMatchUnderLock($match);
+    }
+
+    /**
+     * The same lock order and re-read, for a caller that answers a finished
+     * competition with a refusal of its own (a dispute, §8.4).
+     */
+    private function lockMatch(CompetitionMatch $match): void
+    {
+        $this->lockedCompetition($match->competition_id);
+        $this->rereadMatchUnderLock($match);
+    }
+
+    private function rereadMatchUnderLock(CompetitionMatch $match): void
+    {
+        $locked = CompetitionMatch::withoutBrandScope()->whereKey($match->id)->lockForUpdate()->firstOrFail();
+
+        $match->setRawAttributes($locked->getAttributes(), true);
     }
 }

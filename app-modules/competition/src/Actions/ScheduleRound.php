@@ -6,6 +6,7 @@ namespace Konventix\Competition\Actions;
 
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
+use Konventix\Competition\Actions\Concerns\GuardsCompetitionLifecycle;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\Stage;
@@ -34,6 +35,8 @@ use Konventix\Competition\Models\Stage;
  */
 final class ScheduleRound
 {
+    use GuardsCompetitionLifecycle;
+
     public function __construct(
         private readonly ScheduleMatch $schedule,
     ) {}
@@ -49,6 +52,11 @@ final class ScheduleRound
         ?string $scheduledByUserId = null,
     ): int {
         return DB::transaction(function () use ($stage, $bracket, $round, $at, $scheduledByUserId): int {
+            // The competition lock first, so the round is read after every
+            // writer before it has committed: a match finished a moment ago
+            // is no longer `pending` here, and is left alone.
+            $this->guardStillBeingPlayed($stage->competition_id);
+
             $matches = CompetitionMatch::withoutBrandScope()
                 ->where('brand_id', $stage->brand_id)
                 ->where('stage_id', $stage->id)

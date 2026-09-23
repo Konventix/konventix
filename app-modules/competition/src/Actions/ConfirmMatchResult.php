@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Competition\Actions\Concerns\GuardsCompetitionLifecycle;
 use Konventix\Competition\Actions\Concerns\GuardsSideMembership;
 use Konventix\Competition\Actions\Concerns\SettlesAMatch;
 use Konventix\Competition\Data\MatchHistoryPayload;
@@ -33,6 +34,7 @@ use Konventix\Competition\Models\MatchResultReport;
  */
 final class ConfirmMatchResult
 {
+    use GuardsCompetitionLifecycle;
     use GuardsSideMembership;
     use SettlesAMatch;
 
@@ -46,6 +48,12 @@ final class ConfirmMatchResult
         string $confirmedByUserId,
     ): CompetitionMatch {
         return DB::transaction(function () use ($match, $entrant, $confirmedByUserId): CompetitionMatch {
+            // A competition that is over takes no result, and the match is
+            // re-read under the lock: of two members of a side pressing
+            // "confirm", the second finds it finished and is refused here
+            // (D-CMP-12; final review, part 1, I3).
+            $this->lockMatchForPlay($match);
+
             $competition = $this->competitionOf($match);
 
             $this->guardParticipantsMayReport($competition);

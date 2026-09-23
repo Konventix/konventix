@@ -67,7 +67,10 @@ final class RecordMatchResult
         ?string $recordedByUserId = null,
     ): CompetitionMatch {
         return DB::transaction(function () use ($match, $scores, $winnerEntrantId, $recordedByUserId): CompetitionMatch {
-            $this->guardStillBeingPlayed($match->competition_id);
+            // Under the lock, on the match as it is now: a second record of
+            // the same match is refused here instead of sending a second
+            // `MatchFinished` (D-CMP-12).
+            $this->lockMatchForPlay($match);
             $this->guardTransition($match);
 
             $this->writeScores($match, $scores);

@@ -2,21 +2,30 @@
 
 declare(strict_types=1);
 
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Konventix\Competition\Actions\ConfirmMatchResult;
 use Konventix\Competition\Actions\CorrectMatchResult;
 use Konventix\Competition\Actions\DisqualifyEntrant;
+use Konventix\Competition\Actions\RecordMatchResult;
 use Konventix\Competition\Actions\RecordResultAtDesk;
 use Konventix\Competition\Actions\ReportMatchResult;
 use Konventix\Competition\Actions\ResolveDispute;
+use Konventix\Competition\Actions\ScheduleMatch;
 use Konventix\Competition\Data\MatchReportData;
 use Konventix\Competition\Enums\EntrantState;
+use Konventix\Competition\Enums\MatchHistoryKind;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Enums\ResultSubmissionMode;
+use Konventix\Competition\Events\MatchDisputeResolved;
+use Konventix\Competition\Events\MatchFinished;
+use Konventix\Competition\Exceptions\IllegalMatchStateTransitionException;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
 use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\Discipline;
 use Konventix\Competition\Models\Entrant;
+use Konventix\Competition\Models\MatchHistoryEntry;
 use Konventix\Competition\Models\MatchResultReport;
 use Konventix\Competition\Models\MatchSlot;
 use Konventix\Competition\Models\Stage;
@@ -387,5 +396,170 @@ describe('disqualification (part 1, I2)', function (): void {
             ->and($table[$c]->placement)->toBe(1)
             ->and($table[$a]->points)->toBe(0)
             ->and($table[$c]->points)->toBe(0);
+    });
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * I3 — a double submit is refused on the match as it is now (final review,
+ * part 1)
+ * ---------------------------------------------------------------------------
+ *
+ * The race is two requests that both loaded the match before either
+ * committed. A test cannot run them concurrently, but it can do exactly what
+ * the second request does: hold a copy loaded before the first write, and
+ * hand that stale copy to the Action afterwards.
+ */
+
+describe('a second submit on a stale copy (part 1, I3)', function (): void {
+    it('records a match once, and sends MatchFinished once, when the desk records twice', function (): void {
+        $this->withBrand();
+
+        [$competition] = competitionFieldWithRosters(2);
+        $match = competitionMatchAt(competitionGeneratedStage($competition), 1, 1);
+        [$a, $b] = array_values(competitionSidesOf($match));
+
+        // Two desk tabs, both opened while the match was pending.
+        $firstTab = $match->fresh();
+        $secondTab = $match->fresh();
+
+        Event::fake([MatchFinished::class]);
+
+        app(RecordMatchResult::class)->handle($firstTab, [$a => 2, $b => 0], $a);
+
+        // The second tab still says `pending`. Re-read under the lock it is
+        // `finished`, and `pending|scheduled|live → finished` is the only
+        // legal move, so it is refused. Before the fix it recorded again and
+        // `finished_event_emitted_at`, null on the stale copy, sent a second
+        // `MatchFinished`.
+        expect($secondTab->state)->toBe(MatchState::Pending);
+
+        expect(fn () => app(RecordMatchResult::class)->handle($secondTab, [$a => 0, $b => 2], $b))
+            ->toThrow(IllegalMatchStateTransitionException::class);
+
+        Event::assertDispatchedTimes(MatchFinished::class, 1);
+
+        expect($match->fresh()->winner_entrant_id)->toBe($a)
+            ->and(MatchHistoryEntry::query()
+                ->where('competition_match_id', $match->getKey())
+                ->where('kind', MatchHistoryKind::Recorded->value)
+                ->count())->toBe(1);
+    });
+
+    it('refuses the second of two confirms and sends MatchFinished once', function (): void {
+        $this->withBrand();
+
+        [$competition, , $members] = competitionFieldWithRosters(2, ['result_submission_mode' => ResultSubmissionMode::Participants]);
+        $match = competitionMatchAt(competitionGeneratedStage($competition), 1, 1);
+        $sides = competitionSidesOf($match);
+
+        app(ReportMatchResult::class)->handle($match, integrityTestEntrant($sides[1]), new MatchReportData(scores: [1 => 16, 2 => 9]), $members[$sides[1]]);
+
+        // Two members of side 2 open the match page and both press
+        // "confirm".
+        $firstPage = $match->fresh();
+        $secondPage = $match->fresh();
+
+        Event::fake([MatchFinished::class]);
+
+        app(ConfirmMatchResult::class)->handle($firstPage, integrityTestEntrant($sides[2]), $members[$sides[2]]);
+
+        expect(fn () => app(ConfirmMatchResult::class)->handle($secondPage, integrityTestEntrant($sides[2]), $members[$sides[2]]))
+            ->toThrow(ResultSubmissionException::class, 'already has a recorded result');
+
+        Event::assertDispatchedTimes(MatchFinished::class, 1);
+
+        // One confirmation and one record on the timeline, not two of each.
+        expect($match->history()->get()->map(fn (MatchHistoryEntry $entry): string => $entry->kind->value)->all())
+            ->toBe(['reported', 'confirmed', 'recorded']);
+    });
+
+    it('resolves a dispute once when the desk resolves it twice', function (): void {
+        $this->withBrand();
+
+        [$competition, , $members] = competitionFieldWithRosters(2, ['result_submission_mode' => ResultSubmissionMode::Participants]);
+        $match = competitionMatchAt(competitionGeneratedStage($competition), 1, 1);
+        $sides = competitionSidesOf($match);
+
+        app(ReportMatchResult::class)->handle($match, integrityTestEntrant($sides[1]), new MatchReportData(scores: [1 => 16, 2 => 9]), $members[$sides[1]]);
+        app(ReportMatchResult::class)->handle($match->fresh(), integrityTestEntrant($sides[2]), new MatchReportData(scores: [1 => 9, 2 => 16]), $members[$sides[2]]);
+
+        $firstTab = $match->fresh();
+        $secondTab = $match->fresh();
+
+        Event::fake([MatchFinished::class, MatchDisputeResolved::class]);
+
+        $desk = (string) Str::ulid();
+
+        app(ResolveDispute::class)->handle($firstTab, [1 => 16, 2 => 9], $sides[1], $desk, 'Demo geprüft.');
+
+        // The stale copy still has `dispute_resolved_at` null. Under the
+        // lock it is set, so there is no dispute left to resolve. Before the
+        // fix the second resolve ran the "not finished" branch on the stale
+        // copy and settled the match again.
+        expect(fn () => app(ResolveDispute::class)->handle($secondTab, [1 => 9, 2 => 16], $sides[2], $desk, 'Doch anders.'))
+            ->toThrow(ResultSubmissionException::class, 'not disputed');
+
+        Event::assertDispatchedTimes(MatchFinished::class, 1);
+        Event::assertDispatchedTimes(MatchDisputeResolved::class, 1);
+
+        expect($match->fresh()->winner_entrant_id)->toBe($sides[1]);
+    });
+
+    it('never schedules a match back out of finished', function (): void {
+        $this->withBrand();
+
+        [$competition] = competitionFieldWithRosters(2);
+        $match = competitionMatchAt(competitionGeneratedStage($competition), 1, 1);
+        [$a] = array_values(competitionSidesOf($match));
+
+        // The desk's schedule form was opened while the match was pending;
+        // another lane records it before the schedule is saved.
+        $scheduleForm = $match->fresh();
+
+        app(RecordResultAtDesk::class)->handle($match->fresh(), [1 => 2, 2 => 0], $a, (string) Str::ulid());
+
+        expect(fn () => app(ScheduleMatch::class)->handle($scheduleForm, CarbonImmutable::parse('2026-11-21 15:00:00', 'UTC')))
+            ->toThrow(IllegalMatchStateTransitionException::class);
+
+        expect($match->fresh()->state)->toBe(MatchState::Finished)
+            ->and($match->fresh()->scheduled_at)->toBeNull();
+    });
+
+    it('refuses to correct a match an earlier correction voided', function (): void {
+        $this->withBrand();
+
+        [$competition] = competitionFieldWithRosters(4);
+        $stage = competitionGeneratedStage($competition);
+        $first = competitionMatchAt($stage, 1, 1);
+        $second = competitionMatchAt($stage, 1, 2);
+        [$a, $b] = array_values(competitionSidesOf($first));
+        [$c] = array_values(competitionSidesOf($second));
+
+        $desk = (string) Str::ulid();
+
+        // A beats B, C beats D, A beats C in the final.
+        app(RecordResultAtDesk::class)->handle($first, [1 => 2, 2 => 0], $a, $desk);
+        app(RecordResultAtDesk::class)->handle($second, [1 => 2, 2 => 0], $c, $desk);
+        $final = competitionMatchAt($stage, 2, 1);
+        app(RecordResultAtDesk::class)->handle($final, [1 => 2, 2 => 0], $a, $desk);
+
+        // A second desk tab holds the finished final.
+        $staleFinal = $final->fresh();
+
+        // Match 1 was the other way round: B replaces A in the final's slot
+        // 1, and the final, played between A and C, is voided back to
+        // `pending` (§8.5).
+        app(CorrectMatchResult::class)->handle($first->fresh(), [$a => 0, $b => 2], $b, $desk, 'Vertauscht eingetragen.');
+
+        expect($final->fresh()->state)->toBe(MatchState::Pending);
+
+        // The stale tab still says `finished`. Under the lock the final is
+        // pending, and a pending match is not corrected — it is played.
+        expect(fn () => app(CorrectMatchResult::class)->handle($staleFinal, [$a => 0, $c => 2], $c, $desk, 'C gewinnt.'))
+            ->toThrow(IllegalMatchStateTransitionException::class);
+
+        expect($final->fresh()->winner_entrant_id)->toBeNull()
+            ->and(competitionSidesOf($final->fresh()))->toBe([1 => $b, 2 => $c]);
     });
 });

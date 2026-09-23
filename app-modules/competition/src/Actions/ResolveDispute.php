@@ -74,7 +74,9 @@ final class ResolveDispute
         string $resolutionNote,
     ): CompetitionMatch {
         return DB::transaction(function () use ($match, $scoresByPosition, $winnerEntrantId, $resolvedByUserId, $resolutionNote): CompetitionMatch {
-            $this->guardStillBeingPlayed($match->competition_id);
+            // Re-read under the lock: a second resolve from another desk tab
+            // finds the dispute already resolved.
+            $this->lockMatchForPlay($match);
 
             if ($match->disputed_at === null || $match->dispute_resolved_at !== null) {
                 throw ResultSubmissionException::notDisputed($match->id);

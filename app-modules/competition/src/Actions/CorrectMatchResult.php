@@ -96,7 +96,9 @@ final class CorrectMatchResult
         ?string $note = null,
     ): CompetitionMatch {
         return DB::transaction(function () use ($match, $scores, $winnerEntrantId, $correctedByUserId, $note): CompetitionMatch {
-            $this->guardStillBeingPlayed($match->competition_id);
+            // Re-read under the lock: a match an earlier correction voided is
+            // no longer finished, whatever the desk's form still says.
+            $this->lockMatchForPlay($match);
 
             if ($match->state !== MatchState::Finished) {
                 throw IllegalMatchStateTransitionException::forAction($match, 'corrected');

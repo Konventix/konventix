@@ -6,6 +6,7 @@ namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Konventix\Competition\Actions\Concerns\GuardsCompetitionLifecycle;
 use Konventix\Competition\Actions\Concerns\GuardsSideMembership;
 use Konventix\Competition\Actions\Concerns\NotifiesRosterMembers;
 use Konventix\Competition\Data\EntrantNoticeData;
@@ -51,6 +52,7 @@ use Konventix\Competition\Models\MatchSlot;
  */
 final class DisputeMatchResult
 {
+    use GuardsCompetitionLifecycle;
     use GuardsSideMembership;
     use NotifiesRosterMembers;
 
@@ -65,6 +67,11 @@ final class DisputeMatchResult
         string $disputedByUserId,
     ): CompetitionMatch {
         return DB::transaction(function () use ($match, $entrant, $reason, $disputedByUserId): CompetitionMatch {
+            // Re-read under the lock, so two disputes at the same moment are
+            // one dispute and one "already disputed". Not `lockMatchForPlay()`:
+            // a finished competition gets its own refusal below.
+            $this->lockMatch($match);
+
             // §8.1: in `desk_only` the sides do not submit anything, a
             // dispute included — the desk records, and an objection goes to
             // the desk in person. The same refusal a report gets.

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Competition\Actions\Concerns\GuardsCompetitionLifecycle;
 use Konventix\Competition\Actions\Concerns\GuardsSideMembership;
 use Konventix\Competition\Actions\Concerns\NotifiesRosterMembers;
 use Konventix\Competition\Actions\Concerns\SettlesAMatch;
@@ -52,6 +53,7 @@ use Konventix\Competition\Proofs\ProofGate;
  */
 final class ReportMatchResult
 {
+    use GuardsCompetitionLifecycle;
     use GuardsSideMembership;
     use NotifiesRosterMembers;
     use SettlesAMatch;
@@ -69,6 +71,14 @@ final class ReportMatchResult
         string $reportedByUserId,
     ): CompetitionMatch {
         return DB::transaction(function () use ($match, $entrant, $data, $reportedByUserId): CompetitionMatch {
+            // First, before anything is written: a competition that is over
+            // takes no report — before this, the first claim on a leftover
+            // match of a finished or cancelled tournament was filed and the
+            // other side asked to confirm it (final review, part 4, I2) — and
+            // the match is re-read under the lock, which also serialises two
+            // sides reporting at the same moment (part 1, I3).
+            $this->lockMatchForPlay($match);
+
             $competition = $this->competitionOf($match);
 
             $this->guardParticipantsMayReport($competition);

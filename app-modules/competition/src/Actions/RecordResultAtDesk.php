@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Competition\Actions\Concerns\GuardsCompetitionLifecycle;
 use Konventix\Competition\Actions\Concerns\GuardsSideMembership;
 use Konventix\Competition\Actions\Concerns\SettlesAMatch;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
@@ -41,6 +42,7 @@ use Konventix\Competition\Models\CompetitionMatch;
  */
 final class RecordResultAtDesk
 {
+    use GuardsCompetitionLifecycle;
     use GuardsSideMembership;
     use SettlesAMatch;
 
@@ -54,6 +56,9 @@ final class RecordResultAtDesk
         string $recordedByUserId,
     ): CompetitionMatch {
         return DB::transaction(function () use ($match, $scoresByPosition, $winnerEntrantId, $recordedByUserId): CompetitionMatch {
+            // Re-read under the lock: a dispute raised a moment ago is seen.
+            $this->lockMatchForPlay($match);
+
             if ($match->isDisputed()) {
                 throw ResultSubmissionException::resolveInstead($match->id);
             }
