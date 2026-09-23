@@ -14,6 +14,11 @@ import { Badge } from '@/components/ui/badge';
  * its default div — because the grid and the phone list put this title
  * inside a `<p>`, and a div there is invalid HTML the browser reparents,
  * which breaks SSR hydration on every block.
+ *
+ * A linked title is underlined at rest, not only on hover: a phone has no
+ * hover, and the programme is mostly read on one. The strike of a called-off
+ * block sits on an inner span, so it adds to the link's underline instead
+ * of replacing it (both set `text-decoration-line`).
  */
 type Props = {
     cell: Konventix.Agenda.Data.ProgrammeCellData;
@@ -34,10 +39,11 @@ const props = defineProps<Props>();
         <Link
             v-if="props.cell.url"
             :href="props.cell.url"
-            class="font-medium text-text underline-offset-4 hover:underline"
-            :class="{ 'line-through': props.cell.cancelled }"
+            class="font-medium text-text underline underline-offset-4 hover:text-accent"
         >
-            {{ props.cell.title }}
+            <span :class="{ 'line-through': props.cell.cancelled }">{{
+                props.cell.title
+            }}</span>
         </Link>
         <span
             v-else

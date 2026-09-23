@@ -31,7 +31,8 @@ import { formatTime } from '@/lib/datetime';
  * from the programme's `ProgrammeCellTitle`, because a hub component
  * imports only `@/components/ui/*`, `@/lib/*` and generated types. The badge
  * renders `as="span"`: it sits in a `<p>`, where its default div would be
- * reparented by the browser and break SSR hydration.
+ * reparented by the browser and break SSR hydration. A linked title is
+ * underlined at rest, not only on hover, because a phone has no hover.
  *
  * Both entries are independently null and the card says so rather than
  * hiding: before the first item of the day there is only a "Gleich", after
@@ -71,7 +72,7 @@ const props = defineProps<Props>();
                     <Link
                         v-if="props.now.url"
                         :href="props.now.url"
-                        class="font-medium text-text underline-offset-4 hover:underline"
+                        class="font-medium text-text underline underline-offset-4 hover:text-accent"
                     >
                         {{ props.now.title }}
                     </Link>
@@ -108,7 +109,7 @@ const props = defineProps<Props>();
                     <Link
                         v-if="props.next.url"
                         :href="props.next.url"
-                        class="font-medium text-text underline-offset-4 hover:underline"
+                        class="font-medium text-text underline underline-offset-4 hover:text-accent"
                     >
                         {{ props.next.title }}
                     </Link>
