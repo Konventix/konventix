@@ -21,6 +21,7 @@ use Konventix\Competition\Enums\Permission;
 use Konventix\Competition\Gdpr\CompetitionGdprHandler;
 use Konventix\Competition\Listeners\ProjectAdmissionPresence;
 use Konventix\Competition\Listeners\ProjectEligibilityOnRegistrationEvents;
+use Konventix\Competition\Listeners\ProjectEventSummary;
 use Konventix\Competition\Listeners\ProjectParticipantProfile;
 use Konventix\Competition\Seeding\RandomSeedSource;
 use Konventix\Competition\Seeding\SeedSourceRegistry;
@@ -32,6 +33,8 @@ use Konventix\Competition\Standings\Calculators\SingleEliminationStandingsCalcul
 use Konventix\Competition\Standings\Calculators\SwissStandingsCalculator;
 use Konventix\Competition\Standings\StandingsCalculatorRegistry;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Event\Events\EventCreated;
+use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Templates\MessageTemplate;
@@ -168,6 +171,14 @@ class CompetitionServiceProvider extends ModuleServiceProvider
         // dashes until each person happened to edit their profile.
         Event::listen(UserRegistered::class, [ProjectParticipantProfile::class, 'handle']);
         Event::listen(UserProfileUpdated::class, [ProjectParticipantProfile::class, 'handle']);
+
+        // The event's slug and name for the public tournament pages (design
+        // §10): `/events/{slug}/tournaments` resolves against this module's
+        // own copy, because Event's model is out of reach (ADR-0004). Ungated
+        // for the same reason as the two projections above;
+        // `event:replay-details` backfills it.
+        Event::listen(EventCreated::class, [ProjectEventSummary::class, 'handleCreated']);
+        Event::listen(EventDetailsUpdated::class, [ProjectEventSummary::class, 'handleDetailsUpdated']);
 
         // What the door has seen (design §6). A competition may require that
         // every roster member was scanned at the event entrance before the
