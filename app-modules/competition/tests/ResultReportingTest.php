@@ -394,15 +394,18 @@ describe('disputes (§8.4)', function (): void {
         Event::assertNotDispatched(MatchFinished::class);
     });
 
-    it('announces no report that the dispute path rolled back', function (): void {
-        // A side re-reporting a still-contradicting score on a match that is
-        // already disputed reaches `DisputeMatchResult`, which refuses — and
-        // the whole report rolls back with it. `MatchResultReported` waits
-        // for the commit, so a report that was never filed is never
-        // announced (.ai/rules/src.md).
+    it('keeps a side\'s changed claim during a dispute and disputes nothing twice', function (): void {
+        // A side re-reporting a score that still contradicts the other claim,
+        // on a match that is already disputed, has changed its claim: the row
+        // is replaced and the dispute the desk already has stays the one
+        // dispute. Before the final review this reached `DisputeMatchResult`,
+        // which refused it as "already disputed", and the edit was lost
+        // (T5 M-2; final review, part 1, I5).
         $this->withBrand();
 
         [, $match, $sides, $members] = reportTestMatch();
+
+        Event::fake([MatchDisputed::class, MatchResultReported::class]);
 
         app(ReportMatchResult::class)->handle(
             $match,
@@ -420,23 +423,26 @@ describe('disputes (§8.4)', function (): void {
 
         expect($match->fresh()->isDisputed())->toBeTrue();
 
-        Event::fake([MatchResultReported::class]);
-
-        expect(fn () => app(ReportMatchResult::class)->handle(
+        app(ReportMatchResult::class)->handle(
             $match->fresh(),
             reportTestEntrant($sides[1]),
             new MatchReportData(scores: [1 => 16, 2 => 10]),
             $members[$sides[1]],
-        ))->toThrow(ResultSubmissionException::class);
+        );
 
-        Event::assertNotDispatched(MatchResultReported::class);
+        // Filed and announced: three reports, three `MatchResultReported`.
+        Event::assertDispatchedTimes(MatchResultReported::class, 3);
+        // One dispute, raised by the second report only.
+        Event::assertDispatchedTimes(MatchDisputed::class, 1);
 
-        // Rolled back: side 1's stored claim is still the first one.
         expect(MatchResultReport::query()
             ->where('competition_match_id', $match->getKey())
             ->where('entrant_id', $sides[1])
             ->sole()
-            ->normalisedScores())->toBe([1 => 16, 2 => 9]);
+            ->normalisedScores())->toBe([1 => 16, 2 => 10])
+            ->and($match->fresh()->isDisputed())->toBeTrue()
+            ->and($match->fresh()->state)->toBe(MatchState::Pending)
+            ->and(reportTestHistoryKinds($match))->toBe(['reported', 'reported', 'disputed', 'reported']);
     });
 
     it('refuses a dispute once the competition is finished or cancelled', function (): void {

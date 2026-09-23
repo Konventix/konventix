@@ -6,6 +6,7 @@ namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Konventix\Competition\Actions\Concerns\ClosesADispute;
 use Konventix\Competition\Actions\Concerns\GuardsCompetitionLifecycle;
 use Konventix\Competition\Actions\Concerns\GuardsMatchOutcome;
 use Konventix\Competition\Actions\Concerns\RecomputesStageStandings;
@@ -76,6 +77,7 @@ use Konventix\Competition\Models\MatchSlot;
  */
 final class CorrectMatchResult
 {
+    use ClosesADispute;
     use GuardsCompetitionLifecycle;
     use GuardsMatchOutcome;
     use RecomputesStageStandings;
@@ -127,6 +129,16 @@ final class CorrectMatchResult
             // must not make it eligible to go out again.
             $match->forceFill(['winner_entrant_id' => $winnerEntrantId])->save();
             $match->refresh();
+
+            // A correction of a result somebody contested is the desk's
+            // answer to that dispute, so it closes it (final review, part 1,
+            // I5). `ResolveDispute` has closed its own before it calls here.
+            $this->closeDispute(
+                $match,
+                $winnerEntrantId,
+                $correctedByUserId,
+                $note !== null && trim($note) !== '' ? $note : __('Die Turnierleitung hat das Ergebnis korrigiert.'),
+            );
 
             $this->history->handle(
                 $match,

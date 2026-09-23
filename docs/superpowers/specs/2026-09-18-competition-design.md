@@ -1505,3 +1505,25 @@ What is not closed: results recorded before `start` (play is allowed in any
 non-terminal state) followed by a withdrawal leave a competition that can
 neither redraw nor start, and only cancelling ends it. A desk that records
 results before the start has to disqualify a leaving team, not withdraw it.
+
+### §8.4, 2026-09-23 (final review fix wave A) — a dispute ends when its match is settled
+
+§8.4 has the desk resolve a dispute with `ResolveDispute` and a mandatory
+note. A disputed match can also be settled by other doors: the sides agreeing
+after all (a confirm, or a re-report that now matches the other claim), or a
+desk correction of a contested result. Each of those finished the match and
+left `dispute_resolved_at` null, so the match stayed "disputed" on the desk's
+panel, in `competition_disputes_open` and in the thirty-minute alert.
+
+Every settlement now closes the dispute (`Concerns\ClosesADispute`, called
+from `SettlesAMatch::settleMatch()` and `CorrectMatchResult`): the timestamp,
+a `resolved` history row and `MatchDisputeResolved` after the commit. The
+row's note is the correction note where the desk gave one, and otherwise a
+German sentence the sides read on the match page. `MatchDisputeResolved.userId`
+is therefore whoever ended the dispute — the organizer, or the member of a side
+whose agreement settled the match — rather than always an organizer.
+
+A re-report that still disagrees on a match that is already disputed replaces
+the side's claim and writes its `reported` row, and the one open dispute stays
+where it is. It used to be refused as "already disputed", which threw the
+side's edit away.

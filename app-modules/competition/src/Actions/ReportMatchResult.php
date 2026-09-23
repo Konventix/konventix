@@ -40,6 +40,11 @@ use Konventix\Competition\Proofs\ProofGate;
  * - **The other side reported something else.** The match is disputed, both
  *   reports stay, and the desk decides (§8.4).
  *
+ * The same holds while the match is **already disputed**: a claim that now
+ * agrees with the other side's settles the match and closes the dispute, and
+ * one that still disagrees replaces the side's claim and leaves the one open
+ * dispute where it is (final review, part 1, I5).
+ *
  * A side that reports twice has changed its mind rather than filed a second
  * claim, so the row is replaced — the unique index says the same thing.
  *
@@ -127,10 +132,9 @@ final class ReportMatchResult
                 $reportedByUserId,
             );
 
-            // After the commit: the disagreement branch below can still roll
-            // the report back (`DisputeMatchResult` refusing a match that is
-            // already disputed), and a report that was never filed must not
-            // have been announced (.ai/rules/src.md).
+            // After the commit: the settle or dispute branch below can still
+            // roll the report back, and a report that was never filed must
+            // not have been announced (.ai/rules/src.md).
             $reported = new MatchResultReported(
                 matchId: $match->id,
                 competitionId: $match->competition_id,
@@ -166,6 +170,15 @@ final class ReportMatchResult
                     $this->winnerFromScores($match, $scores),
                     $reportedByUserId,
                 );
+            }
+
+            // Still disagreeing on a match that is already disputed: the side
+            // changed its claim, which is filed above with its history row,
+            // and the dispute the desk already has stays the one dispute.
+            // Before the final review this was refused as "already disputed"
+            // and the side's edit thrown away (T5 M-2, part 1, I5).
+            if ($match->isDisputed()) {
+                return $match->refresh();
             }
 
             // The dispute's reason lands in the match history, which both

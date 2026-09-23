@@ -13,8 +13,11 @@ namespace Konventix\Competition\Events;
  * have no business with it, and it is one row away in the match history for
  * anything that does. The payload stays ULIDs and scalars (ADR-0004).
  *
- * `userId` is the organizer who resolved it; `entrantId` is the side the
- * decision went to, or null where the desk decided a result with no winner.
+ * `userId` is who ended the dispute: the organizer who resolved or
+ * corrected the result, or the member of a side whose confirm or agreeing
+ * re-report settled the match after all (design §14, "a dispute ends when the
+ * match is settled"). `entrantId` is the side the result went to, or null for
+ * a result with no winner.
  */
 final readonly class MatchDisputeResolved
 {

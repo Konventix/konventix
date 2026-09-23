@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 use Konventix\Competition\Actions\CheckInEntrant;
 use Konventix\Competition\Actions\ConfirmMatchResult;
 use Konventix\Competition\Actions\CorrectMatchResult;
+use Konventix\Competition\Actions\DisputeMatchResult;
 use Konventix\Competition\Actions\DisqualifyEntrant;
 use Konventix\Competition\Actions\RecordMatchResult;
 use Konventix\Competition\Actions\RecordResultAtDesk;
@@ -666,5 +667,104 @@ describe('the drawn field and the field (part 1, I4)', function (): void {
         app(StartCompetition::class)->handle($competition->refresh());
 
         expect($competition->refresh()->status)->toBe(CompetitionStatus::Running);
+    });
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * I5 — settling a disputed match closes the dispute (final review, part 1)
+ * ---------------------------------------------------------------------------
+ */
+
+describe('a dispute ends when its match is settled (part 1, I5)', function (): void {
+    it('closes the dispute when the disputing side confirms after all', function (): void {
+        $this->withBrand();
+
+        [$competition, , $members] = competitionFieldWithRosters(2, ['result_submission_mode' => ResultSubmissionMode::Participants]);
+        $match = competitionMatchAt(competitionGeneratedStage($competition), 1, 1);
+        $sides = competitionSidesOf($match);
+
+        app(ReportMatchResult::class)->handle($match, integrityTestEntrant($sides[1]), new MatchReportData(scores: [1 => 16, 2 => 9]), $members[$sides[1]]);
+        app(DisputeMatchResult::class)->handle($match->fresh(), integrityTestEntrant($sides[2]), 'Das stimmt so nicht.', $members[$sides[2]]);
+
+        expect($match->fresh()->isDisputed())->toBeTrue();
+
+        Event::fake([MatchDisputeResolved::class]);
+
+        // Side 2 looks again and confirms side 1's 16:9 after all.
+        app(ConfirmMatchResult::class)->handle($match->fresh(), integrityTestEntrant($sides[2]), $members[$sides[2]]);
+
+        // Finished for side 1 (16 > 9), and the dispute is over. Before the
+        // fix `dispute_resolved_at` stayed null: finished yet "disputed", on
+        // the desk's panel and in the open-disputes gauge.
+        $settled = $match->fresh();
+
+        expect($settled->state)->toBe(MatchState::Finished)
+            ->and($settled->winner_entrant_id)->toBe($sides[1])
+            ->and($settled->isDisputed())->toBeFalse()
+            ->and($settled->dispute_resolved_at)->not->toBeNull()
+            ->and($settled->history()->get()->map(fn (MatchHistoryEntry $entry): string => $entry->kind->value)->all())
+            ->toBe(['reported', 'disputed', 'confirmed', 'resolved', 'recorded']);
+
+        Event::assertDispatchedTimes(MatchDisputeResolved::class, 1);
+        Event::assertDispatched(
+            MatchDisputeResolved::class,
+            fn (MatchDisputeResolved $event): bool => $event->entrantId === $sides[1] && $event->userId === $members[$sides[2]],
+        );
+    });
+
+    it('closes the dispute when a re-report now agrees with the other side', function (): void {
+        $this->withBrand();
+
+        [$competition, , $members] = competitionFieldWithRosters(2, ['result_submission_mode' => ResultSubmissionMode::Participants]);
+        $match = competitionMatchAt(competitionGeneratedStage($competition), 1, 1);
+        $sides = competitionSidesOf($match);
+
+        app(ReportMatchResult::class)->handle($match, integrityTestEntrant($sides[1]), new MatchReportData(scores: [1 => 16, 2 => 9]), $members[$sides[1]]);
+        app(ReportMatchResult::class)->handle($match->fresh(), integrityTestEntrant($sides[2]), new MatchReportData(scores: [1 => 9, 2 => 16]), $members[$sides[2]]);
+
+        expect($match->fresh()->isDisputed())->toBeTrue();
+
+        // Side 2 corrects its own claim to side 1's 16:9: agreement.
+        app(ReportMatchResult::class)->handle($match->fresh(), integrityTestEntrant($sides[2]), new MatchReportData(scores: [1 => 16, 2 => 9]), $members[$sides[2]]);
+
+        $settled = $match->fresh();
+
+        expect($settled->state)->toBe(MatchState::Finished)
+            ->and($settled->winner_entrant_id)->toBe($sides[1])
+            ->and($settled->isDisputed())->toBeFalse()
+            ->and($settled->history()->get()->map(fn (MatchHistoryEntry $entry): string => $entry->kind->value)->all())
+            ->toBe(['reported', 'reported', 'disputed', 'reported', 'confirmed', 'resolved', 'recorded']);
+    });
+
+    it('closes the dispute when the desk corrects the contested result', function (): void {
+        $this->withBrand();
+
+        [$competition, , $members] = competitionFieldWithRosters(2, ['result_submission_mode' => ResultSubmissionMode::Participants]);
+        $match = competitionMatchAt(competitionGeneratedStage($competition), 1, 1);
+        $sides = competitionSidesOf($match);
+
+        $desk = (string) Str::ulid();
+
+        // The desk records side 1 the winner; side 2 contests the recorded
+        // result (§8.4 lets a side dispute a result that stands).
+        app(RecordResultAtDesk::class)->handle($match, [1 => 2, 2 => 0], $sides[1], $desk);
+        app(DisputeMatchResult::class)->handle($match->fresh(), integrityTestEntrant($sides[2]), 'Wir haben 2:0 gewonnen.', $members[$sides[2]]);
+
+        expect($match->fresh()->isDisputed())->toBeTrue();
+
+        // The desk corrects it directly rather than through "resolve". A two-
+        // entrant bracket has nothing downstream, so no note is owed; the
+        // `resolved` row then carries the German default the sides read.
+        app(CorrectMatchResult::class)->handle($match->fresh(), [$sides[1] => 0, $sides[2] => 2], $sides[2], $desk);
+
+        $corrected = $match->fresh();
+
+        /** @var MatchHistoryEntry $resolved */
+        $resolved = $corrected->history()->get()->last(fn (MatchHistoryEntry $entry): bool => $entry->kind === MatchHistoryKind::Resolved);
+
+        expect($corrected->winner_entrant_id)->toBe($sides[2])
+            ->and($corrected->isDisputed())->toBeFalse()
+            ->and($resolved->payload['note'] ?? null)->toBe('Die Turnierleitung hat das Ergebnis korrigiert.');
     });
 });

@@ -32,6 +32,7 @@ use Konventix\Competition\Models\MatchSlot;
  */
 trait SettlesAMatch
 {
+    use ClosesADispute;
     use GuardsMatchOutcome;
     use RecomputesStageStandings;
 
@@ -45,6 +46,12 @@ trait SettlesAMatch
      * two paths asked, and two sides agreeing on 1:1 finished an elimination
      * match with nobody to send on (final review, part 1, I1).
      *
+     * A match that is still disputed when it is settled here was settled by
+     * the sides agreeing after all — a confirm, or a re-report that now
+     * matches the other claim — so the dispute is closed with it
+     * (`ClosesADispute`; part 1, I5). `ResolveDispute` closes its own before
+     * it gets here.
+     *
      * @param  array<int, int|null>  $scoresByPosition
      */
     protected function settleMatch(
@@ -55,6 +62,8 @@ trait SettlesAMatch
     ): CompetitionMatch {
         $this->guardWinnerIsASide($match, $winnerEntrantId, $this->entrantIdsByPosition($match));
         $this->guardDrawIsPossible($match, $winnerEntrantId);
+
+        $this->closeDispute($match, $winnerEntrantId, $recordedByUserId, __('Die beiden Seiten haben sich doch auf ein Ergebnis geeinigt.'));
 
         $settled = app(RecordMatchResult::class)->handle(
             $match,
