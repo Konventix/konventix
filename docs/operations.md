@@ -301,8 +301,9 @@ It joins the manual post-rollout backfills, which are now
 (competition eligibility for registrations written without events, such as
 the hand-run Eventula import, and since 0.9.1 Admission's
 `admission_registration_summaries`: the attendee list's ticket type and
-registration status; until it has run, a ticket issued before 0.9.1 shows no
-type in the list), `admission:announce-ownership` (door presence, and since
+registration status; **run it once after the 0.9.1 deploy**, because until it
+has run, a ticket issued before 0.9.1 shows no type and no status in the
+list), `admission:announce-ownership` (door presence, and since
 #330 the ticket half of the competition gate) and
 `identity:announce-social-identities`. On the cluster:
 
@@ -332,7 +333,11 @@ projection listens to what they emit:
   hand-run Eventula migration, and once after the 0.9.0 deploy: until it has
   run, a registrant the projection never heard of cannot enter, join a team,
   put their name on an interest list or be added by the desk, and a
-  registration cancelled before 0.9.0 still counts as confirmed.
+  registration cancelled before 0.9.0 still counts as confirmed. Run it once
+  after the 0.9.1 deploy as well: it now also fills Admission's
+  `admission_registration_summaries`, the attendee list's ticket type and
+  registration status (#329), and a ticket issued before 0.9.1 shows neither
+  until it has run.
 
 - `event:replay-details --with-state` fills `competition_event_summaries`:
   each event's slug and name, and its lifecycle state. The state comes only
