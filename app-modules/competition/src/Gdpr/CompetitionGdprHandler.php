@@ -7,6 +7,7 @@ namespace Konventix\Competition\Gdpr;
 use Konventix\Competition\Models\AdmissionPresence;
 use Konventix\Competition\Models\CompetitionInterest;
 use Konventix\Competition\Models\CompetitionTeamMember;
+use Konventix\Competition\Models\LinkedIdentity;
 use Konventix\Competition\Models\MatchHistoryEntry;
 use Konventix\Competition\Models\MatchResultReport;
 use Konventix\Competition\Models\ParticipantProfile;
@@ -19,9 +20,10 @@ use Konventix\Compliance\Gdpr\SubjectRef;
  * Competition's contribution to GDPR export and deletion.
  *
  * The export shows which teams a person played in, in what role, and which
- * competitions they put their name down for.
+ * competitions they put their name down for, and which provider accounts
+ * this module knows they have linked.
  *
- * Four things **are** scrubbed on deletion. Two of them hold something other
+ * Five things **are** scrubbed on deletion. Two of them hold something other
  * than ULIDs: the `ParticipantProfile` row, which carries a display name and
  * a username, and the interested-list rows, whose free-text note the person
  * wrote themselves and which are public on the competition page.
@@ -47,6 +49,12 @@ use Konventix\Compliance\Gdpr\SubjectRef;
  * `decided_by_user_id`) and Resources' `created_by` / `holder_id`: this repo
  * forgets an author on a row that must survive by nulling the reference, and
  * the columns are nullable for exactly that reason.
+ *
+ * The fifth is the **linked-account read model**
+ * (`competition_linked_identities`, design §5.6). It records which provider
+ * accounts the person has linked, and it is exported and deleted outright.
+ * It is a projection of Identity's data that no finished competition depends
+ * on, so nothing needs to survive the person.
  *
  * Nothing else is. Results, standings and team membership are a public record
  * of a competition that took place — removing a player from a finished
@@ -90,6 +98,15 @@ final class CompetitionGdprHandler implements GdprHandler
                     'registered_at' => $interest->created_at?->toIso8601String(),
                 ])
                 ->all(),
+            'linked_accounts' => LinkedIdentity::query()
+                ->where('user_id', $subjectId)
+                ->orderBy('provider')
+                ->get()
+                ->map(fn (LinkedIdentity $identity): array => [
+                    'provider' => $identity->provider,
+                    'linked_at' => $identity->linked_at->toIso8601String(),
+                ])
+                ->all(),
         ];
     }
 
@@ -104,6 +121,12 @@ final class CompetitionGdprHandler implements GdprHandler
         ParticipantProfile::query()->whereKey($subject->userId)->delete();
 
         CompetitionInterest::withoutBrandScope()
+            ->where('user_id', $subject->userId)
+            ->delete();
+
+        // Which provider accounts they linked (design §5.6): a projection of
+        // Identity's data with no history to keep.
+        LinkedIdentity::query()
             ->where('user_id', $subject->userId)
             ->delete();
 

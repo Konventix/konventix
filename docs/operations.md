@@ -258,6 +258,38 @@ regression, but they are a door-behaviour change nonetheless. Run
 `event:replay-details` before an event's doors open, never during one, for
 any event old enough to be missing this row.
 
+### Backfilling Competition's linked accounts — the post-deploy step for 0.9.0
+
+A discipline can require a linked Steam account of everyone who enters or
+joins a team (`disciplines.requires_linked_provider`, competition design
+§5.6). Competition checks this against its own read model,
+`competition_linked_identities`, which is projected from Identity's
+`SocialIdentityLinked` and `SocialIdentityUnlinked`. A person who linked
+Steam before that table existed is not in it, and the rule refuses them as
+unlinked. One command fixes that, and it is safe to re-run:
+
+- `vendor/bin/sail artisan identity:announce-social-identities` — re-emits
+  the narrow `SocialIdentityAnnounced` for every linked identity, carrying
+  the user, the provider and Identity's stored link time. Only a projection
+  listens. It is never a replay of `SocialIdentityLinked`: that event is
+  auditable, and replaying it would write one false "a Steam account was
+  linked" entry per identity into the audit trail.
+
+On the cluster it is the fourth of the manual post-rollout backfills, after
+`identity:replay-profiles`, `event:replay-details` and
+`registration:announce-ownership`:
+
+    kubectl --context rancher -n konventix exec <web pod> -- php artisan identity:announce-social-identities
+
+Run it once after the deploy that brings the table. Run it again whenever the
+**first** brand of a deployment switches `competition` on: the projection is
+not per brand, but it stores nothing while no brand runs tournaments, so
+links made in that time are missing until the command runs. Until it has run,
+a Steam requirement refuses people who have in fact linked Steam, and the
+refusal sends them to their *Linked accounts* settings page, where they already see
+Steam as linked. Unlinking and re-linking there also repairs a single
+account.
+
 ### Backfilling the media library's variants — the post-deploy step for 0.7.0
 
 A variant is cut when a picture is uploaded, so every picture already in a

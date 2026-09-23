@@ -30,6 +30,7 @@ use Konventix\Competition\Hub\NextGamesCard;
 use Konventix\Competition\Listeners\ProjectAdmissionPresence;
 use Konventix\Competition\Listeners\ProjectEligibilityOnRegistrationEvents;
 use Konventix\Competition\Listeners\ProjectEventSummary;
+use Konventix\Competition\Listeners\ProjectLinkedIdentity;
 use Konventix\Competition\Listeners\ProjectParticipantProfile;
 use Konventix\Competition\Seeding\RandomSeedSource;
 use Konventix\Competition\Seeding\SeedSourceRegistry;
@@ -51,6 +52,10 @@ use Konventix\Event\Events\EventPublished;
 use Konventix\Event\Events\EventRescheduled;
 use Konventix\Event\Events\EventStarted;
 use Konventix\Event\Events\EventUnpublished;
+use Konventix\Identity\Events\AccountsMerged;
+use Konventix\Identity\Events\SocialIdentityAnnounced;
+use Konventix\Identity\Events\SocialIdentityLinked;
+use Konventix\Identity\Events\SocialIdentityUnlinked;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Templates\MessageTemplate;
@@ -250,6 +255,18 @@ class CompetitionServiceProvider extends ModuleServiceProvider
         // dashes until each person happened to edit their profile.
         Event::listen(UserRegistered::class, [ProjectParticipantProfile::class, 'handle']);
         Event::listen(UserProfileUpdated::class, [ProjectParticipantProfile::class, 'handle']);
+
+        // Which provider accounts a person has linked, for a discipline's
+        // `requires_linked_provider` (design §5.6). Global, like the names
+        // above, because the link belongs to the person and not to a brand.
+        // These events carry no brand, so the gate asks whether any brand
+        // runs tournaments at all. The listener's docblock explains that,
+        // and why the unlink handler always applies.
+        // `identity:announce-social-identities` is the backfill.
+        Event::listen(SocialIdentityLinked::class, [ProjectLinkedIdentity::class, 'handleLinked']);
+        Event::listen(SocialIdentityUnlinked::class, [ProjectLinkedIdentity::class, 'handleUnlinked']);
+        Event::listen(SocialIdentityAnnounced::class, [ProjectLinkedIdentity::class, 'handleAnnounced']);
+        Event::listen(AccountsMerged::class, [ProjectLinkedIdentity::class, 'handleAccountsMerged']);
 
         // The event's slug and name for the public tournament pages (design
         // §10): `/events/{slug}/tournaments` resolves against this module's
