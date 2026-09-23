@@ -206,7 +206,7 @@ it('matches a backslash literally', function (): void {
             ->where('attendees.data.0.admissionId', $slashed->id));
 });
 
-it('partitions the list into checked in and not checked in, on today only', function (): void {
+it('partitions the list into checked in and not checked in, on today only, over this brand\'s tickets of this event', function (): void {
     $brand = $this->withBrand();
     $event = attendeeFixture($brand);
     $in = attendeeTicket($brand, $event['eventId']);
@@ -222,9 +222,15 @@ it('partitions the list into checked in and not checked in, on today only', func
     CheckIn::factory()->onDay((string) Str::ulid())->create(['admission_id' => $yesterday->id, 'direction' => 'in', 'scanned_at' => now()->subDay()]);
 
     // Rows the list must never show (Task 4 review I1), each checked in today
-    // so that dropping a scope would add it to `in`: a ticket of ANOTHER
-    // event of the same brand, and a ticket of ANOTHER brand carrying this
-    // very event id (the only way the brand condition is what excludes it).
+    // so that dropping a condition of the list's own `admissions` query
+    // (`AttendeeListQuery`: `admissions.brand_id`, `admissions.event_id`)
+    // would add it to `in`: a ticket of ANOTHER event of the same brand, and
+    // a ticket of ANOTHER brand carrying this very event id (the only way the
+    // brand condition is what excludes it). This pins those two conditions,
+    // not `LatestAcceptedCheckIn::perAdmission()`'s own brand and event
+    // filters: that subquery is joined on the globally unique `admission_id`,
+    // so while the list's own conditions stand its filters cannot change
+    // which rows the list shows or how they read (#329 final review M7).
     $otherEvent = attendeeTicket($brand, (string) Str::ulid());
     CheckIn::factory()->onDay($event['dayId'])->create(['admission_id' => $otherEvent->id, 'direction' => 'in', 'scanned_at' => now()->subMinutes(10)]);
 
@@ -242,8 +248,11 @@ it('partitions the list into checked in and not checked in, on today only', func
     // latest accepted direction is `in` for $in, `out` for $out, none for
     // $never and none for $yesterday (its row is another day's). So `in` =
     // {$in} (1) and `not_in` = {$out, $never, $yesterday} (3); 1 + 3 = the 4
-    // tickets, and the two sets share none. With either scope dropped, `in`
-    // would read 2 or 3.
+    // tickets, and the two sets share none. Without `admissions.event_id`,
+    // $otherEvent joins the list with today's `in`, so `in` would read 2.
+    // Without `admissions.brand_id`, $otherBrandTicket joins the list, but
+    // its check-in is another brand's row, which the check-in subquery never
+    // reads for this brand, so it lands in `not_in`, which would read 4.
     $this->actingAs($admin)
         ->get(attendeeListUrl($operator, $event['eventId'], ['presence' => 'in']))
         ->assertInertia(fn (Assert $page) => $page

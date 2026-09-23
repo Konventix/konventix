@@ -36,8 +36,13 @@ use Konventix\Admission\Models\EntranceEventProfile;
  *
  * `AdmissionCheckedIn` and `CheckInRejected` are dispatched synchronously
  * inside the transaction, as they always were at the door. Moving them to
- * `DB::afterCommit()` would change door behaviour, which the split forbids;
- * their listeners that do real work are queued `afterCommit` themselves.
+ * `DB::afterCommit()` would change door behaviour, which the split forbids
+ * (it is a TODO of its own). Only one listener defers itself: Admission's
+ * presence projection (`ProjectPresenceOnAdmissionCheckedIn`) is queued
+ * `afterCommit`. Every other listener runs synchronously inside this
+ * transaction — Commerce's refund-block projection, Registration's door
+ * verification, Competition's door presence, and the rejection metric — so
+ * their writes commit or roll back with the row.
  */
 final class RecordCheckIn
 {
