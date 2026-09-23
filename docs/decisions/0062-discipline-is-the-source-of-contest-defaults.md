@@ -4,6 +4,17 @@
 docs/superpowers/specs/2026-09-18-competition-design.md; GitLab #33, #179).
 Amends ADR-0012's D-GOP-04 a second time; ADR-0024 stands.
 
+> **Amended 2026-09-23 by competition design §5.6** (operator decision
+> 2026-09-22, event-hub design §13 row B). Point 3 is narrowed: the
+> Steam-linked **signup rule** is the discipline's eligibility default
+> (`disciplines.requires_linked_provider`, point 1), enforced by Competition
+> against its own projection of Identity's link events. What stays with the
+> GameOps integration (#115) is `PlayerGameAccount`, the provider account ids
+> a match handler needs. Point 2 gains one field in spirit: the catalogue
+> event may *suggest* a linked-provider requirement the discipline form
+> prefills from, as it suggests `team_size`, and never sets it. Everything
+> else in this ADR stands unchanged.
+
 ## Context
 
 D-GOP-04 (ADR-0012, Round 6) put the game catalogue in GameOps and told
