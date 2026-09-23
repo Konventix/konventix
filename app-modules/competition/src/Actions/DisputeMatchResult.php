@@ -160,7 +160,7 @@ final class DisputeMatchResult
             new EntrantNoticeData(
                 competitionName: $this->competitionOf($match)->name,
                 teamName: $team->name ?? '',
-                detail: __('Euer Gegner hat Einspruch gegen das Ergebnis eingelegt. Die Turnierleitung entscheidet.'),
+                detail: __('Euer Gegner hat das Ergebnis angefochten. Die Turnierleitung entscheidet.'),
             ),
         );
     }

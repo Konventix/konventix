@@ -362,6 +362,7 @@ final class TournamentPages
             unit: $settings?->unit,
             heats: $settings?->heats,
             requiredLinkedAccount: $discipline?->requires_linked_provider?->label(),
+            decimals: $settings?->decimals,
         );
     }
 

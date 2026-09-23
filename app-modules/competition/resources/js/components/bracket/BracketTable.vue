@@ -118,7 +118,7 @@ function href(matchId: string): string {
                             </td>
                             <td class="py-2 align-top">
                                 <span v-if="match.disputed" class="text-danger"
-                                    >Einspruch</span
+                                    >Streitfall</span
                                 >
                                 <span v-else class="text-text-muted">{{
                                     matchStateLabel(match.state)

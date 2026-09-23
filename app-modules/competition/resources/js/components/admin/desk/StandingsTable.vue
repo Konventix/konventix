@@ -45,7 +45,11 @@ const props = defineProps<{
                     <td class="py-1 pr-3">{{ row.teamName }}</td>
                     <template v-if="props.unit !== null">
                         <td class="py-1">
-                            {{ row.tiebreaker ?? '—' }} {{ props.unit }}
+                            {{
+                                row.tiebreaker === null
+                                    ? '—'
+                                    : `${row.tiebreaker} ${props.unit}`
+                            }}
                         </td>
                     </template>
                     <template v-else>

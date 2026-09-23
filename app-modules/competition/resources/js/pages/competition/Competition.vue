@@ -123,7 +123,8 @@ usePollWhile(() => props.page.pollSeconds);
                 class="text-sm text-text"
             >
                 Für dieses Turnier ist zu jedem Ergebnis ein Nachweis Pflicht.
-                Die Orga nimmt Ergebnis und Nachweis am Turnier-Desk entgegen.
+                Die Turnierleitung nimmt Ergebnis und Nachweis am Turnier-Desk
+                entgegen.
             </p>
 
             <section
@@ -136,6 +137,7 @@ usePollWhile(() => props.page.pollSeconds);
                 <Standings
                     :standings="props.page.standings"
                     :unit="props.page.competition.unit"
+                    :decimals="props.page.competition.decimals"
                 />
             </section>
         </template>

@@ -139,7 +139,7 @@ final class MyTournamentsController
                                 'competitionStatus' => $competition?->status->value,
                                 // Check-in (§6). `checkInMode` is sent so the
                                 // page can say *why* there is no button —
-                                // "die Orga checkt euch am Desk ein" is an
+                                // "die Turnierleitung checkt euch am Desk ein" is an
                                 // answer, a missing button is not.
                                 'checkInMode' => $competition?->check_in_mode->value,
                                 'checkedInAt' => $entrant->checked_in_at?->toIso8601String(),

@@ -99,7 +99,7 @@ final class CompetitionPageController
 
         $this->attempt(fn () => $submit->handle($stage, $entrant, $data, $userId), 'value');
 
-        return $this->done(__('Ergebnis eingereicht. Es zählt, sobald die Orga es bestätigt hat.'));
+        return $this->done(__('Ergebnis eingereicht. Es zählt, sobald die Turnierleitung es bestätigt hat.'));
     }
 
     /**

@@ -36,6 +36,8 @@ use Spatie\LaravelData\Data;
  */
 final class LeaderboardSettings extends Data
 {
+    public const string DEFAULT_UNIT = 'Punkte';
+
     public function __construct(
         #[Required]
         public readonly LeaderboardDirection $direction = LeaderboardDirection::Higher,
@@ -51,8 +53,13 @@ final class LeaderboardSettings extends Data
         #[Nullable, IntegerType, Min(1), Max(64)]
         public readonly ?int $heats = null,
 
+        /**
+         * Shown to participants beside every value, so the default is German
+         * (ADR-0001; final review, part 3, M6): a stage saved before this
+         * keeps the `pts` it stored.
+         */
         #[Required, StringType, Max(8)]
-        public readonly string $unit = 'pts',
+        public readonly string $unit = self::DEFAULT_UNIT,
 
         #[Required, IntegerType, Min(0), Max(3)]
         public readonly int $decimals = 0,
@@ -81,7 +88,7 @@ final class LeaderboardSettings extends Data
             aggregate: (is_string($aggregate) ? LeaderboardAggregate::tryFrom($aggregate) : null)
                 ?? LeaderboardAggregate::Best,
             heats: is_numeric($heats) ? max(1, (int) $heats) : null,
-            unit: is_string($settings['unit'] ?? null) ? $settings['unit'] : 'pts',
+            unit: is_string($settings['unit'] ?? null) ? $settings['unit'] : self::DEFAULT_UNIT,
             decimals: is_numeric($settings['decimals'] ?? null) ? min(3, max(0, (int) $settings['decimals'])) : 0,
         );
     }

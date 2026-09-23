@@ -44,5 +44,7 @@ final class CompetitionDetailData extends Data
         public readonly ?int $heats,
         /** The provider every player must have linked (§5.6), e.g. "Steam". */
         public readonly ?string $requiredLinkedAccount = null,
+        /** How many decimals the leaderboard prints (§7.2), null on a bracket. */
+        public readonly ?int $decimals = null,
     ) {}
 }

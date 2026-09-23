@@ -113,8 +113,8 @@ function claim(scores: Record<number, number | null>): string {
             v-if="props.competition.resultSubmissionMode === 'desk_only'"
             class="text-sm text-text-muted"
         >
-            Bei diesem Turnier trägt die Orga die Ergebnisse ein. Meldet euch
-            nach dem Spiel am Turnier-Desk.
+            Bei diesem Turnier trägt die Turnierleitung die Ergebnisse ein.
+            Meldet euch nach dem Spiel am Turnier-Desk.
         </p>
 
         <p
@@ -122,8 +122,8 @@ function claim(scores: Record<number, number | null>): string {
             class="text-sm text-text"
         >
             Für dieses Turnier ist zu jedem Ergebnis ein Nachweis (etwa ein
-            Screenshot) Pflicht. Die Orga nimmt Ergebnis und Nachweis am
-            Turnier-Desk entgegen.
+            Screenshot) Pflicht. Die Turnierleitung nimmt Ergebnis und Nachweis
+            am Turnier-Desk entgegen.
         </p>
 
         <p
@@ -131,7 +131,7 @@ function claim(scores: Record<number, number | null>): string {
             role="status"
             class="text-sm text-danger"
         >
-            Gegen dieses Ergebnis liegt ein Einspruch vor. Die Orga entscheidet
+            Dieses Ergebnis ist ein Streitfall. Die Turnierleitung entscheidet
             und begründet ihre Entscheidung im Verlauf.
         </p>
 
@@ -151,7 +151,7 @@ function claim(scores: Record<number, number | null>): string {
         <div v-if="props.viewer.canConfirm" class="flex flex-col gap-1">
             <p v-if="props.match.disputed" class="text-sm text-text">
                 Ihr seid mit dem Ergebnis des Gegners doch einverstanden?
-                Bestätigt ihr es, gilt es, und der Einspruch ist erledigt.
+                Bestätigt ihr es, gilt es, und der Streitfall ist erledigt.
             </p>
             <div>
                 <Button @click="submitConfirm">Ergebnis bestätigen</Button>
@@ -216,7 +216,7 @@ function claim(scores: Record<number, number | null>): string {
             class="flex flex-col gap-2"
             @submit.prevent="submitDispute"
         >
-            <Label for="dispute-reason">Einspruch einlegen</Label>
+            <Label for="dispute-reason">Ergebnis anfechten</Label>
             <Textarea
                 id="dispute-reason"
                 v-model="disputeForm.reason"
@@ -226,8 +226,8 @@ function claim(scores: Record<number, number | null>): string {
                 aria-describedby="dispute-hint dispute-error"
             />
             <p id="dispute-hint" class="text-sm text-text-muted">
-                Schreibt, was nicht stimmt. Die Orga sieht beide Meldungen und
-                entscheidet.
+                Schreibt, was nicht stimmt. Die Turnierleitung sieht beide
+                Meldungen und entscheidet.
             </p>
             <InputError
                 id="dispute-error"
@@ -241,7 +241,7 @@ function claim(scores: Record<number, number | null>): string {
                         disputeForm.processing || disputeForm.reason === ''
                     "
                 >
-                    Einspruch einlegen
+                    Ergebnis anfechten
                 </Button>
             </div>
         </form>

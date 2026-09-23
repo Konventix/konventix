@@ -84,7 +84,7 @@ function teamHref(teamId: string): string {
             <p class="text-sm text-text-muted">
                 {{
                     props.page.match.disputed
-                        ? 'Einspruch'
+                        ? 'Streitfall'
                         : matchStateLabel(props.page.match.state)
                 }}
             </p>

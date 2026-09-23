@@ -462,7 +462,7 @@ class CompetitionServiceProvider extends ModuleServiceProvider
             sample: [
                 'competitionName' => 'Counter-Strike 2 — 5v5',
                 'teamName' => 'Die Kellerkinder',
-                'detail' => 'Die Orga hat dich für dieses Turnier ins Team aufgenommen.',
+                'detail' => 'Die Turnierleitung hat dich für dieses Turnier ins Team aufgenommen.',
             ],
         ));
 
@@ -516,7 +516,7 @@ class CompetitionServiceProvider extends ModuleServiceProvider
         $registry->register(new MessageTemplate(
             key: 'competition.match-disputed',
             subjects: [
-                'de' => 'Einspruch gegen euer Ergebnis: {{ $competitionName }}',
+                'de' => 'Streitfall um euer Ergebnis: {{ $competitionName }}',
                 'en' => 'Your result was disputed: {{ $competitionName }}',
             ],
             bodies: [
@@ -524,7 +524,7 @@ class CompetitionServiceProvider extends ModuleServiceProvider
                     <p>Hallo,</p>
                     <p>{{ $detail }}</p>
                     <p>Turnier: <strong>{{ $competitionName }}</strong><br>
-                    Einspruch von: <strong>{{ $teamName }}</strong></p>
+                    Angefochten von: <strong>{{ $teamName }}</strong></p>
                     <p>Unter „Meine Turniere" siehst du das Spiel und später die Entscheidung.</p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -539,7 +539,7 @@ class CompetitionServiceProvider extends ModuleServiceProvider
             sample: [
                 'competitionName' => 'Counter-Strike 2 — 5v5',
                 'teamName' => 'Die Kellerkinder',
-                'detail' => 'Euer Gegner hat Einspruch gegen das Ergebnis eingelegt. Die Turnierleitung entscheidet.',
+                'detail' => 'Euer Gegner hat das Ergebnis angefochten. Die Turnierleitung entscheidet.',
             ],
         ));
 
@@ -585,7 +585,7 @@ class CompetitionServiceProvider extends ModuleServiceProvider
                     <p>{{ $detail }}</p>
                     <p>Turnier: <strong>{{ $competitionName }}</strong><br>
                     Team: <strong>{{ $teamName }}</strong></p>
-                    <p>Der Platz ist wieder frei. Wenn ihr vollzählig werdet, sprecht die Orga an.</p>
+                    <p>Der Platz ist wieder frei. Wenn ihr vollzählig werdet, sprecht die Turnierleitung an.</p>
                     BLADE,
                 'en' => <<<'BLADE'
                     <p>Hello,</p>

@@ -404,7 +404,20 @@ it('shows no value, not "0 s", for a team on the public leaderboard that has not
             ->where('page.standings.0.entrantId', $driver->id)
             ->where('page.standings.0.tiebreaker', 41.9)
             ->where('page.standings.1.placement', 2)
-            ->where('page.standings.1.tiebreaker', null));
+            ->where('page.standings.1.tiebreaker', null)
+            // The page formats with the stage's own unit and places, which
+            // `formatScore()` prints with a decimal comma (fix wave B,
+            // part 3, M6): "41,900 s".
+            ->where('page.competition.unit', 's')
+            ->where('page.competition.decimals', 3));
+});
+
+it('gives a leaderboard stage saved without a unit a German one', function (): void {
+    // Final review, part 3, M6: the default was the English "pts", which a
+    // participant read as "Wertung (pts)".
+    expect((new LeaderboardSettings)->unit)->toBe('Punkte')
+        ->and(LeaderboardSettings::ofStageSettings([])->unit)->toBe('Punkte')
+        ->and(LeaderboardSettings::ofStageSettings(['unit' => 'pts'])->unit)->toBe('pts');
 });
 
 /*
@@ -1022,7 +1035,7 @@ it('refuses a report, a confirm and a dispute once the competition is over, in G
 
     $this->actingAs($ofD)
         ->post('/tournaments/'.$competition->id.'/matches/'.$first->id.'/dispute', ['reason' => 'Das stimmt nicht.'])
-        ->assertSessionHasErrors(['reason' => 'Dieses Turnier ist vorbei. Gegen seine Ergebnisse kann kein Einspruch mehr eingelegt werden.']);
+        ->assertSessionHasErrors(['reason' => 'Dieses Turnier ist vorbei. Seine Ergebnisse können nicht mehr angefochten werden.']);
 
     // Nothing filed on match 2, match 1 untouched, nobody told anything.
     expect(MatchResultReport::query()->where('competition_match_id', $second->id)->count())->toBe(0)

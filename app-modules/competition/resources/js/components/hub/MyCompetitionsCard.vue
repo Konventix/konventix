@@ -13,8 +13,10 @@ import { statusLabel } from '../public/labels';
  * (`tests/Feature/HubComponentBoundaryTest.php`). The status labels are the
  * public pages' own (`../public/labels`).
  *
- * It does not poll: *Nächste Spiele* reloads the whole `hub` prop while a
- * competition runs, and this card's payload comes back with it.
+ * It does not poll, and nothing refreshes it: *Nächste Spiele* fetches only
+ * its own payload from `/live/next-games` (design §10a, "Liveness"), so the
+ * status and check-in shown here are the ones of the page load until the
+ * hub is loaded again (final review, part 3, M3).
  */
 // Spelled out rather than `Konventix.Competition.Data.MyCompetitionsCardData`
 // (see `agenda/hub/NowNextCard.vue`). Mirrors the Data class field for field.

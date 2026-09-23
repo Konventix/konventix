@@ -747,6 +747,7 @@ declare namespace Konventix {
                 readonly unit: string | null;
                 readonly heats: number | null;
                 readonly requiredLinkedAccount: string | null;
+                readonly decimals: number | null;
             };
             export type CompetitionPageData = {
                 readonly event: Konventix.Competition.Data.EventRefData;
@@ -1074,7 +1075,8 @@ declare namespace Konventix {
                 | 'competition.check-in-entrants'
                 | 'competition.manage-schedule'
                 | 'competition.record-results'
-                | 'competition.correct-results';
+                | 'competition.correct-results'
+                | 'competition.view-entrant-contacts';
             export type ProofPolicy = 'none' | 'optional' | 'required';
             export type ResultSubmissionMode = 'desk_only' | 'participants';
             export type StageEntrySource = 'signup' | 'previous_stage';

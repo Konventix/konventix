@@ -159,8 +159,8 @@ function withdrawInterest(): void {
                     </div>
                     <p class="text-sm text-text-muted">
                         Ein Team unter {{ props.competition.teamSize }}
-                        Personen hält seinen Platz; die Orga füllt es bei
-                        Anmeldeschluss auf oder spricht euch an.
+                        Personen hält seinen Platz; die Turnierleitung füllt es
+                        bei Anmeldeschluss auf oder spricht euch an.
                     </p>
                     <InputError
                         id="entry-error"

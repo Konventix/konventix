@@ -119,11 +119,11 @@ ADR-0062). The build order for #32, each item its own merge request:
       Competitions*, the viewer's entries with status and check-in. The
       card refreshes itself from `GET /live/next-games` (its own JSON, not a
       hub reload); match times on the card and the match page are on the
-      event's wall clock, from the projected `timezone`. Left: the team
-      page still shows match times in the reader's zone; a knocked-out
+      event's wall clock, from the projected `timezone`. Left: a knocked-out
       entrant keeps polling until the competition ends, because there is
       no eliminated state (review M2); the `v-for` key in
-      `MyCompetitionsCard.vue` (M3) and the duplicated `eventSlug()` (M4).
+      `MyCompetitionsCard.vue` (M3) and the duplicated `eventSlug()` (M4),
+      both also under "Deferred review minors" below.
 - [x] Linked-account signup rule (§5.6, operator decision 2026-09-22):
       `disciplines.requires_linked_provider` (None / Steam on the console
       form), checked by `EnterCompetition` on the whole roster and by
@@ -187,6 +187,16 @@ Found on the way and not built. Each one is still true as of #302.
       rather than on `entrants.seed`.
 - [ ] **Free text on erasure**: a note that names its own author survives
       the author's erasure (design §14).
+- [x] Final review fix wave B, the rest (design §14): participant writes
+      refuse a draft competition or a non-public event; the proof upload,
+      interest and score bounds (part 2, M3–M5); savepoints around the
+      best-effort writes (M2); the GDPR export keeps a submitter's note to
+      the submitter (M1); refusals shown on the list and on withdraw;
+      Wayfinder routes on *Meine Turniere* and the join page; one term per
+      thing (*Streitfall*, *Turnierleitung*), a German default unit and a
+      decimal comma; the readers ask the Actions' current-side rule; a
+      confirm is offered during a dispute; the hub card's timer stops on
+      unmount.
 - [x] Destructive clicks ask first on the dialog primitive (final review
       fix wave B, part 3, I2): a participant's withdraw and leave; the
       console's decline, withdraw and disqualify, *Cancel competition* and
@@ -218,7 +228,29 @@ Found on the way and not built. Each one is still true as of #302.
       form is set for the first round only; the console scope test walks a hand-written route
       list; a replayed `AdmissionIssued` out of order can null an existing
       holder; the deferred `afterCommit()` dispatches do not restore the
-      brand context a later listener might read.
+      brand context a later listener might read; the console's person
+      search finds only people with a `ParticipantProfile`, and the issue
+      for it is still owed (Task 6); the two "first operator" rules can
+      diverge (Task 6 M-6); `FillIncompleteEntrant` names only the first
+      unlinked person in its refusal (7c M4); the discipline is loaded twice
+      per page view (7c M6); the `v-for` key in `MyCompetitionsCard.vue` and
+      the duplicated `eventSlug()` of the two hub cards (7b M3, M4); the
+      correction cascade never leaves its stage (Task 5 M-3);
+      `usePollWhile()` leaves a `Poll` in the SSR process per server render
+      of a polled page (final review, part 3, M1).
+- [ ] Final review minors not taken in fix wave B: `members[].userId` on
+      *Meine Turniere* sends teammates' account ULIDs (part 2, M6); the
+      invite code renders under `ViewCompetitions` (M7); the Tournaments
+      dashboard stats `sum` a per-replica gauge (M8); German `detail` inside
+      English notice bodies (M9); a re-report mails the other roster again
+      (M10); profile visibility is projected and never read (M11); brand
+      validation before the operator check (M12); the canvas signals some
+      states by colour alone and zooms on every wheel (part 3, M5); "Alle
+      Spiele in Meine Turniere" promises a list that does not exist (M7);
+      the team page says "Runde n" without the section (M8); hand-written
+      prop types on three pages (M9); "Meine Competitions", "Event" and the
+      S / N / U column order (M6's remaining rows); a leaderboard value on
+      *Meine Turniere* and the desk still prints with a decimal point.
 
 ## Backlog
 

@@ -1660,3 +1660,18 @@ its slot could still be offered for confirmation, and the Action then
 refused it. All three now read through `MatchPowers::currentClaims()` (the
 list: a correlated check on `match_slots`), which is the Actions' rule.
 
+### ADR-0001, 2026-09-23 (final review fix wave B) — one word per thing on the participant side
+
+The participant pages said *Einspruch* where the hub card said *Streitfall
+offen*, and *Orga* where the refusals and the dispute mail said
+*Turnierleitung* (final review, part 3, M6). The controller's ruling: use
+*Einspruch* if §8's German says so, and *Streitfall* otherwise. §8 has no
+German, and the only German this design uses for the state is §10a's
+*Streitfall offen*. So a disputed match is a **Streitfall** everywhere, and
+the act of raising one is **Ergebnis anfechten**. The people who decide are
+the **Turnierleitung** everywhere.
+
+A leaderboard stage saved without a unit now gets *Punkte*, not *pts*.
+Stages saved earlier keep the *pts* they stored. The public standings print
+the stage's `decimals` with a German decimal comma (`formatScore()`).
+

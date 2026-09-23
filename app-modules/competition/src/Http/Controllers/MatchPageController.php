@@ -73,7 +73,7 @@ final class MatchPageController
 
         $this->attempt(fn () => $dispute->handle($model, $side, $data->reason, $userId), 'reason');
 
-        return $this->done(__('Einspruch eingelegt. Die Orga entscheidet.'));
+        return $this->done(__('Ergebnis angefochten. Die Turnierleitung entscheidet.'));
     }
 
     /**

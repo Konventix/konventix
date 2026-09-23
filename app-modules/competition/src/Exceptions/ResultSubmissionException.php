@@ -300,7 +300,7 @@ final class ResultSubmissionException extends RuntimeException
                 'Match [%s] is already disputed and waiting for the desk.',
                 $matchId,
             ),
-            __('Gegen dieses Ergebnis läuft schon ein Einspruch. Die Turnierleitung entscheidet.'),
+            __('Dieses Ergebnis ist schon ein Streitfall. Die Turnierleitung entscheidet.'),
         );
     }
 
@@ -317,7 +317,7 @@ final class ResultSubmissionException extends RuntimeException
                 $competitionId,
                 $status,
             ),
-            __('Dieses Turnier ist vorbei. Gegen seine Ergebnisse kann kein Einspruch mehr eingelegt werden.'),
+            __('Dieses Turnier ist vorbei. Seine Ergebnisse können nicht mehr angefochten werden.'),
         );
     }
 }

@@ -95,7 +95,7 @@ the flows.
 |---|---|
 | Game server provisioning, match handler configuration, `Deployment` and `MatchSession` lifecycle state | **GameOps** (ADR-0012). Competition emits `MatchScheduled` and `MatchFinished` and never provisions, configures, or tears down anything. |
 | The game catalogue, its modes, and server requirements | **GameOps** owns games/modes/server requirements outright (D-GOP-04 as amended by ADR-0062). Competition's `Discipline` references a GameOps game by ULID and keeps a **picker read model** projected from GameOps' catalogue event — name, icon, engine, modes — never a query against a GameOps model. Contest defaults (durations, team size, draws) live on the discipline itself, not in the projection. |
-| Proof images and their storage | **Platform** media library (ADR-0035); Competition stores the media ULID and decides who may see it. |
+| Proof images and their storage | **Platform** media library (ADR-0035); Competition stores the media ULID and will decide who may see it once Platform can guard a read (#322). Until then anyone holding the ULID can read a proof, which is why no participant page offers an upload (design §14). |
 | User accounts, display names, avatars, Steam and other social identities | **Identity**. Competition keeps `ParticipantProfile` as a read model, plus `competition_linked_identities`, which records only *that* a provider is linked, for the signup rule (design §5.6). |
 | Whether a competitor may be on site, badge, check-in | **Admission** |
 | The entry fee as a commercial act, its order and invoice | **Registration** and **Commerce** (ADR-0006). Prize money and any other movement of funds never touch the platform (ADR-0007). |

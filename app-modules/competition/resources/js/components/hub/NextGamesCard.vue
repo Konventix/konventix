@@ -52,10 +52,22 @@ const card = ref<Konventix.Competition.Data.NextGamesCardData>({
 
 let timer: ReturnType<typeof setTimeout> | null = null;
 
+/**
+ * Set on unmount. A fetch in flight when the card goes away resolves later
+ * and calls `schedule()`, which would otherwise arm a new timer nothing ever
+ * clears: a fetch loop on a dead component for the rest of the session
+ * (final review, part 3, M2).
+ */
+let unmounted = false;
+
 function schedule(): void {
     if (timer !== null) {
         clearTimeout(timer);
         timer = null;
+    }
+
+    if (unmounted) {
+        return;
     }
 
     // Null once nothing of the viewer's runs any more: stop asking.
@@ -93,8 +105,11 @@ async function refresh(): Promise<void> {
 // Started on mount only: there is nothing to poll during server rendering.
 onMounted(schedule);
 onUnmounted(() => {
+    unmounted = true;
+
     if (timer !== null) {
         clearTimeout(timer);
+        timer = null;
     }
 });
 

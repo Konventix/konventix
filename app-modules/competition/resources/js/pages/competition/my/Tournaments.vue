@@ -95,7 +95,7 @@ const props = defineProps<{
 usePollWhile(() => props.pollSeconds);
 
 const scoreStates: Record<string, string> = {
-    pending: 'Wartet auf die Orga',
+    pending: 'Wartet auf die Turnierleitung',
     verified: 'Bestätigt',
     rejected: 'Abgelehnt',
 };
@@ -243,13 +243,13 @@ function checkInHint(entry: Entry, team: Team): string {
     }
 
     if (entry.checkInMode === 'desk') {
-        return 'Die Orga checkt euch am Turnier-Desk ein.';
+        return 'Die Turnierleitung checkt euch am Turnier-Desk ein.';
     }
 
     if (entry.checkInMode === 'self_service' && !entry.canCheckIn) {
         return entry.checkInOpensAt
             ? `Check-in ab ${formatEventDateTime(entry.checkInOpensAt, team.eventTimezone)}.`
-            : 'Der Check-in öffnet, sobald die Orga eine Startzeit gesetzt hat.';
+            : 'Der Check-in öffnet, sobald die Turnierleitung eine Startzeit gesetzt hat.';
     }
 
     return '';
@@ -434,7 +434,11 @@ function canWithdraw(entry: Entry): boolean {
                         </Button>
                     </div>
 
-                    <InputError class="w-full" :message="refusals[entry.id]" />
+                    <InputError
+                        class="w-full"
+                        role="alert"
+                        :message="refusals[entry.id]"
+                    />
                 </li>
             </ul>
 

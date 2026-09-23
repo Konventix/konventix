@@ -12,6 +12,8 @@ const props = defineProps<{
     standings: Konventix.Competition.Data.DeskStandingData[];
     /** The leaderboard's unit, or null for a format that plays matches. */
     unit: string | null;
+    /** The leaderboard's decimal places (§7.2). */
+    decimals?: number | null;
 }>();
 
 const grouped = computed(() =>
@@ -55,7 +57,13 @@ const grouped = computed(() =>
                     <td class="py-1 pr-3">{{ row.placement ?? '—' }}</td>
                     <td class="py-1 pr-3">{{ row.teamName }}</td>
                     <td v-if="props.unit !== null" class="py-1">
-                        {{ formatScore(row.tiebreaker, props.unit) }}
+                        {{
+                            formatScore(
+                                row.tiebreaker,
+                                props.unit,
+                                props.decimals ?? null,
+                            )
+                        }}
                     </td>
                     <template v-else>
                         <td v-if="grouped" class="py-1 pr-3">

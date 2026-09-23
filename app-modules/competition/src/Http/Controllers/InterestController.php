@@ -47,7 +47,7 @@ final class InterestController
             return back()->withErrors(['note' => $e->participantMessage()]);
         }
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Du stehst jetzt auf der Interessenten-Liste.')]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Du stehst jetzt auf der Interessentenliste.')]);
 
         return back();
     }

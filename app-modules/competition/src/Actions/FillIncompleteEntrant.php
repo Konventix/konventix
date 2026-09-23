@@ -76,7 +76,7 @@ final class FillIncompleteEntrant
                 new EntrantNoticeData(
                     competitionName: $competition->name,
                     teamName: $team->name,
-                    detail: __('Die Orga hat dich für dieses Turnier ins Team aufgenommen.'),
+                    detail: __('Die Turnierleitung hat dich für dieses Turnier ins Team aufgenommen.'),
                 ),
             );
 
