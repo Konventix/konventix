@@ -20,14 +20,15 @@ use Konventix\Competition\Models\Entrant;
 /**
  * Enters a team in a competition (D-CMP-05, D-CMP-13, D-CMP-14, design §5).
  *
- * **The entry gate is a confirmed Registration, and nothing else.** D-CMP-05
- * settles that admission possession is verified later, at check-in or match
- * start — so this Action must not reach for an admission, and does not. It
- * asks Competition's own eligibility read model, built from Registration's
- * contract events, never Registration's tables (ADR-0004). Since #330 the gate
- * also opens for a non-revoked admission held in one's own name, read from
- * Competition's own presence projection through the same `userMayEnter()`
- * (§5.1 addendum); being scanned at the door is still not asked here.
+ * **The entry gate is a confirmed Registration or a ticket in one's own
+ * name** (D-CMP-05 as amended, §5.1 addendum, #330). Both legs are asked
+ * through `EligibleRegistration::userMayEnter()`, of Competition's own read
+ * models and never another module's tables (ADR-0004): the eligibility read
+ * model built from Registration's contract events, and the presence
+ * projection §6 already keeps, where a non-revoked admission with the person
+ * as holder opens the gate as well. What stays out is the door: whether the
+ * holder was scanned in is §6's question at check-in or match start
+ * (`requires_event_check_in`), so `checked_in_at` is not read here.
  *
  * Every entrant is a team, including a solo player (D-CMP-13): one shape
  * means the bracket engine never branches on whether a side is a person or a
@@ -68,8 +69,9 @@ final class EnterCompetition
     use MaintainsTeamRoster;
 
     /**
-     * @param  list<string>  $memberUserIds  the roster entering; each must hold a confirmed
-     *                                       registration, and anyone not yet on the team is
+     * @param  list<string>  $memberUserIds  the roster entering; each must pass the gate above
+     *                                       (a confirmed registration or a ticket in their
+     *                                       own name), and anyone not yet on the team is
      *                                       put on it here. Empty means "whoever is already
      *                                       on the team".
      */

@@ -10,7 +10,8 @@ use RuntimeException;
 /**
  * Thrown when a team cannot enter a competition. Named causes because a
  * player told "you cannot sign up" deserves to know whether signup is shut,
- * they are already in, or they hold no confirmed registration.
+ * they are already in, or they hold neither a confirmed registration nor a
+ * ticket in their own name (§5.1 addendum, #330).
  *
  * **Two audiences, two languages** (ADR-0001). The message is English, for
  * the console, the log and the tests. Every cause a participant can reach

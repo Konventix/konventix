@@ -360,9 +360,18 @@ projection listens to what they emit:
   on an interest list or be found by the desk's search. Run it after
   **every** enable of `competition`, including a re-enable: a revocation or
   an unassignment heard while the module was off never reached the table,
-  and an announced `revoked` deletes the stale row. Run it once after the
-  0.9.1 deploy that brings #330 as well. It is idempotent, and it is what
-  covers the tickets claimed before that deploy.
+  and an announced `revoked` deletes the stale row. The table and its
+  listeners came with 0.9.0 and #330 adds neither, so for a brand that has
+  had `competition` on since the 0.9.0 backfill every claim and revocation
+  has been heard live, and the run after the 0.9.1 deploy changes nothing
+  there. It is idempotent and it runs with the rest of the list anyway: what
+  it repairs is any brand switched on, or off and on, since the last run.
+  To check a brand afterwards, the two counts below should match:
+
+      select count(*) from admissions
+       where brand_id = '<brand>' and holder_user_id is not null and state <> 'revoked';
+      select count(*) from competition_admission_presence
+       where brand_id = '<brand>' and holder_user_id is not null;
 - `identity:replay-profiles` fills `competition_participant_profiles`, the
   names every tournament page and the console's person search show. Without
   it a roster renders with dashes until each person edits their profile.
