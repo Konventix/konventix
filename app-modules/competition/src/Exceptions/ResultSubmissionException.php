@@ -21,13 +21,43 @@ use RuntimeException;
  * keeps results to itself, whether they are on the wrong team, or whether the
  * match was settled while they were typing.
  *
- * The messages are English, matching the module's existing refusal copy.
- * Participant-reachable causes across this module move to German in one pass
- * (ADR-0001, §11's slice); starting a second convention here would make that
- * pass harder, not easier.
+ * **Two audiences, two languages** (ADR-0001), as in
+ * `CompetitionEntryException`. The message is English, for the desk, the log
+ * and the tests. Every cause a participant can reach carries a German
+ * sentence as well (`participantMessage()`), which names no ULID and no
+ * design section. The two causes only the desk reaches fall back to a generic
+ * German sentence.
  */
 final class ResultSubmissionException extends RuntimeException
 {
+    /**
+     * The German sentence for a participant, or null for a console-only
+     * cause (`notDisputed`, `resolveInstead`).
+     */
+    private ?string $participantMessage = null;
+
+    /**
+     * What a participant is told (ADR-0001): the cause in German, or a
+     * generic German sentence for a cause only the desk should reach.
+     */
+    public function participantMessage(): string
+    {
+        return $this->participantMessage
+            ?? __('Das hat nicht geklappt. Lade die Seite neu und versuch es noch einmal.');
+    }
+
+    /**
+     * A refusal a participant can reach: the English message for the console
+     * and the log, the German one for the participant's page.
+     */
+    private static function refusal(string $message, string $participantMessage): self
+    {
+        $exception = new self($message);
+        $exception->participantMessage = $participantMessage;
+
+        return $exception;
+    }
+
     /**
      * §8.1's first knob. The desk can always record, whatever this says; what
      * `desk_only` shuts is the participant's door, and it is shut in the
@@ -36,11 +66,14 @@ final class ResultSubmissionException extends RuntimeException
      */
     public static function deskOnly(string $competitionId): self
     {
-        return new self(sprintf(
-            'Competition [%s] is set to `desk_only`: the organizers record results, participants do not '
-            .'submit them (design §8.1).',
-            $competitionId,
-        ));
+        return self::refusal(
+            sprintf(
+                'Competition [%s] is set to `desk_only`: the organizers record results, participants do not '
+                .'submit them (design §8.1).',
+                $competitionId,
+            ),
+            __('Bei diesem Turnier trägt die Turnierleitung die Ergebnisse ein.'),
+        );
     }
 
     /**
@@ -53,75 +86,99 @@ final class ResultSubmissionException extends RuntimeException
      */
     public static function takesNoProofs(string $competitionId): self
     {
-        return new self(sprintf(
-            'Competition [%s] has a proof policy of `none`: it takes no proof images, so there is nothing '
-            .'to upload (design §8.1, §8.7).',
-            $competitionId,
-        ));
+        return self::refusal(
+            sprintf(
+                'Competition [%s] has a proof policy of `none`: it takes no proof images, so there is nothing '
+                .'to upload (design §8.1, §8.7).',
+                $competitionId,
+            ),
+            __('Dieses Turnier nimmt keine Beweisbilder an.'),
+        );
     }
 
     public static function notASide(string $matchId, string $entrantId): self
     {
-        return new self(sprintf(
-            'Entrant [%s] is not a side of match [%s]; only the teams playing a match say what happened in it.',
-            $entrantId,
-            $matchId,
-        ));
+        return self::refusal(
+            sprintf(
+                'Entrant [%s] is not a side of match [%s]; only the teams playing a match say what happened in it.',
+                $entrantId,
+                $matchId,
+            ),
+            __('Euer Team spielt in diesem Spiel nicht mit.'),
+        );
     }
 
     public static function notOnRoster(string $userId, string $entrantId): self
     {
-        return new self(sprintf(
-            'User [%s] is not on the roster behind entrant [%s]; reporting for a side is a membership '
-            .'right, not a capability (design §11).',
-            $userId,
-            $entrantId,
-        ));
+        return self::refusal(
+            sprintf(
+                'User [%s] is not on the roster behind entrant [%s]; reporting for a side is a membership '
+                .'right, not a capability (design §11).',
+                $userId,
+                $entrantId,
+            ),
+            __('Du stehst nicht im Team dieser Seite.'),
+        );
     }
 
     public static function alreadyRecorded(string $matchId): self
     {
-        return new self(sprintf(
-            'Match [%s] already has a recorded result; from here only a correction by the desk can change '
-            .'it (design §8.2).',
-            $matchId,
-        ));
+        return self::refusal(
+            sprintf(
+                'Match [%s] already has a recorded result; from here only a correction by the desk can change '
+                .'it (design §8.2).',
+                $matchId,
+            ),
+            __('Das Ergebnis dieses Spiels steht schon fest. Ändern kann es nur noch die Turnierleitung.'),
+        );
     }
 
     public static function matchNotPlayable(string $matchId, string $state): self
     {
-        return new self(sprintf(
-            'Match [%s] is `%s`; there is no result to report on it.',
-            $matchId,
-            $state,
-        ));
+        return self::refusal(
+            sprintf(
+                'Match [%s] is `%s`; there is no result to report on it.',
+                $matchId,
+                $state,
+            ),
+            __('Für dieses Spiel kann gerade kein Ergebnis gemeldet werden.'),
+        );
     }
 
     public static function incompleteScoreLine(string $matchId): self
     {
-        return new self(sprintf(
-            'A report on match [%s] has to give a score for every side of it; a partial score line cannot '
-            .'be compared with the other side\'s.',
-            $matchId,
-        ));
+        return self::refusal(
+            sprintf(
+                'A report on match [%s] has to give a score for every side of it; a partial score line cannot '
+                .'be compared with the other side\'s.',
+                $matchId,
+            ),
+            __('Trag bitte für beide Seiten ein Ergebnis ein.'),
+        );
     }
 
     public static function nothingToConfirm(string $matchId): self
     {
-        return new self(sprintf(
-            'Nobody has reported a result for match [%s] yet, so there is nothing to confirm.',
-            $matchId,
-        ));
+        return self::refusal(
+            sprintf(
+                'Nobody has reported a result for match [%s] yet, so there is nothing to confirm.',
+                $matchId,
+            ),
+            __('Es gibt noch kein Ergebnis, das ihr bestätigen könntet.'),
+        );
     }
 
     public static function cannotConfirmOwnReport(string $matchId, string $entrantId): self
     {
-        return new self(sprintf(
-            'Entrant [%s] filed the only report on match [%s]; a result is agreed by the *other* side '
-            .'(design §8.2).',
-            $entrantId,
-            $matchId,
-        ));
+        return self::refusal(
+            sprintf(
+                'Entrant [%s] filed the only report on match [%s]; a result is agreed by the *other* side '
+                .'(design §8.2).',
+                $entrantId,
+                $matchId,
+            ),
+            __('Euer eigenes Ergebnis bestätigt die andere Seite, nicht ihr.'),
+        );
     }
 
     public static function notDisputed(string $matchId): self
@@ -153,10 +210,13 @@ final class ResultSubmissionException extends RuntimeException
      */
     public static function sideStillToCome(string $matchId): self
     {
-        return new self(sprintf(
-            'Match [%s] is still waiting for a side; record it once both teams are known.',
-            $matchId,
-        ));
+        return self::refusal(
+            sprintf(
+                'Match [%s] is still waiting for a side; record it once both teams are known.',
+                $matchId,
+            ),
+            __('Der Gegner steht noch nicht fest: das Spiel davor ist noch nicht entschieden.'),
+        );
     }
 
     /**
@@ -166,11 +226,14 @@ final class ResultSubmissionException extends RuntimeException
      */
     public static function drawNotPossible(string $matchId, string $format): self
     {
-        return new self(sprintf(
-            'Match [%s] cannot end in a draw: its stage runs `%s`, where every match needs a winner.',
-            $matchId,
-            $format,
-        ));
+        return self::refusal(
+            sprintf(
+                'Match [%s] cannot end in a draw: its stage runs `%s`, where every match needs a winner.',
+                $matchId,
+                $format,
+            ),
+            __('Ein Unentschieden gibt es in diesem Turnier nicht. Ein Spiel braucht einen Sieger.'),
+        );
     }
 
     /**
@@ -179,37 +242,49 @@ final class ResultSubmissionException extends RuntimeException
      */
     public static function notALeaderboard(string $stageId, string $format): self
     {
-        return new self(sprintf(
-            'Stage [%s] runs [%s]; only a leaderboard stage accumulates score entries.',
-            $stageId,
-            $format,
-        ));
+        return self::refusal(
+            sprintf(
+                'Stage [%s] runs [%s]; only a leaderboard stage accumulates score entries.',
+                $stageId,
+                $format,
+            ),
+            __('In diesem Turnier werden keine Ergebnisse in eine Rangliste eingetragen.'),
+        );
     }
 
     public static function notInTheField(string $entrantId, string $stageId): self
     {
-        return new self(sprintf(
-            'Entrant [%s] does not belong to stage [%s]\'s competition.',
-            $entrantId,
-            $stageId,
-        ));
+        return self::refusal(
+            sprintf(
+                'Entrant [%s] does not belong to stage [%s]\'s competition.',
+                $entrantId,
+                $stageId,
+            ),
+            __('Euer Team spielt in diesem Turnier nicht mit.'),
+        );
     }
 
     public static function noLongerScores(string $entrantId, string $state): self
     {
-        return new self(sprintf(
-            'Entrant [%s] is [%s] and no longer scores.',
-            $entrantId,
-            $state,
-        ));
+        return self::refusal(
+            sprintf(
+                'Entrant [%s] is [%s] and no longer scores.',
+                $entrantId,
+                $state,
+            ),
+            __('Euer Team ist nicht mehr im Turnier und kann keine Ergebnisse mehr einreichen.'),
+        );
     }
 
     public static function alreadyDisputed(string $matchId): self
     {
-        return new self(sprintf(
-            'Match [%s] is already disputed and waiting for the desk.',
-            $matchId,
-        ));
+        return self::refusal(
+            sprintf(
+                'Match [%s] is already disputed and waiting for the desk.',
+                $matchId,
+            ),
+            __('Gegen dieses Ergebnis läuft schon ein Einspruch. Die Turnierleitung entscheidet.'),
+        );
     }
 
     /**
@@ -219,10 +294,13 @@ final class ResultSubmissionException extends RuntimeException
      */
     public static function competitionOver(string $competitionId, string $status): self
     {
-        return new self(sprintf(
-            'Competition [%s] is `%s`; its results can no longer be disputed.',
-            $competitionId,
-            $status,
-        ));
+        return self::refusal(
+            sprintf(
+                'Competition [%s] is `%s`; its results can no longer be disputed.',
+                $competitionId,
+                $status,
+            ),
+            __('Dieses Turnier ist vorbei. Gegen seine Ergebnisse kann kein Einspruch mehr eingelegt werden.'),
+        );
     }
 }

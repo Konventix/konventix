@@ -87,7 +87,7 @@ final class ProofGate
         if ($proofMediaId === null) {
             if ($policy->demandsProof()) {
                 throw ValidationException::withMessages([
-                    $field => __('This competition needs a proof image with every result.'),
+                    $field => __('Dieses Turnier braucht zu jedem Ergebnis ein Beweisbild.'),
                 ]);
             }
 
@@ -96,7 +96,7 @@ final class ProofGate
 
         if (! $policy->acceptsProof()) {
             throw ValidationException::withMessages([
-                $field => __('This competition does not take proof images.'),
+                $field => __('Dieses Turnier nimmt keine Beweisbilder an.'),
             ]);
         }
 

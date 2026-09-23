@@ -22,11 +22,12 @@ use Konventix\Competition\Models\ParticipantProfile;
  * the form will show it beside (so the input can point at it, ADR-0055),
  * never as a 500; success as a German toast (ADR-0001).
  *
- * The participant refusals' own causes (`ResultSubmissionException`,
- * `CompetitionEntryException`) are still English; their translation is one
- * pass across the module (Task 8), so they are rendered as they are. The two
- * exceptions written for the desk are never shown: they get a fixed German
- * sentence each.
+ * Every refusal is German. The two participant exceptions
+ * (`ResultSubmissionException`, `CompetitionEntryException`) carry a German
+ * sentence per cause beside their English message, and this answers with
+ * that sentence (`participantMessage()`). The English message is the desk's
+ * and the log's. The two exceptions written for the desk are never shown:
+ * they get a fixed German sentence each.
  */
 trait AnswersTheParticipant
 {
@@ -35,19 +36,18 @@ trait AnswersTheParticipant
         try {
             return $work();
         } catch (CompetitionEntryException $e) {
-            // The linked-account rule (§5.6) is answered in German with the
-            // names of whoever still lacks the link; the page shows the link
-            // to the account settings beside it. Every other entry refusal
-            // is still the Action's English (see the docblock).
+            // The linked-account rule (§5.6) is answered with the names of
+            // whoever still lacks the link; the page shows the link to the
+            // account settings beside it.
             $provider = $e->missingLinkedProvider();
 
             throw ValidationException::withMessages([
                 $field => $provider === null
-                    ? $e->getMessage()
+                    ? $e->participantMessage()
                     : $this->linkedAccountRefusal($provider, $e->usersMissingTheLink(), null),
             ]);
         } catch (ResultSubmissionException $e) {
-            throw ValidationException::withMessages([$field => $e->getMessage()]);
+            throw ValidationException::withMessages([$field => $e->participantMessage()]);
         } catch (CompetitionLifecycleException) {
             // The desk's refusal, in the desk's English with a ULID in it. The
             // one cause a participant reaches is `over()` — the competition

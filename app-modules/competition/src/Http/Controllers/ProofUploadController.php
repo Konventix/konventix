@@ -42,7 +42,7 @@ class ProofUploadController
                 'required', 'file', 'max:8192', 'mimes:jpg,jpeg,png,gif,webp',
                 function (string $attribute, mixed $value, Closure $fail): void {
                     if ($value instanceof UploadedFile && @getimagesize($value->getRealPath()) === false) {
-                        $fail(__('The file is not a valid image.'));
+                        $fail(__('Diese Datei ist kein gültiges Bild.'));
                     }
                 },
             ],
@@ -68,9 +68,10 @@ class ProofUploadController
             );
         } catch (ResultSubmissionException $e) {
             // A refusal the participant can act on (no proofs taken here, not
-            // on this side), not a server fault: a 422 on the file, like the
-            // module's other controllers turn a named cause into a form error.
-            throw ValidationException::withMessages(['file' => $e->getMessage()]);
+            // on this side), not a server fault: a 422 on the file, in German,
+            // like the module's other controllers turn a named cause into a
+            // form error.
+            throw ValidationException::withMessages(['file' => $e->participantMessage()]);
         }
 
         return response()->json(['proofMediaId' => $proofMediaId], 201);

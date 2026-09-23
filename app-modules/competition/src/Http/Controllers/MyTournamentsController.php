@@ -162,7 +162,7 @@ final class MyTournamentsController
                 $this->actorId($request),
             );
         } catch (CompetitionEntryException $e) {
-            return back()->withErrors(['name' => $e->getMessage()]);
+            return back()->withErrors(['name' => $e->participantMessage()]);
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Team angelegt.')]);
@@ -219,7 +219,7 @@ final class MyTournamentsController
         try {
             $withdraw->handle($model, WithdrawalReason::CaptainWithdrew);
         } catch (CompetitionEntryException $e) {
-            return back()->withErrors(['entrant' => $e->getMessage()]);
+            return back()->withErrors(['entrant' => $e->participantMessage()]);
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Anmeldung zurückgezogen.')]);
@@ -254,7 +254,7 @@ final class MyTournamentsController
         try {
             $checkIn->handle($model, $userId);
         } catch (CompetitionEntryException $e) {
-            return back()->withErrors(['entrant' => $e->getMessage()]);
+            return back()->withErrors(['entrant' => $e->participantMessage()]);
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Ihr seid eingecheckt.')]);

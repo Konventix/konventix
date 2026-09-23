@@ -79,8 +79,7 @@ final class TeamJoinController
             }
 
             return back()->withErrors([
-                'code' => __('Dieser Code passt nicht — er ist unbekannt, das Team ist voll, du bist schon dabei, '
-                    .'oder du bist für diese Veranstaltung nicht angemeldet.'),
+                'code' => CompetitionEntryException::joinRefusal(),
             ]);
         }
 

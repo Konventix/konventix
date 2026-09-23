@@ -43,7 +43,7 @@ final class InterestController
         try {
             $express->handle($model, (string) $user->getAuthIdentifier(), $validated['note'] ?? null);
         } catch (CompetitionEntryException $e) {
-            return back()->withErrors(['note' => $e->getMessage()]);
+            return back()->withErrors(['note' => $e->participantMessage()]);
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Du stehst jetzt auf der Interessenten-Liste.')]);
