@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Konventix\Competition\Data\LeaderboardSettings;
 use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Enums\ProofPolicy;
@@ -15,6 +16,8 @@ use Konventix\Competition\Models\CompetitionInterest;
 use Konventix\Competition\Models\CompetitionTeamMember;
 use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\MatchResultReport;
+use Konventix\Competition\Models\ScoreEntry;
+use Konventix\Competition\Models\Stage;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventPublished;
 use Konventix\Identity\Models\User;
@@ -211,4 +214,62 @@ it('takes interest while signup is on or closed, refuses it once the competition
     }
 
     expect(CompetitionInterest::query()->where('competition_id', $competition->id)->sole()->note)->toBe('signup_closed');
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * Item 4, part 2, M5: a score is a number the column can hold
+ * ---------------------------------------------------------------------------
+ */
+
+it('refuses a score that is not a number or does not fit the column as a field error, not a 500, and takes the largest that fits', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+
+    [$competition, [$a]] = competitionFieldWithRosters(2, [
+        'event_id' => competitionPublicEvent($brand->id),
+        'status' => CompetitionStatus::Running,
+        'result_submission_mode' => ResultSubmissionMode::Participants,
+    ]);
+    Stage::factory()->leaderboard(new LeaderboardSettings(heats: null, unit: 's'))->create(['competition_id' => $competition->id]);
+    $player = writeGuardsTestMember($a);
+
+    $url = '/tournaments/'.$competition->id.'/score-entries';
+
+    // `decimal(12,3)` holds nine digits before the point, so the bound is
+    // 999 999 999 either way; one more, a trillion (the finding's 1e12) and
+    // a word are refused on the field.
+    foreach (['abc', 1_000_000_000, 1e12, -1_000_000_000] as $value) {
+        $this->actingAs($player)->post($url, ['value' => $value])->assertSessionHasErrors('value');
+    }
+
+    expect(ScoreEntry::query()->where('entrant_id', $a->id)->exists())->toBeFalse();
+
+    // The edge itself fits and is stored as it was sent. Five requests.
+    $this->actingAs($player)->post($url, ['value' => 999_999_999])->assertSessionHasNoErrors();
+
+    expect((float) ScoreEntry::query()->where('entrant_id', $a->id)->sole()->value)->toBe(999_999_999.0);
+});
+
+it('refuses a match score that is not a whole number from 0 to 65535 on the report form', function (): void {
+    // Wave A bounded `scores.*` (`MatchReportData::rules()`); pinned here at
+    // the HTTP edge, where "abc" used to be read as 0 and a trillion
+    // overflowed `match_slots.score`.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+
+    [$competition, [$a]] = competitionFieldWithRosters(2, [
+        'event_id' => competitionPublicEvent($brand->id),
+        'result_submission_mode' => ResultSubmissionMode::Participants,
+    ]);
+    $match = competitionMatchAt(competitionGeneratedStage($competition), 1, 1);
+    $player = writeGuardsTestMember($a);
+
+    $url = '/tournaments/'.$competition->id.'/matches/'.$match->id.'/report';
+
+    foreach (['abc', 65_536, 1e12, -1] as $bad) {
+        $this->actingAs($player)->post($url, ['scores' => [1 => $bad, 2 => 9]])->assertSessionHasErrors('scores.1');
+    }
+
+    expect(MatchResultReport::query()->where('competition_match_id', $match->id)->exists())->toBeFalse();
 });
