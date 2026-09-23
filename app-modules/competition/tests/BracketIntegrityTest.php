@@ -1135,3 +1135,42 @@ describe('matches nobody can reach (round 2, N1)', function (): void {
         expect(competitionSidesOf(integrityTestMatchIn($stage, 'grand_final', 4, 1)))->toBe([1 => $s1->id, 2 => $s2->id]);
     });
 });
+
+/*
+ * ---------------------------------------------------------------------------
+ * Round 2, N2 — a withdrawal after a result cannot strand the start
+ * ---------------------------------------------------------------------------
+ */
+
+describe('the start after a pre-start result (round 2, N2)', function (): void {
+    it('forfeits a captain\'s withdrawal once a disqualification stands, and starts', function (): void {
+        $this->withBrand();
+
+        [$competition, [$s1, $s2, $s3, $s4]] = competitionFieldWithRosters(4);
+        $stage = competitionGeneratedStage($competition);
+
+        // SE4: m1 = s1 v s4, m2 = s2 v s3, the final takes their winners.
+        // s4 does not show and is disqualified: m1 is forfeited to s1, a
+        // recorded result, so the desk can no longer draw again.
+        app(DisqualifyEntrant::class)->handle($s4);
+
+        // s3's captain withdraws, still allowed in `SignupClosed`. A result
+        // stands, so the withdrawal forfeits m2 to s2. Before the fix s3 kept
+        // its slot: drawn {1,2,3,4} − field {1,2} − disqualified {4} = {3},
+        // start refused, redraw refused, a disqualification of the withdrawn
+        // team refused — only Cancel was left.
+        app(WithdrawEntrant::class)->handle($s3, WithdrawalReason::CaptainWithdrew);
+
+        $second = competitionMatchAt($stage, 1, 2);
+
+        expect($second->state)->toBe(MatchState::Finished)
+            ->and($second->winner_entrant_id)->toBe($s2->id)
+            ->and(competitionSidesOf(competitionMatchAt($stage, 2, 1)))->toBe([1 => $s1->id, 2 => $s2->id]);
+
+        // Drawn {1,2,3,4}; field {1,2}; retired and in no open match {3,4}:
+        // nothing is missing and nothing unaccounted for.
+        app(StartCompetition::class)->handle($competition->refresh());
+
+        expect($competition->refresh()->status)->toBe(CompetitionStatus::Running);
+    });
+});

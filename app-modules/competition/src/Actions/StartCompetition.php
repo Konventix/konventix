@@ -8,11 +8,14 @@ use Illuminate\Support\Facades\DB;
 use Konventix\Competition\Actions\Concerns\TransitionsCompetitionStatus;
 use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
+use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Enums\StageFormat;
 use Konventix\Competition\Events\CompetitionStarted;
 use Konventix\Competition\Exceptions\IllegalCompetitionStateTransitionException;
 use Konventix\Competition\Models\Competition;
+use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\Entrant;
+use Konventix\Competition\Models\MatchSlot;
 use Konventix\Competition\Models\Stage;
 use Konventix\Competition\Seeding\SignupField;
 
@@ -41,10 +44,13 @@ use Konventix\Competition\Seeding\SignupField;
  *   incomplete, a late check-in or an undone one. The stage keeps the field
  *   it was drawn from (`drawn_entrant_ids`), and a start over a different
  *   field is refused — the desk draws again first, which costs nothing
- *   before the first result (final review, part 1, I4). A **disqualified**
- *   entrant is the one exception: its matches were forfeited, which is how
- *   the bracket already deals with it, and a forfeit is a recorded result
- *   that would forbid the redraw.
+ *   before the first result (final review, part 1, I4). A **retired**
+ *   entrant — withdrawn or disqualified — that stands in no open match any
+ *   more is the exception: its matches were forfeited, which is how the
+ *   bracket already deals with it, and a forfeit is a recorded result that
+ *   would forbid the redraw. A withdrawal or decline after a result forfeits
+ *   the same way, so it cannot strand the start either (fix wave A round 2,
+ *   N2).
  *
  * All of them are refusals, not warnings: they are the ways a tournament gets
  * started on a field that is not the field that will play it. They are asked
@@ -132,15 +138,30 @@ final class StartCompetition
 
         $field = $this->field->entrantIds($first);
 
-        $disqualified = array_map(strval(...), Entrant::withoutBrandScope()
+        // Retired entrants — withdrawn or disqualified — that no longer
+        // stand in any open match: the bracket has already dealt with them
+        // (a forfeit, or a slot emptied in front of an opponent still to
+        // come), and once a result stands no redraw could (fix wave A round
+        // 2, N2). A withdrawn team still in an open match is a change the
+        // desk has to draw again for.
+        $settled = array_map(strval(...), Entrant::withoutBrandScope()
             ->where('brand_id', $competition->brand_id)
             ->where('competition_id', $competition->id)
-            ->where('state', EntrantState::Disqualified->value)
+            ->whereIn('state', [EntrantState::Withdrawn->value, EntrantState::Disqualified->value])
+            ->whereNotIn('id', MatchSlot::withoutBrandScope()
+                ->select('entrant_id')
+                ->where('brand_id', $competition->brand_id)
+                ->whereNotNull('entrant_id')
+                ->whereIn('competition_match_id', CompetitionMatch::withoutBrandScope()
+                    ->select('id')
+                    ->where('brand_id', $competition->brand_id)
+                    ->where('competition_id', $competition->id)
+                    ->whereIn('state', [MatchState::Pending->value, MatchState::Scheduled->value, MatchState::Live->value])))
             ->pluck('id')
             ->all());
 
         $undrawn = array_diff($field, $drawn);
-        $gone = array_diff($drawn, $field, $disqualified);
+        $gone = array_diff($drawn, $field, $settled);
 
         if ($undrawn !== [] || $gone !== []) {
             throw IllegalCompetitionStateTransitionException::forPrecondition(

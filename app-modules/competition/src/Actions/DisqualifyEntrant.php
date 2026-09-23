@@ -5,16 +5,11 @@ declare(strict_types=1);
 namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Competition\Actions\Concerns\ForfeitsOpenMatches;
 use Konventix\Competition\Actions\Concerns\RetiresAnEntrant;
-use Konventix\Competition\Actions\Concerns\SettlesAMatch;
 use Konventix\Competition\Enums\EntrantState;
-use Konventix\Competition\Enums\MatchState;
-use Konventix\Competition\Enums\StageFormat;
 use Konventix\Competition\Enums\WithdrawalReason;
-use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\Entrant;
-use Konventix\Competition\Models\MatchSlot;
-use Konventix\Competition\Models\Stage;
 
 /**
  * An organizer's ruling (design §5.5, `ManageEntrants`).
@@ -60,13 +55,8 @@ use Konventix\Competition\Models\Stage;
  */
 final class DisqualifyEntrant
 {
+    use ForfeitsOpenMatches;
     use RetiresAnEntrant;
-    use SettlesAMatch;
-
-    /**
-     * @var list<string>
-     */
-    private const array OPEN_STATES = [MatchState::Pending->value, MatchState::Scheduled->value, MatchState::Live->value];
 
     /**
      * @return list<string> the matches forfeited
@@ -82,98 +72,5 @@ final class DisqualifyEntrant
 
             return $forfeited;
         });
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function forfeitOpenMatches(Entrant $entrant): array
-    {
-        $entrantId = (string) $entrant->getKey();
-        $forfeited = [];
-        $handled = [];
-
-        while (($match = $this->nextOpenMatch($entrant, $handled)) !== null) {
-            // Every pass either finishes the match or takes the entrant out
-            // of it, so neither can bring it back; the list is a guard
-            // against a loop, not part of the rule.
-            $handled[] = $match->id;
-
-            $sides = $this->entrantIdsByPosition($match);
-
-            if ($this->awaitsASide($match, $sides)) {
-                MatchSlot::withoutBrandScope()
-                    ->where('brand_id', $match->brand_id)
-                    ->where('competition_match_id', $match->id)
-                    ->where('entrant_id', $entrantId)
-                    ->update(['entrant_id' => null]);
-
-                continue;
-            }
-
-            $scores = [];
-            $winnerId = null;
-
-            foreach ($sides as $sideId) {
-                $isForfeiting = $sideId === $entrantId;
-                $scores[$sideId] = $isForfeiting ? 0 : 1;
-
-                if (! $isForfeiting) {
-                    $winnerId = $sideId;
-                }
-            }
-
-            app(RecordMatchResult::class)->handle($match, $scores, $winnerId);
-            app(AdvanceBracket::class)->handle($match->refresh());
-
-            $forfeited[] = $match->id;
-        }
-
-        return $forfeited;
-    }
-
-    /**
-     * The earliest open match that still holds the entrant.
-     *
-     * @param  list<string>  $handled
-     */
-    private function nextOpenMatch(Entrant $entrant, array $handled): ?CompetitionMatch
-    {
-        /** @var CompetitionMatch|null $match */
-        $match = CompetitionMatch::withoutBrandScope()
-            ->where('brand_id', $entrant->brand_id)
-            ->whereIn('id', MatchSlot::withoutBrandScope()
-                ->select('competition_match_id')
-                ->where('brand_id', $entrant->brand_id)
-                ->where('entrant_id', $entrant->getKey()))
-            ->whereIn('state', self::OPEN_STATES)
-            ->when($handled !== [], fn ($query) => $query->whereNotIn('id', $handled))
-            ->orderBy('round')
-            ->orderBy('id')
-            ->first();
-
-        return $match;
-    }
-
-    /**
-     * Every stage that has standings to show: a drawn one, or a leaderboard,
-     * which needs no draw (design §14, "A leaderboard needs no draw to
-     * start"). Recomputed whether or not a match was forfeited in it — the
-     * disqualified entrant leaves the table either way.
-     */
-    private function recomputeCompetition(Entrant $entrant): void
-    {
-        $stages = Stage::withoutBrandScope()
-            ->where('brand_id', $entrant->brand_id)
-            ->where('competition_id', $entrant->competition_id)
-            ->where(fn ($query) => $query
-                ->whereNotNull('generated_at')
-                ->orWhere('format', StageFormat::Leaderboard->value))
-            ->orderBy('sequence')
-            ->get();
-
-        foreach ($stages as $stage) {
-            app(CalculateStandings::class)->handle($stage);
-        }
     }
 }

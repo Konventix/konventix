@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Competition\Actions\Concerns\ForfeitsOpenMatches;
 use Konventix\Competition\Actions\Concerns\NotifiesRosterMembers;
 use Konventix\Competition\Actions\Concerns\RetiresAnEntrant;
 use Konventix\Competition\Data\EntrantNoticeData;
@@ -30,6 +31,7 @@ use Konventix\Competition\Models\Entrant;
  */
 final class DeclineIncompleteEntrant
 {
+    use ForfeitsOpenMatches;
     use NotifiesRosterMembers;
     use RetiresAnEntrant;
 
@@ -51,6 +53,14 @@ final class DeclineIncompleteEntrant
                 EntrantState::Withdrawn,
                 WithdrawalReason::IncompleteRoster,
             );
+
+            // A roster that fell short after the draw can be in the bracket;
+            // once a result stands it is forfeited out of it rather than
+            // left to strand the start (fix wave A round 2, N2).
+            if ($this->competitionHasARecordedResult($entrant)) {
+                $this->forfeitOpenMatches($entrant);
+                $this->recomputeCompetition($entrant);
+            }
 
             // After the commit and only where the brand has the module on,
             // like every other roster notice (final review, part 1).

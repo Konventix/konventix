@@ -1697,3 +1697,24 @@ rule. It runs after every settlement, so no generation-time step is needed:
 the desk settles the byes anyway, and the last one to settle closes the empty
 match behind them. No `MatchFinished` goes out for it: nothing was played and
 nothing was announced.
+
+### §4/§5.5, 2026-09-23 (fix wave A, round 2) — a withdrawal after a result forfeits, so it cannot strand the start
+
+The previous entry's open end: a disqualification before the start is a
+recorded result (its forfeit), which forbids a redraw, and a captain may
+still withdraw in `SignupClosed`. The withdrawn team kept its slots, `start`
+refused the changed field, and neither a redraw nor a disqualification of the
+withdrawn team was possible. Only Cancel was left.
+
+Two changes close it:
+
+- **`WithdrawEntrant` and `DeclineIncompleteEntrant` forfeit once a result
+  stands** in any stage of the competition, through the same pass
+  `DisqualifyEntrant` uses (`Concerns\ForfeitsOpenMatches`), and recompute the
+  standings. Before the first result nothing changes: the desk can still draw
+  again, and a withdrawal leaves the bracket to it, as §5.5's reading of
+  withdrawal has it. This also holds in `Running`, where a withdrawal after a
+  result used to leave the team's matches for the desk to record by hand.
+- **`start` accepts every retired entrant that stands in no open match** —
+  withdrawn or disqualified — not only a disqualified one. A withdrawn team
+  still in an open match is still a change the desk draws again for.

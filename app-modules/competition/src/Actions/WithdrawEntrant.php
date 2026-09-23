@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Competition\Actions\Concerns\ForfeitsOpenMatches;
 use Konventix\Competition\Actions\Concerns\RetiresAnEntrant;
 use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
@@ -26,14 +27,17 @@ use Konventix\Competition\Models\Entrant;
  * - **The organizer, at any time** (`ManageEntrants`). A team that has gone
  *   home is a fact the desk has to be able to record whatever the clock says.
  *
- * A withdrawal in a running bracket deliberately does **not** forfeit the
- * pending matches — that is `DisqualifyEntrant`'s doing. The difference is
- * real: a team that withdraws is usually being replaced or the round is being
- * redrawn by hand, while a disqualification is a ruling that must advance the
- * bracket on its own.
+ * A withdrawal forfeits the team's open matches only **once a result
+ * stands** in the competition. Before that the desk can still draw again, and
+ * a team that withdraws is usually being replaced or the round redrawn by
+ * hand, so the bracket is left for the desk. After it no redraw exists, and a
+ * withdrawn team left in its slots would strand the bracket — or, before the
+ * start, the start itself, whose changed-field check could then never pass
+ * (design §14, fix wave A round 2, N2).
  */
 final class WithdrawEntrant
 {
+    use ForfeitsOpenMatches;
     use RetiresAnEntrant;
 
     public function handle(Entrant $entrant, WithdrawalReason $reason): Entrant
@@ -44,6 +48,14 @@ final class WithdrawEntrant
             }
 
             $this->retireEntrant($entrant, EntrantState::Withdrawn, $reason);
+
+            // Once a result stands the desk cannot draw again, so the team
+            // must not be left in its slots: its open matches are forfeited
+            // as a disqualification's are (fix wave A round 2, N2).
+            if ($this->competitionHasARecordedResult($entrant)) {
+                $this->forfeitOpenMatches($entrant);
+                $this->recomputeCompetition($entrant);
+            }
 
             return $entrant->refresh();
         });
