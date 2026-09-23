@@ -27,6 +27,16 @@ use Throwable;
  * incomplete. It is logged instead, which is the same trade Support makes for
  * its triage notices.
  *
+ * **Each send in a savepoint of its own** (final review, part 2, M2).
+ * `SendMessage` writes its log row in the database, and on Postgres a failed
+ * statement aborts the transaction around it. The notices run after the
+ * commit (`notifyRosterAfterCommit()`), which is usually outside any
+ * transaction, but not always: an Action nested in a caller's transaction,
+ * or a test's wrapping one, defers to the outermost commit and may still be
+ * inside it. The nested `DB::transaction()` rolls back to its savepoint
+ * before the catch runs, so one failed send leaves the connection usable for
+ * the next recipient and for whatever the caller does next.
+ *
  * `SendMessage` is resolved inside the `try`, per recipient, rather than
  * injected or resolved once above the loop. Two reasons, and both have bitten
  * this codebase: an Action holding a service resolved from the boot-time
@@ -82,12 +92,14 @@ trait NotifiesRosterMembers
 
         foreach (array_unique($userIds) as $userId) {
             try {
-                app(SendMessage::class)->handle(new SendMessageRequest(
-                    recipientId: $userId,
-                    templateKey: $templateKey,
-                    payload: $payload,
-                    brandId: $brandId,
-                ));
+                DB::transaction(static function () use ($userId, $templateKey, $payload, $brandId): void {
+                    app(SendMessage::class)->handle(new SendMessageRequest(
+                        recipientId: $userId,
+                        templateKey: $templateKey,
+                        payload: $payload,
+                        brandId: $brandId,
+                    ));
+                });
             } catch (Throwable $exception) {
                 Log::warning('A competition roster notice could not be sent.', [
                     'template' => $templateKey,

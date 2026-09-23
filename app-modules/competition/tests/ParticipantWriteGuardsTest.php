@@ -3,9 +3,12 @@
 declare(strict_types=1);
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Konventix\Competition\Actions\ReportMatchResult;
 use Konventix\Competition\Data\LeaderboardSettings;
+use Konventix\Competition\Data\MatchReportData;
 use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Enums\ProofPolicy;
@@ -15,12 +18,16 @@ use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionInterest;
 use Konventix\Competition\Models\CompetitionTeamMember;
 use Konventix\Competition\Models\Entrant;
+use Konventix\Competition\Models\MatchHistoryEntry;
 use Konventix\Competition\Models\MatchResultReport;
 use Konventix\Competition\Models\ScoreEntry;
 use Konventix\Competition\Models\Stage;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventPublished;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Media\MediaLibrary;
+use Konventix\Platform\Models\MediaItem;
+use Konventix\Platform\Storage\DiskResolver;
 
 /**
  * What every participant write asks before it acts, beyond the Action's own
@@ -272,4 +279,47 @@ it('refuses a match score that is not a whole number from 0 to 65535 on the repo
     }
 
     expect(MatchResultReport::query()->where('competition_match_id', $match->id)->exists())->toBeFalse();
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * Item 4, part 2, M2: a best-effort write cannot poison the caller's
+ * transaction
+ * ---------------------------------------------------------------------------
+ */
+
+it('keeps a reported result when recording the proof\'s usage fails with a database error inside the transaction', function (): void {
+    // On Postgres a failed statement aborts the transaction around it. The
+    // usage reference is bookkeeping and is caught, but without a savepoint
+    // of its own the report's next statement (the history row) failed with
+    // 25P02 and the whole report rolled back. The library below fails the
+    // way a real one would: with a statement the database refuses.
+    $this->withBrand();
+
+    [$competition, , $members] = competitionFieldWithRosters(2, [
+        'result_submission_mode' => ResultSubmissionMode::Participants,
+        'proof_policy' => ProofPolicy::Optional,
+    ]);
+    $match = competitionMatchAt(competitionGeneratedStage($competition), 1, 1);
+    $sides = competitionSidesOf($match);
+    $proofId = (string) MediaItem::factory()->create()->getKey();
+
+    app()->bind(MediaLibrary::class, fn ($app): MediaLibrary => new class($app->make(DiskResolver::class)) extends MediaLibrary
+    {
+        public function recordUsage(string $mediaId, string $module, string $entityType, string $entityId): void
+        {
+            DB::statement('select 1 from competition_fix_wave_b_no_such_table');
+        }
+    });
+
+    app(ReportMatchResult::class)->handle(
+        $match,
+        Entrant::query()->findOrFail($sides[1]),
+        new MatchReportData(scores: [1 => 16, 2 => 9], proofMediaId: $proofId),
+        $members[$sides[1]],
+    );
+
+    expect(MatchResultReport::query()->where('competition_match_id', $match->id)->sole()->proof_media_id)->toBe($proofId)
+        ->and($match->fresh()->reported_at)->not->toBeNull()
+        ->and($match->history()->get()->map(static fn (MatchHistoryEntry $entry): string => $entry->kind->value)->all())->toBe(['reported']);
 });

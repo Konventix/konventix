@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Competition\Proofs;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Konventix\Competition\Enums\ProofPolicy;
@@ -136,6 +137,15 @@ final class ProofGate
      * future cleanup, and neither an id that belongs to no brand nor a
      * library that throws is worth rolling back the result the participant
      * just reported — both are logged and the write stands.
+     *
+     * **In a savepoint of its own** (final review, part 2, M2; deferred
+     * T5 M-4). The callers run this inside their `DB::transaction()`, and on
+     * Postgres a failed statement aborts the whole transaction: without the
+     * savepoint the catch below would swallow the error, and the caller's
+     * next statement would fail with 25P02 and roll the result back as a 500
+     * — the opposite of "the write stands". The nested `DB::transaction()`
+     * rolls back to its savepoint before rethrowing, so the outer transaction
+     * is still usable when the catch runs.
      */
     public function recordUsage(?string $proofMediaId, string $brandId, string $entityType, string $entityId): void
     {
@@ -144,18 +154,20 @@ final class ProofGate
         }
 
         try {
-            if (! $this->media->belongsToBrand($proofMediaId, $brandId)) {
-                Log::warning('A competition proof references media that is not this brand\'s.', [
-                    'media_id' => $proofMediaId,
-                    'brand_id' => $brandId,
-                    'entity_type' => $entityType,
-                    'entity_id' => $entityId,
-                ]);
+            DB::transaction(function () use ($proofMediaId, $brandId, $entityType, $entityId): void {
+                if (! $this->media->belongsToBrand($proofMediaId, $brandId)) {
+                    Log::warning('A competition proof references media that is not this brand\'s.', [
+                        'media_id' => $proofMediaId,
+                        'brand_id' => $brandId,
+                        'entity_type' => $entityType,
+                        'entity_id' => $entityId,
+                    ]);
 
-                return;
-            }
+                    return;
+                }
 
-            $this->media->recordUsage($proofMediaId, 'competition', $entityType, $entityId);
+                $this->media->recordUsage($proofMediaId, 'competition', $entityType, $entityId);
+            });
         } catch (Throwable $exception) {
             Log::warning('A competition proof usage reference could not be recorded.', [
                 'media_id' => $proofMediaId,
