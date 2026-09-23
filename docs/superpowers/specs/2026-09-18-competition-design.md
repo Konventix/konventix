@@ -1153,3 +1153,212 @@ participant can reach `CompetitionLifecycleException::over()` from a page
 opened before the competition finished, and `IllegalMatchStateTransitionException`
 when a match moved on under them. Each is answered with one fixed German
 sentence on the form's field.
+
+### §12, 2026-09-23 — §12 reconciled against the code (Task 8)
+
+§12 was written before the code, and the plan left the reconciliation to the
+last task on purpose. What tasks 1 to 7c emit was compared with §12 event by
+event. Where the code is right, this entry corrects the design. Where §12 is
+right, the code was changed in the same task. `SPEC.md`'s contract table now
+lists what is emitted, with its real payload.
+
+| Event | §12 says | The code | Decision |
+|---|---|---|---|
+| `CompetitionPublished` | `competition_id`, `event_id`, `discipline_id`, `status`, `at` | Adds `brand_id`, `name`, `starts_at` | Code is right. `brand_id` is what a listener gates on (ADR-0003), and the name and start are what Agenda's timetable projects. |
+| `CompetitionStarted` / `Finished` / `Cancelled` | As above | Adds `brand_id` | Code is right, for the same reason. |
+| `CompetitionRescheduled` | Not listed | Emitted by `UpdateCompetition` when an announced competition's `starts_at` moves | Code is right. It is additive and Agenda's timetable reads it. |
+| `CompetitionUnpublished` | Not listed | Not emitted | Stays unemitted in 0.9.0, because nothing consumes a competition's publication yet. It is the precondition of Agenda's competition half, and Agenda's `TODO.md` now says so (see "Unpublishing a competition tells nobody" above). |
+| `SignupOpened` | Emitted when the window opens (scheduler tick) or the organizer reopens | Emitted on publish into an open window and on reopen. There is no scheduler tick, and `brand_id` is added. | §12 is right about the tick, and the tick is not built. Signup is derived from the window (§4), so entering works on time. Only the event is late or missing: a competition published before its window opens emits no `SignupOpened` when the window arrives. Owed in `TODO.md`. |
+| `SignupClosed` | `competition_id`, `event_id`, `at`, `entrant_count` | As listed, plus `brand_id`. Emitted by the organizer's close only. | Same as above: nothing closes a competition automatically when `signup_closes_at` passes. Signup is shut by the window anyway, but the status stays `Published` until the organizer closes it. Owed in `TODO.md`. |
+| `EntrantRegistered` | `entrant_id`, `competition_id`, `team_id`, `member_user_ids` | `competitionTeamId`, plus `event_id`, `brand_id`, `registered_at` and `state` | Code is right. `state` is there because an incomplete roster enters too (§5.4) and is announced as `incomplete`. A later fill-up that completes it emits nothing, so a consumer that needs the full roster reads it from `MatchScheduled`. |
+| `EntrantWithdrawn` | `…`, `reason` | Adds `event_id`, `brand_id`, `final_state` (`withdrawn` or `disqualified`), `withdrawn_at` | Code is right. |
+| `EntrantCheckedIn` | `…` | Adds `event_id`, `brand_id`, `checked_in_at`, `via_self_service` | Code is right. There is no undo event (see §6's entry above). |
+| `MatchResultReported`, `MatchDisputed` | `match_id`, `competition_id`, `entrant_id`, `user_id`, `at` | Adds `brand_id` | Code is right. |
+| `MatchDisputeResolved` | As above | Adds `brand_id`; `entrant_id` is the side the decision went to, and null for a draw | Code is right. The resolution note is left off the payload deliberately (`SPEC.md`). |
+| `MatchRescheduled`, `MatchCancelled` | "As proposed in the SPEC" | Neither is emitted | They stay proposed. A reschedule already emits `MatchScheduled` again with the new time, which is the upsert a consumer needs. No Action cancels a single match. GameOps' consumer (#115, 0.10) decides whether either is still needed. |
+| `MatchScheduled` | Gains `member_user_ids` per side | It had, but it was emitted for a match with an empty slot | **§12 and ADR-0012 are right, and the code was changed.** The event means "this match is on, at this time, between these sides". GameOps configures a server with the rosters, so a match with a side still to come has nothing to provision. `ScheduleMatch` now emits it only when every slot holds a side. `AdvanceBracket` emits it when it fills the last slot of a match the desk has already timed, which is the common case: the desk times round two before round one is decided. `CorrectMatchResult` emits it again when a voided match that keeps its time is on again between new sides. A bye is never announced. Consumers treat the event as an upsert keyed on `match_id`. |
+| `MatchFinished`, `MatchResultCorrected` | Not in §12 (ADR-0012, D-CMP-12) | Add `brand_id` | Unchanged. |
+
+**Consumed.** §12 lists four Admission events and `UserProfileUpdated`. The
+code consumes six Admission events (§6 lists them and says why),
+`UserRegistered` beside `UserProfileUpdated`, Registration's
+`RegistrationSubmitted` and `RegistrationConfirmed` (D-CMP-05's read model,
+since slice 10), Event's `EventCreated`, `EventDetailsUpdated`,
+`EventRescheduled` and its seven lifecycle events (§10's entries above), and
+Identity's four linked-account events (§5.6). The code is right. Each addition
+is recorded where it was made.
+
+**Messaging.** §12 names four notices. The code sends three: the fill-up
+(`competition.roster-filled`), the decline (`competition.entry-declined`) and
+"your opponent reported a result" (`competition.result-reported`). The two it
+does not send are "a match was disputed" and "checked in". The desk's half of
+the first is covered by its own screen and the new
+`KonventixCompetitionDisputeWaiting` alert (§8.4's entry above). At the event,
+the sides see the dispute on the match page and as *Streitfall offen* on the
+*Nächste Spiele* card (§10a), and a check-in shows on the *Meine
+Competitions* card. The two notices are owed in `TODO.md` rather than built
+here, because they add mail without adding anything the hall cannot already
+see.
+
+**Naming.** §7.3's `SignupSeedSource` does not exist under that name. Its
+job is split in two. `SignupField` decides who is in the field and in which
+stable order (§6, §7.5). `RandomSeedSource` is the source registered for
+`entry_source = signup`: it orders that field at random, which is §7.5's
+default. `ManualSeedSource` carries the desk's drag order and is an explicit
+override, so it is never registered. `PreviousStageSeedSource` keeps its
+name.
+
+§7.5's `ResetStage` exists as written: it deletes the stage's matches, slots
+and edges and clears `generated_at`. `RegenerateBracket` is **not** a rename
+of it. It is `ResetStage` followed by `GenerateBracket` in one transaction,
+the desk's "draw again". It is the only way to redraw in `Running`, where a
+bare reset would leave a running competition with no bracket (see "where in
+the lifecycle the desk may draw" above). Both exist, and both refuse once
+the first result is recorded (D-CMP-20).
+
+### §7.3, 2026-09-23 — what "the previous stage is done" means is not decided
+
+Two questions have one answer that nobody has given yet. Both must be
+answered before `PreviousStageSeedSource` is written, not inside it.
+
+- **When is a stage complete?** No `Stage::isComplete()` exists, and §7.3
+  never says what it would mean: every match finished, the final round
+  finished, or the organizer declaring it. Nothing today stops `SeedStage`
+  from running against a half-played predecessor and advancing whoever is
+  on top at that moment.
+- **What happens at a tie on the cut?** Standings share placements
+  (standard competition ranking, `SPEC.md`), so "the best eight" of a field
+  where four share 7th place is not eight entrants. The standings row holds
+  what a rule would need (`points`, `tiebreaker`, `seed`). Which rule applies
+  (a playoff, a count-back on the tiebreaker, the seed, or a coin toss) is a
+  product decision.
+
+Neither can happen in 0.9.0. The UI builds one stage per competition,
+`SeedSourceRegistry` refuses `previous_stage`, and a test pins the refusal.
+Cross-group ranking of runners-up is a third, related gap, but §7.3 already
+lists it as not built.
+
+### §7.5, 2026-09-23 — `entrants.seed` belongs to the competition, seeding to the stage
+
+`entrants.seed` is one column on the entrant and has no stage in it.
+`SeedStage` guards on its own stage's results, and then clears and rewrites
+`seed` for the whole competition. In a two-stage competition, seeding stage
+2 would null the seeds of everyone who did not advance and renumber those who
+did. Those are the seeds stage 1's standings use to order tied rows, so a
+later recompute of stage 1 (and a §8.5 correction recomputes) would lay out
+stage 1's table differently from the same results.
+
+**It is harmless in 0.9.0, and here is why.** A competition has one stage,
+so the stage that `SeedStage` guards on is the only one there is.
+`SeedStage` refuses once that stage has a result (a finished match, a winner,
+a score or a verified score entry), so its seeds never move under a result
+they break ties in. And a seed never decides a placement. Tied entrants share
+a placement, and the seed only orders the tied rows for display (`SPEC.md`,
+"Tied placements"). The second stage must bring seeds per stage (a column
+on a stage-entrant row, or seeds kept in the stage's settings) before
+`PreviousStageSeedSource` exists.
+
+### §13, 2026-09-23 — erasure forgets the author, not the words
+
+`CompetitionGdprHandler` nulls the person's ULID on every row that must
+survive: score entries, result reports, match history, door presence and the
+eligibility read model. It deletes the person's profile, interest rows and
+linked accounts. What it does not touch is free text on the rows that stay:
+a dispute reason, a resolution note, a correction note, a score entry's note
+or a rejection note. Once the author is nulled that text is competition
+history that nobody can attribute. The exception is text that names its own
+author ("Tom hier, wir haben 2:0 gewonnen"). That residual is accepted for
+0.9.0. Removing it would take a scrub pass over free text, which is a
+different tool from nulling a column.
+
+### §9, 2026-09-23 — the console honours the module gate; its navigation does not
+
+§9 says every screen "honours the module gate". The console runs on the
+operator host, which resolves no brand, so `ensure-module:competition`
+cannot be route middleware there. `ScopesToOperator` now reads a brand with
+`competition` switched off as a stranger's: its rows answer 404 on every
+console route, the lists leave it out, and the brand pickers do not offer
+it. Agenda's editor makes the same check (`isActiveForBrand()`).
+
+The two navigation entries (*Competitions*, *Disciplines*) stay visible to
+anyone holding the capability. Platform's admin navigation deliberately has
+no brand gate (ADR-0029), and one operator console serves several brands, so
+there is no brand to ask. Hiding an entry when no brand of the operator runs
+the module would be a Platform change that affects every module's console
+navigation. It was not made here. With the module off for every brand, the
+entries lead to empty lists.
+
+### §11, 2026-09-23 — `ViewEntrantContacts` is declared and gates nothing
+
+The capability exists, and Tournament Admin holds it. Tournament Desk does
+not. Nothing checks it yet, because Competition holds no contact data. An
+e-mail address or a phone number belongs to Identity, which this module may
+not read (ADR-0004), and neither `ParticipantProfile` nor any event it is
+projected from carries one. It is declared now so that the default roles are
+complete: a default role the operator has edited is never rewritten, so a
+capability added later would never reach an existing brand's Tournament
+Admin. The contact view on the entrants screen arrives with a read model
+that has contacts, and it is owed in `TODO.md`.
+
+### §13, 2026-09-23 — which listeners the feature-off test expects to short-circuit
+
+§13 asks that "every listener short-circuits with `competition` off for the
+brand". Read literally, that contradicts decisions already recorded here. The
+eligibility projection, the name projection and the event summary are
+**ungated on purpose**, so that a brand switching the module on in the
+middle of an event finds its confirmed registrations, names and events
+already there. The linked-account projection is gated on *any* brand running
+the module, because its events carry no brand. `CompetitionActivationTest`
+holds the code to the reading that follows from those decisions. Every
+listener that stores something for the brand (door presence) and the
+linked-account projection store nothing while the module is off, and the
+ungated eligibility projection still writes. The four metric recorders
+listen only to Competition's own events, which cannot occur for a brand that
+has the module off.
+
+### §13, 2026-09-23 — the metrics, as built
+
+The four metrics of §13 exist with the names §13 gives them. Each carries a
+`brand` label (the slug), like every module metric. The two `_total` metrics
+are counters of transitions, not current counts. `competition_entrants_total`
+counts entrants moving into `registered`, `incomplete`, `checked_in`,
+`withdrawn` or `disqualified`. `competition_matches_total` counts `scheduled`
+announcements, including a reschedule, and `finished`, once per match. The
+two gauges count what is waiting right now.
+
+§13's alert is "a dispute older than 30 min while the competition is
+`Running`". It is built as `competition_disputes_open > 0 for 30m`, per
+brand, where the gauge counts only disputes in running competitions. The
+difference is that a brand that always has *some* dispute open, each one
+resolved within minutes, also fires. The runbook
+(`docs/operations.md#konventixcompetitiondisputewaiting`) says so. A desk that
+is never idle is worth a look too, and an age gauge would be a fifth metric
+§13 does not name.
+
+### §8.3, 2026-09-23 — a leaderboard needs no draw to start
+
+Found by the definition-of-done flow. §4 makes `Running` require a
+generated stage, and `StartCompetition` read that as `generated_at` being
+set. Nothing sets it for a leaderboard stage: `GenerateBracket` has no
+generator for the format (a leaderboard has no matches, §7.2), and the desk
+offers no draw button for one. A leaderboard competition could therefore
+never reach `Running`, and so never `Finished`. Its scores could still be
+entered in `SignupClosed`, because the lifecycle guard allows that, which is
+why nothing noticed. `StartCompetition` now counts a leaderboard stage as
+ready without a draw. Its field is whoever signed up.
+
+### ADR-0001, 2026-09-23 — the participant's refusals are German
+
+Every refusal in `CompetitionEntryException` and `ResultSubmissionException`
+keeps its English message, which is for the console, the log and the tests.
+Each cause a participant can reach also carries a German sentence
+(`participantMessage()`), and the participant controllers show that one. The
+sentence names no ULID, no design section and no code value. A cause only the
+console reaches has no German sentence and answers a participant with a
+generic German one, so a participant never reads English even if such a
+cause reaches them later. The join form stays opaque: an unknown invite code
+answers with `joinRefusal()`, the same single sentence `TeamJoinController`
+gives for every other join refusal. The proof gate's refusals, the upload's
+image check, the dispute and verified-score refusals and the reason a
+counter-report writes into the match history are German as well. The desk's
+own heat refusal stays English.
