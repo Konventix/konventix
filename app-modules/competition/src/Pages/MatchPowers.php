@@ -85,7 +85,15 @@ final readonly class MatchPowers
             // would only be refused, so the page says the desk collects it.
             canReport: $participants && $open && $everySide && ! $match->isDisputed()
                 && $competition->proof_policy !== ProofPolicy::Required,
-            canConfirm: $participants && $open && ! $match->isDisputed() && $opposing !== null && $own === null,
+            // During a dispute the sides may still agree after all: the
+            // server takes the confirm and closes the dispute (final review,
+            // wave A, part 1 I5). So a side that disputed — with a claim of
+            // its own or without — may confirm the other side's claim then.
+            // Outside a dispute a side with a claim of its own never faces an
+            // opposing one: a different claim made it a dispute, and an equal
+            // one settled the match (fix wave B, item 12).
+            canConfirm: $participants && $open && $opposing !== null
+                && ($own === null || $match->isDisputed()),
             // A dispute is the one thing a side may still raise once a result
             // stands (§8.4) — against the other side's claim, or against the
             // recorded result. Never a second one while the desk has the first,

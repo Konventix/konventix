@@ -20,7 +20,9 @@ import { sideName } from '../bracket/bracketModel';
  * - **Report**: one score per side, keyed by slot position like every claim
  *   in §8. A second report replaces the side's own first one.
  * - **Confirm** takes no scores: the confirming side says "what they wrote
- *   is right" and cannot mistype it.
+ *   is right" and cannot mistype it. It stays on offer during a dispute,
+ *   because agreeing after all settles the match and closes the dispute on
+ *   the server (fix wave B, item 12); the panel says so beside the button.
  * - **Dispute** needs a reason, and lands where the desk already looks —
  *   its open-dispute panel (§8.4).
  *
@@ -147,10 +149,14 @@ function claim(scores: Record<number, number | null>): string {
         </p>
 
         <div v-if="props.viewer.canConfirm" class="flex flex-col gap-1">
+            <p v-if="props.match.disputed" class="text-sm text-text">
+                Ihr seid mit dem Ergebnis des Gegners doch einverstanden?
+                Bestätigt ihr es, gilt es, und der Einspruch ist erledigt.
+            </p>
             <div>
                 <Button @click="submitConfirm">Ergebnis bestätigen</Button>
             </div>
-            <InputError :message="confirmError" />
+            <InputError :message="confirmError" role="alert" />
         </div>
 
         <form

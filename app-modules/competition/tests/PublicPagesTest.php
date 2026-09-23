@@ -685,6 +685,49 @@ it('files a participant dispute where the desk sees it', function (): void {
         ->and($desk->disputes[0]->reason)->toBe('Wir haben 16:12 gewonnen.');
 });
 
+it('offers the disputing side the confirm during a dispute, and its confirm settles the match and closes the dispute', function (): void {
+    // Fix wave B, item 12. Wave A made the server accept a confirm on a
+    // disputed match and close the dispute (part 1, I5); the page hid the
+    // button, so the one way for the sides to agree after all was invisible.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+    $eventId = publicPagesEvent($brand);
+
+    [$competition, [$a, , , $d], $members, $stage] = publicPagesBracket($eventId);
+    $match = competitionMatchAt($stage, 1, 1);
+    $ofA = publicPagesMember($a);
+    $ofD = publicPagesMember($d);
+
+    // A claims 16:9; D counter-reports 9:16 — a report-against-report
+    // dispute, where D has a claim of its own.
+    app(ReportMatchResult::class)->handle($match, $a, new MatchReportData(scores: [1 => 16, 2 => 9]), $members[$a->id]);
+    app(ReportMatchResult::class)->handle($match->fresh(), $d, new MatchReportData(scores: [1 => 9, 2 => 16]), (string) $ofD->getKey());
+
+    expect($match->fresh()->isDisputed())->toBeTrue();
+
+    $url = publicPagesUrl($competition, '/matches/'.$match->id);
+
+    // Each side sees the other's claim and may confirm it.
+    $this->actingAs($ofD)->get($url)->assertInertia(fn (AssertableInertia $page) => $page
+        ->where('page.match.disputed', true)
+        ->where('page.viewer.ownReport', [1 => 9, 2 => 16])
+        ->where('page.viewer.opposingReport', [1 => 16, 2 => 9])
+        ->where('page.viewer.canConfirm', true));
+
+    $this->app->forgetScopedInstances();
+    $this->actingAs($ofA)->get($url)->assertInertia(fn (AssertableInertia $page) => $page
+        ->where('page.viewer.canConfirm', true));
+
+    // D agrees after all: A's 16:9 stands, A wins, and the dispute is over.
+    $this->actingAs($ofD)
+        ->post('/tournaments/'.$competition->id.'/matches/'.$match->id.'/confirm')
+        ->assertSessionHasNoErrors();
+
+    expect($match->fresh()->state)->toBe(MatchState::Finished)
+        ->and($match->fresh()->isDisputed())->toBeFalse()
+        ->and($match->fresh()->winner_entrant_id)->toBe($a->id);
+});
+
 it('lets a captain enter their team and nobody enter a team they do not captain', function (): void {
     $brand = $this->withBrand();
     $this->activateModule('competition', $brand);
