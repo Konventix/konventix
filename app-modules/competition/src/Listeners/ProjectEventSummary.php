@@ -12,14 +12,16 @@ use Konventix\Event\Events\EventConcluded;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventPublished;
+use Konventix\Event\Events\EventRescheduled;
 use Konventix\Event\Events\EventStarted;
 use Konventix\Event\Events\EventUnpublished;
 
 /**
- * Keeps Competition's copy of an event's slug, name and lifecycle state
- * (design §10, ADR-0004) — the same projection Agenda's and Admission's
- * `ProjectEventSummary` keep, cut down to the facts the public tournament
- * pages resolve by, head themselves with, and decide their visibility on.
+ * Keeps Competition's copy of an event's slug, name, lifecycle state and
+ * timezone (design §10, §10a, ADR-0004) — the same projection Agenda's and
+ * Admission's `ProjectEventSummary` keep, cut down to the facts the public
+ * tournament pages resolve by, head themselves with, decide their
+ * visibility on, and show match times in.
  *
  * Creation and details both carry slug and name and upsert them. The
  * lifecycle events each *are* a state, and write only it — so none of the
@@ -37,7 +39,23 @@ final class ProjectEventSummary
 {
     public function handleCreated(EventCreated $event): void
     {
-        $this->project($event->eventId, $event->brandId, $event->slug, $event->name);
+        $this->project($event->eventId, $event->brandId, $event->slug, $event->name, timezone: $event->timezone);
+    }
+
+    /**
+     * The event's timezone (design §10a "Time", ADR-0027): the zone the hub
+     * card and the match page show a match time in. `event:replay-details`
+     * re-emits this for every event, which is the backfill. A payload
+     * without a brand has no row it could safely create — Agenda's rule —
+     * and the replay always carries one.
+     */
+    public function handleRescheduled(EventRescheduled $event): void
+    {
+        if ($event->brandId === null) {
+            return;
+        }
+
+        $this->project($event->eventId, $event->brandId, timezone: $event->timezone);
     }
 
     public function handleDetailsUpdated(EventDetailsUpdated $event): void
@@ -77,6 +95,7 @@ final class ProjectEventSummary
         ?string $slug = null,
         ?string $name = null,
         ?string $state = null,
+        ?string $timezone = null,
     ): void {
         $summary = EventSummary::withoutBrandScope()
             ->where('brand_id', $brandId)
@@ -88,6 +107,7 @@ final class ProjectEventSummary
             'slug' => $slug,
             'name' => $name,
             'state' => $state,
+            'timezone' => $timezone,
         ], static fn (?string $value): bool => $value !== null))->save();
     }
 }

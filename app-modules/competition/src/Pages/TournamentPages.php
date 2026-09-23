@@ -728,7 +728,7 @@ final class TournamentPages
 
     private function eventRef(EventSummary $event): EventRefData
     {
-        return new EventRefData(id: $event->event_id, slug: (string) $event->slug, name: (string) $event->name);
+        return new EventRefData(id: $event->event_id, slug: (string) $event->slug, name: (string) $event->name, timezone: $event->timezone);
     }
 
     private function pollFor(Competition $competition): ?int

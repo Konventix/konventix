@@ -10,18 +10,11 @@ import { onMounted, watch } from 'vue';
  * asking.
  *
  * Started on mount only: there is nothing to poll during server rendering.
- *
- * `only` narrows the reload to some props — the hub's *Nächste Spiele* card
- * (design §10a) reloads the hub's one `hub` prop, not the page's shared
- * props; a page omits it and reloads everything, as before.
  */
-export function usePollWhile(
-    pollSeconds: () => number | null,
-    only?: string[],
-): void {
+export function usePollWhile(pollSeconds: () => number | null): void {
     const { start, stop } = usePoll(
         (pollSeconds() ?? 30) * 1000,
-        only === undefined ? {} : { only },
+        {},
         { autoStart: false, keepAlive: false },
     );
 

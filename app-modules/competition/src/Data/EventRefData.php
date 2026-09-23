@@ -12,6 +12,10 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * Competition's own `EventSummary` knows it: the slug every link on the page
  * is built from, the name it is headed with, and the ULID a new team is
  * started at (teams are per event, D-CMP-14).
+ *
+ * `timezone` is the event's IANA zone (ADR-0027, §10a "Time"): a match time
+ * is shown on the event's wall clock. Null until the projection has heard
+ * of it, and the page then shows the reader's own zone.
  */
 #[TypeScript]
 final class EventRefData extends Data
@@ -20,5 +24,6 @@ final class EventRefData extends Data
         public readonly string $id,
         public readonly string $slug,
         public readonly string $name,
+        public readonly ?string $timezone = null,
     ) {}
 }

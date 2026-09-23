@@ -21,6 +21,7 @@ use Konventix\Competition\Http\Controllers\EventTournamentsController;
 use Konventix\Competition\Http\Controllers\InterestController;
 use Konventix\Competition\Http\Controllers\MatchPageController;
 use Konventix\Competition\Http\Controllers\MyTournamentsController;
+use Konventix\Competition\Http\Controllers\NextGamesController;
 use Konventix\Competition\Http\Controllers\ProofUploadController;
 use Konventix\Competition\Http\Controllers\TeamJoinController;
 use Konventix\Competition\Http\Controllers\TeamPageController;
@@ -76,6 +77,21 @@ Route::middleware(['auth'])->group(function (): void {
 
     Route::get('/my/tournaments/join', [TeamJoinController::class, 'show'])
         ->name('competition.my.join');
+
+    /*
+     * The hub's *Nächste Spiele* card refreshing itself (design §10a
+     * "Liveness", hub design §7.1): the card's own payload as JSON, fetched
+     * on its interval, so the rest of `/live` is never rebuilt for it and
+     * `platform_hub_views_total` counts people, not polls. Beside `/live`
+     * like Community's `/live/shoutbox/messages`, and like it not behind
+     * Platform's `ensure-active-event`, whose redirect home is the hub
+     * page's answer: the controller asks the same `ActiveEventContext` and
+     * answers a member nobody admitted with a 404. Its own named budget,
+     * `competition-hub`, well above one poll a minute per open tab.
+     */
+    Route::get('/live/next-games', NextGamesController::class)
+        ->middleware('throttle:competition-hub')
+        ->name('competition.hub.next-games');
 
     /*
      * Every participant write, on one named budget: `competition-participant`

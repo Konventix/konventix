@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
-use Konventix\Competition\Actions\RecordMatchResult;
+use Konventix\Competition\Actions\RecordResultAtDesk;
 use Konventix\Competition\Actions\ReportMatchResult;
 use Konventix\Competition\Data\MatchReportData;
 use Konventix\Competition\Data\MyCompetitionEntryData;
@@ -29,11 +29,15 @@ use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\MatchSlot;
 use Konventix\Competition\Models\Stage;
 use Konventix\Event\Events\EventCreated;
+use Konventix\Event\Events\EventRescheduled;
+use Konventix\Event\Events\EventStarted;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Hub\HubCard;
 use Konventix\Platform\Hub\HubLink;
 use Konventix\Platform\Hub\HubRegistry;
 use Konventix\Platform\Models\Brand;
+use Prometheus\CollectorRegistry;
+use Prometheus\RenderTextFormat;
 
 /**
  * The hub's two Competition cards (design §10a, hub design §8, D-HUB-07):
@@ -57,7 +61,9 @@ beforeEach(function (): void {
 
 /**
  * An event as Competition learns of it, through Event's `EventCreated`
- * (ADR-0004), with the slug the card links under.
+ * (ADR-0004), with the slug the card links under and the Europe/Berlin
+ * zone its match times are shown in — and then `EventStarted`, so its
+ * public tournament pages resolve (a null state is refused, §14).
  */
 function hubCardsEvent(Brand $brand, string $slug = 'sxlan-27'): string
 {
@@ -73,6 +79,8 @@ function hubCardsEvent(Brand $brand, string $slug = 'sxlan-27'): string
         timezone: 'Europe/Berlin',
         predecessorEventId: null,
     ));
+
+    event(new EventStarted(eventId: $eventId, brandId: (string) $brand->getKey(), startedAt: '2026-11-20T09:00:00+00:00'));
 
     return $eventId;
 }
@@ -130,6 +138,23 @@ function hubCardsCompetition(string $eventId, User $viewer, string $name, array 
 function hubCardsScheduleAt(CompetitionMatch $match, string $instant): void
 {
     $match->forceFill(['state' => MatchState::Scheduled, 'scheduled_at' => CarbonImmutable::parse($instant)])->save();
+}
+
+/**
+ * `$winner` wins `$match` 2:0 at the desk — the production path
+ * (`RecordResultAtDesk` → `SettlesAMatch::settleMatch()`), which records
+ * the result **and** advances the bracket. `RecordMatchResult` alone does
+ * not advance anything (fix round 1, C1).
+ */
+function hubCardsWinAtDesk(CompetitionMatch $match, Entrant $winner): void
+{
+    $scores = [];
+
+    foreach (competitionSidesOf($match) as $position => $entrantId) {
+        $scores[$position] = $entrantId === $winner->getKey() ? 2 : 0;
+    }
+
+    app(RecordResultAtDesk::class)->handle($match->fresh(), $scores, $winner->getKey(), (string) Str::ulid());
 }
 
 /** The other side of a two-sided match, as an entrant. */
@@ -271,6 +296,9 @@ it('renders no competition card on /live with the module off, and both once it i
         'games' => [],
         'hasMore' => false,
         'myTournamentsUrl' => '/my/tournaments',
+        'nextGamesUrl' => '/live/next-games',
+        // Nothing projected for this event: the reader's zone, client-side.
+        'eventTimezone' => null,
         'pollSeconds' => null,
     ])
         ->and($on['competition.my-competitions']['payload'])->toBe([
@@ -279,6 +307,53 @@ it('renders no competition card on /live with the module off, and both once it i
             'myTournamentsUrl' => '/my/tournaments',
             'tournamentsUrl' => '/events/kon-fest/tournaments',
         ]);
+});
+
+it('serves the card\'s own refresh as JSON without rebuilding the hub or counting a view', function (): void {
+    $brand = $this->withBrand();
+    $eventId = hubCardsEvent($brand);
+    $viewer = User::factory()->create();
+    $stranger = User::factory()->create();
+
+    hubCardsCompetition($eventId, $viewer, 'Mike');
+
+    // Admitted to *this* event, so the hub's context resolves it.
+    event(hubAdmitted($brand->getKey(), $viewer->id, $eventId));
+
+    // Module off: the route is behind `ensure-module:competition`.
+    $this->actingAs($viewer)->getJson('/live/next-games')->assertNotFound();
+
+    $this->activateModule('competition', $brand);
+    $this->app->forgetScopedInstances();
+
+    // Only the hub-views lines: other counters may well move with a request.
+    $views = fn (): string => collect(explode("\n", (new RenderTextFormat)->render(app(CollectorRegistry::class)->getMetricFamilySamples())))
+        ->filter(fn (string $line): bool => str_contains($line, 'platform_hub_views_total') && ! str_starts_with($line, '#'))
+        ->implode("\n");
+    // One real hub render first, so the counter has a line to compare —
+    // otherwise "unchanged" would pass on a counter that never rendered.
+    $this->actingAs($viewer)->get('/live')->assertOk();
+    $this->app->forgetScopedInstances();
+
+    $before = $views();
+    expect($before)->toContain('platform_hub_views_total');
+
+    $response = $this->actingAs($viewer)->getJson('/live/next-games')->assertOk();
+
+    // The same payload the hub renders the card with: one row, Mike's
+    // unscheduled round-1 match, reportable (rule 4).
+    expect($response->json('games'))->toHaveCount(1)
+        ->and($response->json('games.0.competitionName'))->toBe('Mike')
+        ->and($response->json('games.0.nudge'))->toBe('report')
+        ->and($response->json('eventTimezone'))->toBe('Europe/Berlin')
+        ->and($response->json('pollSeconds'))->toBe(NextGamesCard::POLL_SECONDS)
+        // Not a hub render: the page counter does not move (I1).
+        ->and($views())->toBe($before);
+
+    $this->app->forgetScopedInstances();
+
+    // Signed in but admitted nowhere: the hub's gate, answered as a 404.
+    $this->actingAs($stranger)->getJson('/live/next-games')->assertNotFound();
 });
 
 /*
@@ -320,7 +395,10 @@ it('orders the viewer\'s open matches scheduled first and soonest first, then by
     [, $alphaSide, $alpha] = hubCardsCompetition($eventId, $viewer, 'Alpha');
     hubCardsScheduleAt($alpha, '2026-11-21T14:00:00Z');
 
-    [, $bravoSide, $bravo] = hubCardsCompetition($eventId, $viewer, 'Bravo');
+    // Recorded by the desk only, so the side has nothing to report.
+    [, $bravoSide, $bravo] = hubCardsCompetition($eventId, $viewer, 'Bravo', [
+        'result_submission_mode' => ResultSubmissionMode::DeskOnly,
+    ]);
     hubCardsScheduleAt($bravo, '2026-11-21T11:30:00Z');
 
     // Unscheduled, round 1.
@@ -329,11 +407,7 @@ it('orders the viewer\'s open matches scheduled first and soonest first, then by
     // The viewer won round 1, so their open match is round 2 — unscheduled,
     // with the other semi-final still undecided.
     [, $deltaSide, $deltaFirst] = hubCardsCompetition($eventId, $viewer, 'Delta');
-    app(RecordMatchResult::class)->handle(
-        $deltaFirst,
-        [$deltaSide->getKey() => 2, hubCardsOpponent($deltaFirst, $deltaSide)->getKey() => 0],
-        $deltaSide->getKey(),
-    );
+    hubCardsWinAtDesk($deltaFirst, $deltaSide);
 
     [, , $echo] = hubCardsCompetition($eventId, $viewer, 'Echo');
     hubCardsScheduleAt($echo, '2026-11-21T13:00:00Z');
@@ -343,21 +417,28 @@ it('orders the viewer\'s open matches scheduled first and soonest first, then by
 
     $card = hubCardsNextGames($brand, $viewer, $eventId);
 
-    // Derivation. Scheduled rows first, by time: Bravo 11:30, Echo 13:00,
+    // Derivation. Delta's round-1 match is finished (the desk settled it)
+    // and not a row; the desk path advanced the viewer into Delta's final,
+    // round 2, whose other slot waits on the unplayed other semi-final — an
+    // open match of the viewer's. So there are six open matches, one per
+    // competition. Scheduled rows first, by time: Bravo 11:30, Echo 13:00,
     // Alpha 14:00, Foxtrot 15:00. Then the unscheduled, by round: Charlie
     // (round 1) before Delta (round 2). Six rows, five shown: Delta is the
-    // one left for "Meine Turniere", and `hasMore` says so. Delta's round-1
-    // match is finished and is not a row at all.
+    // sixth, left for "Meine Turniere", so `hasMore` is true.
     expect(array_map(fn (NextGameData $game): string => $game->competitionName, $card->games))
         ->toBe(['Bravo', 'Echo', 'Alpha', 'Foxtrot', 'Charlie'])
         ->and($card->hasMore)->toBeTrue()
         // Every competition here is `Running`.
-        ->and($card->pollSeconds)->toBe(NextGamesCard::POLL_SECONDS);
+        ->and($card->pollSeconds)->toBe(NextGamesCard::POLL_SECONDS)
+        // Projected from `EventCreated` (§10a "Time").
+        ->and($card->eventTimezone)->toBe('Europe/Berlin')
+        ->and($card->nextGamesUrl)->toBe('/live/next-games');
 
     $rows = hubCardsGamesByCompetition($card);
 
-    // Bravo: 11:30 ≤ 12:00 and both sides are there, so "Jetzt dran". It
-    // may also be reported, but due outranks report (§10a, rule 4).
+    // Bravo: 11:30 ≤ 12:00 and both sides are there, so it is due; it is
+    // `desk_only`, so the side cannot report (`canReport` false) and rule 4
+    // (report) does not apply — rule 5, "Jetzt dran".
     expect($rows['Bravo']->nudge)->toBe(NextGameNudge::Due)
         ->and($rows['Bravo']->scheduledAt)->toBe('2026-11-21T11:30:00+00:00')
         ->and($rows['Bravo']->round)->toBe(1)
@@ -372,7 +453,7 @@ it('orders the viewer\'s open matches scheduled first and soonest first, then by
         ->and($rows['Alpha']->opponentName)->toBe(hubCardsTeamName(hubCardsOpponent($alpha, $alphaSide)))
         ->and($rows['Foxtrot']->nudge)->toBeNull()
         // Charlie: no time, both sides there, participant-reported → "Ergebnis
-        // melden" (rule 5).
+        // melden" (rule 4).
         ->and($rows['Charlie']->nudge)->toBe(NextGameNudge::Report)
         ->and($rows['Charlie']->scheduledAt)->toBeNull()
         ->and($rows['Charlie']->opponentName)->toBe(hubCardsTeamName(hubCardsOpponent($charlie, $charlieSide)));
@@ -384,16 +465,12 @@ it('says "wartet auf Gegner" while the other slot waits on an undecided match', 
     $viewer = User::factory()->create();
 
     [, $side, $first] = hubCardsCompetition($eventId, $viewer, 'Delta');
-    app(RecordMatchResult::class)->handle(
-        $first,
-        [$side->getKey() => 2, hubCardsOpponent($first, $side)->getKey() => 0],
-        $side->getKey(),
-    );
+    hubCardsWinAtDesk($first, $side);
 
     $card = hubCardsNextGames($brand, $viewer, $eventId);
 
-    // Derivation: round 1 is finished, so the only open match is the final,
-    // round 2. Its other slot is fed by the other semi-final, which nobody
+    // Derivation: the desk settled round 1 and advanced the viewer, so the
+    // only open match is the final, round 2 (one row, `hasMore` false). Its other slot is fed by the other semi-final, which nobody
     // has played: no opponent name, `awaitingOpponent` set. No nudge either
     // — it has no time (not due) and a side is missing (nothing to report).
     expect($card->games)->toHaveCount(1)
@@ -402,6 +479,23 @@ it('says "wartet auf Gegner" while the other slot waits on an undecided match', 
         ->and($card->games[0]->awaitingOpponent)->toBeTrue()
         ->and($card->games[0]->nudge)->toBeNull()
         ->and($card->hasMore)->toBeFalse();
+});
+
+it('asks for the report on an overdue match nobody has reported, rather than "Jetzt dran" forever', function (): void {
+    $brand = $this->withBrand();
+    $eventId = hubCardsEvent($brand);
+    $viewer = User::factory()->create();
+
+    [, , $match] = hubCardsCompetition($eventId, $viewer, 'Kilo');
+    hubCardsScheduleAt($match, '2026-11-21T10:00:00Z');
+
+    $rows = hubCardsGamesByCompetition(hubCardsNextGames($brand, $viewer, $eventId));
+
+    // Derivation: 10:00 ≤ 12:00, so it is due; participant-reported, both
+    // sides there, no proof required, nothing reported, not disputed, so
+    // `canReport` is true. Rules 1–3 do not apply; rule 4 — may report, and
+    // due — gives "Ergebnis melden" (fix round 1, M1).
+    expect($rows['Kilo']->nudge)->toBe(NextGameNudge::Report);
 });
 
 it('nudges to confirm, waits on a confirmation, and flags a dispute from the reports on the match', function (): void {
@@ -443,6 +537,47 @@ it('nudges to confirm, waits on a confirmation, and flags a dispute from the rep
         ->and($rows['Golf']->nudge)->toBe(NextGameNudge::Confirm)
         ->and($rows['Hotel']->nudge)->toBe(NextGameNudge::AwaitingConfirmation)
         ->and($rows['India']->nudge)->toBe(NextGameNudge::Disputed);
+});
+
+it('shows match times on the event\'s wall clock, projected from EventCreated and kept by EventRescheduled', function (): void {
+    $brand = $this->withBrand();
+    $eventId = hubCardsEvent($brand);
+    $viewer = User::factory()->create();
+
+    $this->activateModule('competition', $brand);
+
+    [, , $match] = hubCardsCompetition($eventId, $viewer, 'Lima');
+    hubCardsScheduleAt($match, '2026-11-21T18:00:00Z');
+
+    $card = hubCardsNextGames($brand, $viewer, $eventId);
+
+    // The instant goes out unchanged, with the event's zone beside it; the
+    // component renders it on that zone's clock (`formatEventDateTime()`,
+    // `eventTime.test.ts`). 2026-11-21 is after Berlin's summer time ended
+    // (2026-10-25), so CET, UTC+1: 18:00 UTC is 19:00 in the hall — not the
+    // 20:00 a CEST date would give.
+    expect($card->games[0]->scheduledAt)->toBe('2026-11-21T18:00:00+00:00')
+        ->and($card->eventTimezone)->toBe('Europe/Berlin');
+
+    // The match page (Task 7) carries the same zone on its event.
+    $this->get("/events/sxlan-27/tournaments/lima/matches/{$match->getKey()}")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('page.event.timezone', 'Europe/Berlin')
+            ->where('page.match.scheduledAt', '2026-11-21T18:00:00+00:00'));
+
+    // A reschedule into another zone moves both — the same handler
+    // `event:replay-details` reaches, which is the backfill for rows written
+    // before the column existed.
+    event(new EventRescheduled(
+        eventId: $eventId,
+        startsAt: '2026-11-20 10:00:00',
+        endsAt: '2026-11-22 18:00:00',
+        timezone: 'Europe/London',
+        brandId: (string) $brand->getKey(),
+    ));
+
+    expect(hubCardsNextGames($brand, $viewer, $eventId)->eventTimezone)->toBe('Europe/London');
 });
 
 it('never lists another event\'s or another brand\'s matches or entries', function (): void {

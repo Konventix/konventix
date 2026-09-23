@@ -24,9 +24,9 @@ enum NextGameNudge: string
     /** The viewer's side reported; the other side has not answered. */
     case AwaitingConfirmation = 'awaiting_confirmation';
 
-    /** `scheduled_at` has passed and every side is there. */
-    case Due = 'due';
-
-    /** Unscheduled, every side is there, and the viewer's side may report. */
+    /** Due or unscheduled, and the viewer's side may report (§8.2). */
     case Report = 'report';
+
+    /** `scheduled_at` has passed, every side is there, and the desk records. */
+    case Due = 'due';
 }

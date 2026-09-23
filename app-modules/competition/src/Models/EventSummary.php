@@ -31,6 +31,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string|null $slug
  * @property string|null $name
  * @property string|null $state
+ * @property string|null $timezone the event's IANA zone (ADR-0027), for showing match times on its wall clock
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
  */
@@ -41,7 +42,7 @@ class EventSummary extends Model
 
     protected $table = 'competition_event_summaries';
 
-    protected $fillable = ['event_id', 'slug', 'name', 'state'];
+    protected $fillable = ['event_id', 'slug', 'name', 'state', 'timezone'];
 
     /**
      * The lifecycle states in which an event's tournaments are public —

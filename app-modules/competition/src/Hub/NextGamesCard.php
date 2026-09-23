@@ -52,7 +52,7 @@ final class NextGamesCard
     /** §10a: the card shows at most five matches and links to the rest. */
     public const int ROWS = 5;
 
-    /** §10a "Liveness": the hub reloads once a minute while a competition of the viewer's runs. */
+    /** §10a "Liveness": the card refreshes itself from `NextGamesController` once a minute while a competition of the viewer's runs. */
     public const int POLL_SECONDS = 60;
 
     public function __construct(private readonly TournamentPages $pages) {}
@@ -120,7 +120,9 @@ final class NextGamesCard
             ->get()
             ->groupBy('competition_match_id');
 
-        $slug = $this->eventSlug($event);
+        /** @var EventSummary|null $summary */
+        $summary = EventSummary::query()->where('event_id', $event->eventId)->first();
+        $slug = $this->eventSlug($summary, $event);
         $now = now();
 
         $games = $matches->map(function (CompetitionMatch $match) use ($competitions, $entrants, $drawn, $reports, $slug, $now): NextGameData {
@@ -170,6 +172,8 @@ final class NextGamesCard
             games: array_values($games->all()),
             hasMore: $hasMore,
             myTournamentsUrl: route('competition.my.tournaments', absolute: false),
+            nextGamesUrl: route('competition.hub.next-games', absolute: false),
+            eventTimezone: $summary?->timezone,
             pollSeconds: $competitions
                 ->only($entrants->unique()->values()->all())
                 ->contains(fn (Competition $competition): bool => $competition->status === CompetitionStatus::Running)
@@ -182,6 +186,14 @@ final class NextGamesCard
      * §10a's nudge: the first of these that applies, in `NextGameNudge`'s
      * order. Public and static so the precedence can be read — and pinned —
      * apart from the queries above.
+     *
+     * Report before Due (fix round 1, M1): once a match is due or has no
+     * time at all, and the viewer's side may report, reporting is the side's
+     * next act under §8.2 — the page carries the form — so an overdue match
+     * nobody has reported keeps asking for the report instead of saying
+     * "Jetzt dran" forever. "Jetzt dran" is left for a due match the side
+     * cannot report: a `desk_only` competition, or one whose proof the desk
+     * collects. A match scheduled later carries no nudge.
      */
     public static function nudgeFor(
         CompetitionMatch $match,
@@ -190,12 +202,14 @@ final class NextGamesCard
         ?MatchResultReport $opposing,
         CarbonInterface $now,
     ): ?NextGameNudge {
+        $due = $match->scheduled_at !== null && $match->scheduled_at->lessThanOrEqualTo($now);
+
         return match (true) {
             $match->isDisputed() => NextGameNudge::Disputed,
             $powers->canConfirm => NextGameNudge::Confirm,
             $own !== null && $opposing === null => NextGameNudge::AwaitingConfirmation,
-            $match->scheduled_at !== null && $match->scheduled_at->lessThanOrEqualTo($now) && $powers->everySide => NextGameNudge::Due,
-            $match->scheduled_at === null && $powers->canReport => NextGameNudge::Report,
+            $powers->canReport && ($due || $match->scheduled_at === null) => NextGameNudge::Report,
+            $due && $powers->everySide => NextGameNudge::Due,
             default => null,
         };
     }
@@ -206,9 +220,9 @@ final class NextGamesCard
      * neither knows one: then there is no public page to link, and an empty
      * link is what the component hides (`NowNextCard`'s rule).
      */
-    private function eventSlug(ActiveEventData $event): ?string
+    private function eventSlug(?EventSummary $summary, ActiveEventData $event): ?string
     {
-        $slug = EventSummary::query()->where('event_id', $event->eventId)->value('slug') ?? $event->eventSlug;
+        $slug = $summary->slug ?? $event->eventSlug;
 
         return is_string($slug) && $slug !== '' ? $slug : null;
     }

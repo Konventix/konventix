@@ -115,11 +115,14 @@ ADR-0062). The build order for #32, each item its own merge request:
       one nudge (Streitfall offen / Ergebnis bestätigen / Wartet auf
       Bestätigung / Jetzt dran / Ergebnis melden) from `Pages\MatchPowers`,
       the rule the match page's buttons now read too — and *Meine
-      Competitions*, the viewer's entries with status and check-in. Left:
-      the card reloads Platform's whole `hub` prop every 60 s while one of
-      the viewer's competitions runs, because `HubPage` has no per-card prop
-      key; a per-card partial reload needs Platform to expose one. Match
-      times show in the reader's zone, not the event's (§10a "Time").
+      Competitions*, the viewer's entries with status and check-in. The
+      card refreshes itself from `GET /live/next-games` (its own JSON, not a
+      hub reload); match times on the card and the match page are on the
+      event's wall clock, from the projected `timezone`. Left: the team
+      page still shows match times in the reader's zone; a knocked-out
+      entrant keeps polling until the competition ends, because there is
+      no eliminated state (review M2); the `v-for` key in
+      `MyCompetitionsCard.vue` (M3) and the duplicated `eventSlug()` (M4).
 - [ ] Capabilities and roles (D-CMP-23): `ViewEntrantContacts`; Tournament
       Desk as a second default role. (`CheckInEntrants` and
       `ManageSchedule` landed with the desk actions they gate.)

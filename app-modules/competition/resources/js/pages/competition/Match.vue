@@ -2,10 +2,10 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
-import { formatDateTime } from '@/lib/datetime';
 import { page as competitionPage } from '@/routes/competition';
 import { page as teamPage } from '@/routes/competition/team';
 import { sectionLabel, sideName } from '../../components/bracket/bracketModel';
+import { formatEventDateTime } from '../../components/public/eventTime';
 import { matchStateLabel } from '../../components/public/labels';
 import MatchHistory from '../../components/public/MatchHistory.vue';
 import MatchResultPanel from '../../components/public/MatchResultPanel.vue';
@@ -15,7 +15,9 @@ import { usePollWhile } from '../../components/public/usePollWhile';
  * One match (design §10): its sides, scores and time for everyone; for a
  * member of a side also the history (§8.6 shows it "to the sides and the
  * desk") and report / confirm / dispute. Polled while the competition runs,
- * so a side waiting on the other's report sees it arrive.
+ * so a side waiting on the other's report sees it arrive. The match time is
+ * shown on the event's wall clock (ADR-0027, §10a "Time"), as the hub card
+ * shows it.
  */
 const props = defineProps<{
     page: Konventix.Competition.Data.MatchPageData;
@@ -65,7 +67,10 @@ function teamHref(teamId: string): string {
                 "
                 :description="
                     props.page.match.scheduledAt
-                        ? formatDateTime(props.page.match.scheduledAt)
+                        ? formatEventDateTime(
+                              props.page.match.scheduledAt,
+                              props.page.event.timezone,
+                          )
                         : 'Noch nicht angesetzt'
                 "
             />

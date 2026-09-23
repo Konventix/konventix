@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { Badge } from '@/components/ui/badge';
-import { formatDateTime } from '@/lib/datetime';
 import { sectionLabel } from '../bracket/bracketModel';
-import { usePollWhile } from '../public/usePollWhile';
+import { formatEventDateTime } from '../public/eventTime';
 
 /**
  * The live hub's "Nächste Spiele" card (competition design §10a, D-HUB-07):
@@ -15,15 +15,17 @@ import { usePollWhile } from '../public/usePollWhile';
  * (`v-bind="card.payload"`). The URLs arrive in the payload because a hub
  * component imports no route helper (`tests/Feature/HubComponentBoundaryTest.php`);
  * the only things it takes from beside it are this module's own round
- * label and poll composable, which the match page uses too.
+ * label and event-time formatter, which the match page uses too.
  *
- * `scheduledAt` is an instant (§10a "Time"), so it goes through
- * `formatDateTime()` in the reader's zone, as on the match page.
+ * `scheduledAt` is an instant shown on the event's wall clock
+ * (`eventTimezone`, ADR-0027, §10a "Time"), as on the match page.
  *
- * While one of the viewer's competitions runs, the server sends
- * `pollSeconds` and the card reloads the hub's `hub` prop on that interval
- * (hub design §7.1). Platform has no per-card prop, so the reload rebuilds
- * every card — once a minute, and only while matches are being played.
+ * Liveness (hub design §7.1, §10a): while one of the viewer's competitions
+ * runs, the server sends `pollSeconds`, and the card fetches its own payload
+ * from `nextGamesUrl` on that interval into local state — the shoutbox
+ * card's `messagesUrl` shape. The rest of the hub is never rebuilt for it,
+ * and a refresh is not a hub view. A failed fetch keeps what is on screen
+ * and tries again on the next tick; a hidden tab skips its ticks.
  */
 // Spelled out rather than `Konventix.Competition.Data.NextGamesCardData`: a
 // bare namespaced type fails the SFC compiler's macro type resolver (see
@@ -32,12 +34,69 @@ type Props = {
     games: Konventix.Competition.Data.NextGameData[];
     hasMore: boolean;
     myTournamentsUrl: string;
+    nextGamesUrl: string;
+    eventTimezone: string | null;
     pollSeconds: number | null;
 };
 
 const props = defineProps<Props>();
 
-usePollWhile(() => props.pollSeconds, ['hub']);
+const card = ref<Konventix.Competition.Data.NextGamesCardData>({
+    games: props.games,
+    hasMore: props.hasMore,
+    myTournamentsUrl: props.myTournamentsUrl,
+    nextGamesUrl: props.nextGamesUrl,
+    eventTimezone: props.eventTimezone,
+    pollSeconds: props.pollSeconds,
+});
+
+let timer: ReturnType<typeof setTimeout> | null = null;
+
+function schedule(): void {
+    if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+    }
+
+    // Null once nothing of the viewer's runs any more: stop asking.
+    if (card.value.pollSeconds !== null) {
+        timer = setTimeout(refresh, card.value.pollSeconds * 1000);
+    }
+}
+
+async function refresh(): Promise<void> {
+    if (!document.hidden) {
+        try {
+            // Same-origin GET of this module's own endpoint, whose URL the
+            // server put in the payload — the shoutbox's `fetchFeed()` shape.
+            // gitlab-advanced-sast-exclude
+            const response = await fetch(card.value.nextGamesUrl, {
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+            });
+
+            if (response.ok) {
+                card.value =
+                    (await response.json()) as Konventix.Competition.Data.NextGamesCardData;
+            }
+        } catch {
+            // Keep the last answer on screen; the next tick tries again.
+        }
+    }
+
+    schedule();
+}
+
+// Started on mount only: there is nothing to poll during server rendering.
+onMounted(schedule);
+onUnmounted(() => {
+    if (timer !== null) {
+        clearTimeout(timer);
+    }
+});
 
 const NUDGES: Record<Konventix.Competition.Enums.NextGameNudge, string> = {
     disputed: 'Streitfall offen',
@@ -64,8 +123,8 @@ function opponentLabel(game: Konventix.Competition.Data.NextGameData): string {
 
 <template>
     <div class="flex flex-col gap-4">
-        <ul v-if="props.games.length > 0" class="flex flex-col gap-3">
-            <li v-for="game in props.games" :key="game.matchId">
+        <ul v-if="card.games.length > 0" class="flex flex-col gap-3">
+            <li v-for="game in card.games" :key="game.matchId">
                 <component
                     :is="game.matchUrl ? Link : 'div'"
                     :href="game.matchUrl || undefined"
@@ -99,7 +158,10 @@ function opponentLabel(game: Konventix.Competition.Data.NextGameData): string {
                     <span class="text-sm text-text-muted">
                         {{
                             game.scheduledAt
-                                ? formatDateTime(game.scheduledAt)
+                                ? formatEventDateTime(
+                                      game.scheduledAt,
+                                      card.eventTimezone,
+                                  )
                                 : 'Noch nicht angesetzt'
                         }}
                     </span>
@@ -111,11 +173,11 @@ function opponentLabel(game: Konventix.Competition.Data.NextGameData): string {
         </p>
 
         <Link
-            :href="props.myTournamentsUrl"
+            :href="card.myTournamentsUrl"
             class="self-start text-sm text-accent underline-offset-4 hover:underline"
         >
             {{
-                props.hasMore
+                card.hasMore
                     ? 'Alle Spiele in Meine Turniere'
                     : 'Meine Turniere'
             }}

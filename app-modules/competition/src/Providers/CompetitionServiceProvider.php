@@ -48,6 +48,7 @@ use Konventix\Event\Events\EventConcluded;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventPublished;
+use Konventix\Event\Events\EventRescheduled;
 use Konventix\Event\Events\EventStarted;
 use Konventix\Event\Events\EventUnpublished;
 use Konventix\Identity\Events\UserProfileUpdated;
@@ -114,6 +115,11 @@ class CompetitionServiceProvider extends ModuleServiceProvider
     {
         RateLimiter::for('competition-participant', fn (Request $request): Limit => Limit::perMinute(10)
             ->by('competition-participant:'.($request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown')));
+
+        // The hub card's refresh (design §10a): one fetch a minute per open
+        // tab, so twelve leaves room for a few tabs and a reconnect burst.
+        RateLimiter::for('competition-hub', fn (Request $request): Limit => Limit::perMinute(12)
+            ->by('competition-hub:'.($request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown')));
     }
 
     protected function registerBindings(): void
@@ -252,6 +258,7 @@ class CompetitionServiceProvider extends ModuleServiceProvider
         // `event:replay-details` backfills it.
         Event::listen(EventCreated::class, [ProjectEventSummary::class, 'handleCreated']);
         Event::listen(EventDetailsUpdated::class, [ProjectEventSummary::class, 'handleDetailsUpdated']);
+        Event::listen(EventRescheduled::class, [ProjectEventSummary::class, 'handleRescheduled']);
 
         // …and its lifecycle state, which decides whether those pages are
         // public at all: a draft event's tournaments must not be reachable

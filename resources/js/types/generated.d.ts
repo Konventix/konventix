@@ -888,6 +888,7 @@ declare namespace Konventix {
                 readonly id: string;
                 readonly slug: string;
                 readonly name: string;
+                readonly timezone: string | null;
             };
             export type EventTournamentsPageData = {
                 readonly event: Konventix.Competition.Data.EventRefData;
@@ -957,6 +958,8 @@ declare namespace Konventix {
                 readonly games: Konventix.Competition.Data.NextGameData[];
                 readonly hasMore: boolean;
                 readonly myTournamentsUrl: string;
+                readonly nextGamesUrl: string;
+                readonly eventTimezone: string | null;
                 readonly pollSeconds: number | null;
             };
             export type PendingConfirmationData = {
@@ -1057,8 +1060,8 @@ declare namespace Konventix {
                 | 'disputed'
                 | 'confirm'
                 | 'awaiting_confirmation'
-                | 'due'
-                | 'report';
+                | 'report'
+                | 'due';
             export type Permission =
                 | 'competition.view-competitions'
                 | 'competition.manage-disciplines'

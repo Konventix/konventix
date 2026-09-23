@@ -535,13 +535,19 @@ disagree. When several apply, the first one wins:
    because it is the case the operator described: the opponent is waiting.
 3. *Wartet auf Bestätigung*: the viewer's side reported and the other side
    has not answered.
-4. *Jetzt dran*: `scheduled_at` ≤ now and every side has arrived. It outranks
-   *Ergebnis melden*, because the match page carries the report form anyway.
-5. *Ergebnis melden*: the viewer's side may report and the match has no
-   time. With hand-run servers you play when you can and then report.
+4. *Ergebnis melden*: the viewer's side may report, and the match is either
+   due (`scheduled_at` ≤ now) or has no time. Reporting is the side's next
+   act under §8.2, so an overdue match nobody has reported keeps asking for
+   the report rather than saying *Jetzt dran* forever. With hand-run servers
+   you play when you can and then report.
+5. *Jetzt dran*: `scheduled_at` ≤ now and every side has arrived, but the
+   side cannot report: a `desk_only` competition, or one whose proof the desk
+   collects. Here the side's next act is to play; the desk records.
 
 A match scheduled later, or one still waiting for its opponent, carries no
-nudge.
+nudge. (Fix round 1 swapped rules 4 and 5. At first *Jetzt dran* outranked
+the report and *Ergebnis melden* applied only to unscheduled matches, so an
+overdue match stayed on *Jetzt dran* until someone acted.)
 
 **Meine Competitions** (`competition.my-competitions`,
 `competition/hub/MyCompetitionsCard`). Lists the viewer's entries in the
@@ -554,21 +560,35 @@ competition page. The card shows at most five rows plus *Meine Turniere*.
 When the viewer has no entries, the card shows one sentence and a link to
 the event's tournament index.
 
-**Time.** The controller asked for the event's timezone (ADR-0027), which
-does not fit this module. `scheduled_at`, like `starts_at` (see the lifecycle
-migration), is an instant: the desk types it in the reader's zone and it is
-stored anchored to UTC. Competition also keeps no event timezone:
-`EventDetailsUpdated`, the payload the backfill replays, does not carry one.
-The cards therefore send ISO-8601 instants and render them with
-`formatDateTime()` in the reader's zone, as the match and team pages do.
+**Time** (ADR-0027). `scheduled_at` is an instant: the desk types it in its
+own zone and it is stored anchored to UTC. The hall reads it on the event's
+wall clock. Competition projects the event's IANA timezone into
+`competition_event_summaries.timezone`: `EventCreated` carries it, and so
+does `EventRescheduled`, which `event:replay-details` re-emits for every
+event, so rows that predate the column are backfilled. The card sends the
+instant plus `eventTimezone`, and the match page sends `event.timezone` on
+its `EventRefData`. Both render through `formatEventDateTime()`
+(`components/public/eventTime.ts`), which is `formatDateTime()` with the
+event's zone. A match at 18:00 UTC at a Europe/Berlin event reads 19:00 in
+November (CET) and 20:00 in July (CEST), whoever is looking. Without a
+projected zone, both fall back to the reader's zone.
+
+The first version of this paragraph said the timezone could not be
+projected. That was wrong, and fix round 1 corrected it. The team page (§10)
+still shows match times in the reader's zone; that is a follow-up in the
+module's TODO.
 
 **Liveness** (hub design §7.1). *Nächste Spiele* carries `pollSeconds`: 60
-while any competition the viewer has an entry in is `Running`, otherwise
-null. The card then reloads `only: ['hub']`, because Platform's `HubPage`
-puts every card under that one prop and there is no per-card key. Each
-reload therefore rebuilds every visible card, once a minute and only while
-the viewer's competitions are being played. *Meine Competitions* stays fresh
-through the same reload and does not poll on its own. No Reverb in 0.9.0.
+while any competition the viewer has an active entry in is `Running`,
+otherwise null. While it is set, the card fetches its own payload as JSON
+from `nextGamesUrl` (`GET /live/next-games`, `NextGamesController`) into
+local state. This follows the shoutbox card's `messagesUrl`. The endpoint
+runs behind `auth`, the module gate, and a named `competition-hub` budget
+(12 a minute per account). It uses the hub's own gate: it answers with a
+404 when `ActiveEventContext` has no running event for the member. The rest
+of the hub is never rebuilt for a refresh, and `platform_hub_views_total`
+keeps counting hub renders, not polls. *Meine Competitions* does not poll.
+No Reverb in 0.9.0.
 
 ---
 
