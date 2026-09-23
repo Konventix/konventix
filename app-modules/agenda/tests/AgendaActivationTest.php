@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Konventix\Agenda\Actions\PublishAgendaItem;
 use Konventix\Agenda\Enums\Permission;
 use Konventix\Agenda\Models\AgendaItem;
+use Konventix\Agenda\Models\CompetitionEntry;
+use Konventix\Agenda\Models\ProgrammeCompetition;
 use Konventix\Agenda\Providers\AgendaServiceProvider;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Actions\UpdateBrandModules;
@@ -140,4 +142,81 @@ it('declares every Agenda metric in the catalogue exactly once', function (): vo
 
     expect(array_values(array_filter($declared, fn (string $name): bool => str_starts_with($name, 'agenda_'))))
         ->toBe(['agenda_items_published_total']);
+});
+
+/**
+ * The competition half's editor endpoint sits behind the same gate as the
+ * rest of the editor (design §8): with `agenda` off, the PUT is a 404 and
+ * nothing is stored — the organizer has no editor to save from.
+ */
+it('has no competition-selection endpoint when agenda is off', function (): void {
+    $brand = $this->withBrand();
+    $event = agendaPublishedEvent($brand);
+    $competitionId = agendaPublishedCompetition($brand, $event->getKey());
+    [$operator, $admin] = agendaAdminOperator($brand);
+
+    $this->actingAs($admin)
+        ->put("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda/competitions", ['competitions' => [
+            ['competitionId' => $competitionId, 'trackId' => null, 'position' => 0],
+        ]])
+        ->assertNotFound();
+
+    expect(CompetitionEntry::withoutBrandScope()->where('event_id', $event->getKey())->exists())->toBeFalse();
+});
+
+/**
+ * Design §8 as amended 2026-09-23: the Competition listeners are not
+ * short-circuited, so a tournament published while the brand had `agenda`
+ * off is already in the read model when the brand switches it on — no
+ * backfill between the enable and the organizer's first pick. While off,
+ * the public page is a 404 like any other Agenda surface, so the row shows
+ * nothing to anybody.
+ *
+ * Asserting the row before the switch is what makes the second half mean
+ * something: without it the test would also pass if the enable itself
+ * somehow projected the competition.
+ */
+it('shows no competition blocks when agenda is off, yet has them ready when it is switched on', function (): void {
+    $brand = $this->withBrand();
+    $event = agendaPublishedEvent($brand);
+
+    // The helper's default start: 14:00 at +01:00 on Freitag, 13:00 UTC.
+    $competitionId = agendaPublishedCompetition($brand, $event->getKey());
+
+    expect(ProgrammeCompetition::withoutBrandScope()
+        ->where('brand_id', $brand->getKey())
+        ->where('competition_id', $competitionId)
+        ->exists())->toBeTrue();
+
+    $this->get("/events/{$event->slug}/programm")->assertNotFound();
+
+    $this->activateModule('agenda', $brand);
+    [$operator, $admin] = agendaAdminOperator($brand);
+
+    $this->app->forgetScopedInstances();
+
+    $this->actingAs($admin)
+        ->put("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda/competitions", ['competitions' => [
+            ['competitionId' => $competitionId, 'trackId' => null, 'position' => 0],
+        ]])
+        ->assertSessionHasNoErrors()
+        ->assertRedirect();
+
+    $this->app->forgetScopedInstances();
+
+    $this->get("/events/{$event->slug}/programm")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('agenda/Programme')
+            // Only Freitag: the block is the programme's one entry.
+            ->has('days', 1)
+            ->where('days.0.date', '2026-11-20')
+            ->where('days.0.untracked.0.itemId', $competitionId)
+            ->where('days.0.untracked.0.kind', 'competition')
+            ->where('days.0.untracked.0.title', 'Rocket League 2v2')
+            // 13:00 UTC is 14:00 in Berlin (CET, UTC+1).
+            ->where('days.0.untracked.0.startsAt', '14:00')
+            // `competition` was never switched on for this brand, so the
+            // builder sends no link to a tournament page that would 404.
+            ->where('days.0.untracked.0.url', null));
 });
