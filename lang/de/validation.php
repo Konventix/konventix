@@ -258,7 +258,7 @@ return [
         'scores.*' => 'Ergebnis',
         'secretAccessKey' => 'Secret Access Key',
         'signupsOpen' => 'Registrierung offen',
-        'slug' => 'Kürzel',
+        'slug' => 'Slug',
         'smallBusinessScheme' => 'Kleinunternehmerregelung',
         'smtpHost' => 'SMTP-Host',
         'smtpPassword' => 'SMTP-Passwort',

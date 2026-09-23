@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { Head, setLayoutProps, useForm } from '@inertiajs/vue3';
-import { trans } from 'laravel-vue-i18n';
+import { Head, useForm } from '@inertiajs/vue3';
 import { onMounted, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
@@ -32,16 +31,19 @@ const props = defineProps<{
     vapidPublicKey: string | null;
 }>();
 
-// Set from `setup` rather than `defineOptions`: `defineOptions` is hoisted
-// to module scope, and the breadcrumb is a catalog lookup — the catalog may
-// still be loading when the page chunk is evaluated (ADR-0068).
-setLayoutProps({
-    breadcrumbs: [
-        {
-            title: trans('Notification settings'),
-            href: edit(),
-        },
-    ],
+// The breadcrumb title is an English catalog key, translated where it is
+// rendered (`Breadcrumbs.vue` calls `$t(item.title)`), so it can sit in the
+// hoisted `defineOptions` like every other settings page — a `setLayoutProps`
+// call from `setup` never reached the server-rendered trail (ADR-0068).
+defineOptions({
+    layout: {
+        breadcrumbs: [
+            {
+                title: 'Notification settings',
+                href: edit(),
+            },
+        ],
+    },
 });
 
 const form = useForm({
