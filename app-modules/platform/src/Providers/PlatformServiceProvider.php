@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Konventix\Platform\Providers;
 
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Contracts\Translation\Loader;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
@@ -48,6 +50,7 @@ use Konventix\Platform\Listeners\ProjectHubAccess;
 use Konventix\Platform\Listeners\ProjectHubLayout;
 use Konventix\Platform\Locales\LocaleResolver;
 use Konventix\Platform\Locales\Locales;
+use Konventix\Platform\Locales\VariantAwareLoader;
 use Konventix\Platform\Metrics\PlatformMetrics;
 use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Modules\ModuleServiceProvider;
@@ -158,6 +161,13 @@ class PlatformServiceProvider extends ModuleServiceProvider
     public function register(): void
     {
         parent::register();
+
+        // ADR-0068 §8: variant catalogs overlay their base. `extend` applies
+        // whether the loader is resolved yet or not.
+        $this->app->extend(
+            'translation.loader',
+            fn (Loader $loader, Application $app): Loader => new VariantAwareLoader($loader, $app->make(Locales::class)),
+        );
 
         // The reverb server resolves its applications from brand rows
         // (ADR-0025). Registered as a driver so REVERB_APP_PROVIDER selects

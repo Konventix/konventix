@@ -67,6 +67,20 @@ abstract class ModuleServiceProvider extends ServiceProvider
         $this->registerSchedule();
         $this->registerGdprExporters();
         $this->registerStorageMigrations();
+        $this->registerTranslations();
+    }
+
+    /**
+     * ADR-0068 §3: a module's catalog travels with the module. Every
+     * `lang/<locale>.json` under the module joins the one runtime map.
+     */
+    protected function registerTranslations(): void
+    {
+        $lang = $this->modulePath('lang');
+
+        if ($lang !== null && is_dir($lang)) {
+            $this->loadJsonTranslationsFrom($lang);
+        }
     }
 
     /**
