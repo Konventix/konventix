@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Locales;
 
+use Illuminate\Contracts\Translation\HasLocalePreference;
 use Illuminate\Http\Request;
-use Konventix\Identity\Models\User;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -14,10 +14,17 @@ use Konventix\Platform\Operators\OperatorContext;
 /**
  * ADR-0068 §4: operator → brand → user. A level that says nothing, or
  * names a locale this instance does not ship, is skipped.
+ *
+ * The person is whatever answers `HasLocalePreference` (Identity's User
+ * does), and by id through `UserLocaleLookup`, which Identity binds —
+ * Platform never imports Identity's model (ADR-0004).
  */
 final class LocaleResolver
 {
-    public function __construct(private readonly Locales $locales) {}
+    public function __construct(
+        private readonly Locales $locales,
+        private readonly UserLocaleLookup $userLocales,
+    ) {}
 
     public function forOperator(?Operator $operator): string
     {
@@ -33,14 +40,9 @@ final class LocaleResolver
         return $this->firstSupported([$brand->locale, $brand->operator?->locale, (string) config('app.locale')]);
     }
 
-    public function forUser(?User $user, ?Brand $brand, ?Operator $operator = null): string
+    public function forUser(?HasLocalePreference $user, ?Brand $brand, ?Operator $operator = null): string
     {
-        return $this->firstSupported([
-            $user?->locale,
-            $brand?->locale,
-            ($operator ?? $brand?->operator)?->locale,
-            (string) config('app.locale'),
-        ]);
+        return $this->forLocale($user?->preferredLocale(), $brand, $operator);
     }
 
     /**
@@ -52,7 +54,7 @@ final class LocaleResolver
         $user = $request->user();
 
         return $this->forUser(
-            $user instanceof User ? $user : null,
+            $user instanceof HasLocalePreference ? $user : null,
             app(BrandContext::class)->current(),
             app(OperatorContext::class)->current(),
         );
@@ -67,13 +69,23 @@ final class LocaleResolver
      */
     public function forUserId(?string $userId, ?string $brandId): string
     {
-        $user = $userId === null ? null : User::query()->find($userId);
+        $userLocale = $userId === null ? null : $this->userLocales->localeOf($userId);
 
         if ($brandId === null) {
-            return $this->forUser($user, null, app(OperatorContext::class)->current());
+            return $this->forLocale($userLocale, null, app(OperatorContext::class)->current());
         }
 
-        return $this->forUser($user, Brand::query()->withoutGlobalScopes()->find($brandId));
+        return $this->forLocale($userLocale, Brand::query()->withoutGlobalScopes()->find($brandId));
+    }
+
+    private function forLocale(?string $userLocale, ?Brand $brand, ?Operator $operator = null): string
+    {
+        return $this->firstSupported([
+            $userLocale,
+            $brand?->locale,
+            ($operator ?? $brand?->operator)?->locale,
+            (string) config('app.locale'),
+        ]);
     }
 
     /** @param list<string|null> $candidates */

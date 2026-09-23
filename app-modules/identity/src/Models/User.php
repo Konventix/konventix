@@ -6,6 +6,7 @@ namespace Konventix\Identity\Models;
 
 use Illuminate\Auth\MustVerifyEmail as MustVerifyEmailTrait;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Translation\HasLocalePreference;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
@@ -68,7 +69,7 @@ use Spatie\Permission\Traits\HasRoles;
  */
 #[Fillable(['name', 'email', 'password', 'username', 'tagline', 'status_emoji', 'social_links', 'profile_visibility', 'listed_in_attendees', 'locale', 'timezone', 'preferences'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
-class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
+class User extends Authenticatable implements HasLocalePreference, MustVerifyEmail, PasskeyUser
 {
     /**
      * `PasskeyAuthenticatable` (Fortify's, over `laravel/passkeys`) adds
@@ -101,6 +102,17 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'preferences' => AccountPreferencesData::class.':default',
             'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * The person's own locale, `null` while it follows the brand (ADR-0068
+     * §4). Platform's `LocaleResolver` reads it through this contract rather
+     * than importing this model (ADR-0004); Laravel's notification and mail
+     * senders honour it too, which the resolver's chain already puts first.
+     */
+    public function preferredLocale(): ?string
+    {
+        return $this->locale;
     }
 
     /**

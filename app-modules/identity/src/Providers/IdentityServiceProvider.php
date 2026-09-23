@@ -44,6 +44,7 @@ use Konventix\Identity\Http\Responses\GenericPasswordResetLinkResponse;
 use Konventix\Identity\Listeners\MintRecoveryCodesGrant;
 use Konventix\Identity\Listeners\RecordBrandMembership;
 use Konventix\Identity\Listeners\SendWelcomeOnVerified;
+use Konventix\Identity\Locales\UsersTableLocaleLookup;
 use Konventix\Identity\Models\Passkey;
 use Konventix\Identity\Models\User;
 use Konventix\Identity\Sessions\CacheSessionIndex;
@@ -64,6 +65,7 @@ use Konventix\Messaging\Topics\TopicRegistry;
 use Konventix\Platform\Cookies\CookieDeclaration;
 use Konventix\Platform\Cookies\CookieRegistry;
 use Konventix\Platform\Enums\CookieCategory;
+use Konventix\Platform\Locales\UserLocaleLookup;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
@@ -212,6 +214,11 @@ class IdentityServiceProvider extends ModuleServiceProvider
         // account without ever importing Identity's User model (ADR-0004) —
         // see SubjectResolver's docblock.
         $this->app->bind(SubjectResolver::class, IdentitySubjectResolver::class);
+
+        // Platform's LocaleResolver reads a person's locale by id without
+        // importing User (ADR-0004, ADR-0068 §5). The resolver is a
+        // singleton and keeps this instance; the lookup holds no state.
+        $this->app->singleton(UserLocaleLookup::class, UsersTableLocaleLookup::class);
 
         $this->registerSessionIndex();
     }

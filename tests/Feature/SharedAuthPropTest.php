@@ -19,7 +19,9 @@ it('shares exactly the five promised fields', function (): void {
     $this->actingAs($user)->get('/settings')->assertInertia(fn (AssertableInertia $page) => $page
         ->where('auth.user.id', $user->getKey())
         ->where('auth.user.name', $user->name)
-        ->where('auth.user.locale', 'en')
+        // The person's own choice, not the effective locale: a fresh
+        // account has none and follows the brand (ADR-0068 §4).
+        ->where('auth.user.locale', null)
         ->where('auth.user.avatarUrl', null)
         ->where('auth.user.timezone', $user->timezone)
         ->missing('auth.user.email'));
