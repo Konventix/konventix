@@ -179,6 +179,8 @@ Found on the way and not built. Each one is still true as of #302.
       (design §14; Agenda's `TODO.md` names it as its precondition).
       Emitted by `UnpublishCompetition` from 0.9.1 (#331), and
       `CompetitionPublished` carries the `slug` beside it.
+      `competition:announce-competitions` backfills a read model built after
+      the fact with the narrow, projection-only `CompetitionAnnounced`.
 - [x] **Two notices §12 names** (fix round): `competition.match-disputed`
       to the other side of a dispute, `competition.checked-in` to the roster.
 - [ ] **A retraction for `MatchScheduled`** before GameOps consumes it:
