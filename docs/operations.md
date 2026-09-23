@@ -290,6 +290,45 @@ refusal sends them to their *Linked accounts* settings page, where they already 
 Steam as linked. Unlinking and re-linking there also repairs a single
 account.
 
+### Turning tournaments on — what Competition needs after a deploy or an enable
+
+Competition reads other modules only through its own read models (ADR-0004),
+so a brand that switches `competition` on, or a deploy that brings one of
+those tables, finds them empty for everything that happened before. Four of
+the post-rollout backfills fill them. All four are safe to re-run, and only a
+projection listens to what they emit:
+
+- `event:replay-details --with-state` fills `competition_event_summaries`:
+  each event's slug and name, and its lifecycle state. The state comes only
+  with `--with-state`. Until it has run, `/events/{slug}/tournaments` and
+  every page under it answer 404 for an event created before the table
+  existed, because a tournament page is public only for a `published`,
+  `running` or `concluded` event (see **Backfilling the ticket's read
+  models**).
+- `identity:announce-social-identities` fills
+  `competition_linked_identities`, which a discipline's Steam requirement is
+  checked against (see **Backfilling Competition's linked accounts**). Run it
+  again when the first brand of a deployment switches `competition` on.
+- `admission:announce-ownership` fills `competition_admission_presence`, the
+  door presence that `requires_event_check_in` checks. The door listeners are
+  gated on the brand, so admissions issued or claimed while `competition` was
+  off for it are missing until this runs. Run it after enabling the module.
+- `identity:replay-profiles` fills `competition_participant_profiles`, the
+  names every tournament page and the console's person search show. Without
+  it a roster renders with dashes until each person edits their profile.
+
+**Enabling Competition in the middle of an event: leave
+`requires_event_check_in` off.** `admission:announce-ownership` restates who
+holds each admission and whether it stands, but it carries no scan time.
+A brand that switches `competition` on after its doors opened gets its
+holders back and never gets back who was already scanned in
+(`checked_in_at`). A competition that requires event check-in then refuses
+every team until each member has been scanned at the entrance again. Keep
+the setting off for competitions of an event that was already running when
+the module was enabled; the desk can check teams in by hand either way
+(competition design §6, §14). A backfill that carries the first `in` scan is
+Admission's to add and is not built.
+
 ### Backfilling the media library's variants — the post-deploy step for 0.7.0
 
 A variant is cut when a picture is uploaded, so every picture already in a
