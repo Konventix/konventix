@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Konventix\Competition\Actions\Concerns\TransitionsCompetitionStatus;
 use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
+use Konventix\Competition\Enums\StageFormat;
 use Konventix\Competition\Events\CompetitionStarted;
 use Konventix\Competition\Exceptions\IllegalCompetitionStateTransitionException;
 use Konventix\Competition\Models\Competition;
@@ -22,7 +23,12 @@ use Konventix\Competition\Models\Stage;
  * - **A generated stage.** `Running` means "the first stage has been
  *   generated and started" — a competition whose bracket has not been drawn
  *   has nothing to record results against, and the desk would show an empty
- *   board.
+ *   board. A **leaderboard** stage counts as ready without a draw: it has no
+ *   matches (§7.2), `GenerateBracket` has no generator for it, and the desk
+ *   offers it no draw button. Its field is whoever signed up, and scores
+ *   are entered against that. Before this, a leaderboard competition could
+ *   never reach `Running` and therefore never `Finished` (design §14,
+ *   "A leaderboard needs no draw to start").
  * - **No `incomplete` entrant.** An incomplete roster holds a slot until the
  *   organizer fills it from the interested list or declines it (§5.4).
  *   Starting over one would either seed a team that cannot field itself or
@@ -63,7 +69,9 @@ final class StartCompetition
         $generated = Stage::withoutBrandScope()
             ->where('brand_id', $competition->brand_id)
             ->where('competition_id', $competition->id)
-            ->whereNotNull('generated_at')
+            ->where(fn ($query) => $query
+                ->whereNotNull('generated_at')
+                ->orWhere('format', StageFormat::Leaderboard->value))
             ->exists();
 
         if (! $generated) {
