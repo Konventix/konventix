@@ -31,7 +31,11 @@ use Konventix\Competition\Models\ParticipantProfile;
  */
 trait AnswersTheParticipant
 {
-    private function attempt(callable $work, string $field): mixed
+    /**
+     * `$viewerId` lets the linked-account refusal (§5.6) say "du" to the
+     * person who pressed the button rather than naming them.
+     */
+    private function attempt(callable $work, string $field, ?string $viewerId = null): mixed
     {
         try {
             return $work();
@@ -44,7 +48,7 @@ trait AnswersTheParticipant
             throw ValidationException::withMessages([
                 $field => $provider === null
                     ? $e->participantMessage()
-                    : $this->linkedAccountRefusal($provider, $e->usersMissingTheLink(), null),
+                    : $this->linkedAccountRefusal($provider, $e->usersMissingTheLink(), $viewerId),
             ]);
         } catch (ResultSubmissionException $e) {
             throw ValidationException::withMessages([$field => $e->participantMessage()]);

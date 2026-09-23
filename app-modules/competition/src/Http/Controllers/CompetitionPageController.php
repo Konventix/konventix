@@ -16,9 +16,7 @@ use Konventix\Competition\Data\ScoreEntryData;
 use Konventix\Competition\Http\Controllers\Concerns\AnswersTheParticipant;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionTeam;
-use Konventix\Competition\Models\Discipline;
 use Konventix\Competition\Models\EligibleRegistration;
-use Konventix\Competition\Models\LinkedIdentity;
 use Konventix\Competition\Pages\TournamentPages;
 
 /**
@@ -75,25 +73,10 @@ final class CompetitionPageController
             }
         }
 
-        // §5.6: when the discipline requires a linked provider, everyone on
-        // the roster has linked it. Asked here first for the same reason as
-        // above, and so the refusal can say "du" to the captain; the Action
-        // checks again, and `attempt()` answers its refusal in German too.
-        /** @var Discipline|null $discipline */
-        $discipline = Discipline::query()->whereKey($model->discipline_id)->first();
-        $provider = $discipline?->requires_linked_provider;
-
-        if ($provider !== null) {
-            $missing = LinkedIdentity::missingAmong($roster, $provider->value);
-
-            if ($missing !== []) {
-                throw ValidationException::withMessages([
-                    'teamId' => $this->linkedAccountRefusal($provider, $missing, $userId),
-                ]);
-            }
-        }
-
-        $this->attempt(fn () => $enter->handle($model, $team, $roster), 'teamId');
+        // §5.6's linked-account rule is the Action's alone, so a closed
+        // signup or a double entry is refused first, as it should be.
+        // `attempt()` answers it in German and says "du" to the captain.
+        $this->attempt(fn () => $enter->handle($model, $team, $roster), 'teamId', $userId);
 
         return $this->done(__('Euer Team ist angemeldet.'));
     }

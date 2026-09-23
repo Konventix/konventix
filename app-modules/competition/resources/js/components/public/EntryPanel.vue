@@ -82,8 +82,14 @@ function withdrawInterest(): void {
             v-if="props.competition.requiredLinkedAccount"
             class="text-sm text-text-muted"
         >
-            Für dieses Turnier brauchen alle im Team ein verknüpftes
-            {{ props.competition.requiredLinkedAccount }}-Konto.
+            <template v-if="props.competition.teamSize === 1">
+                Für dieses Turnier brauchst du ein verknüpftes
+                {{ props.competition.requiredLinkedAccount }}-Konto.
+            </template>
+            <template v-else>
+                Für dieses Turnier brauchen alle im Team ein verknüpftes
+                {{ props.competition.requiredLinkedAccount }}-Konto.
+            </template>
             <template
                 v-if="
                     props.viewer.signedIn && props.viewer.missingLinkedAccount

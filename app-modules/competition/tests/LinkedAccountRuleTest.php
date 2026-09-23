@@ -32,8 +32,8 @@ use Konventix\Platform\Models\Brand;
  * switching the rule on, or unlinking later, removes nobody.
  *
  * Links arrive the only sanctioned way, on Identity's `SocialIdentityLinked`
- * (ADR-0004), and the projection only stores them while some brand runs
- * `competition`, so every test switches the module on first.
+ * (ADR-0004). The projection is ungated; the tests switch the module on
+ * because the participant routes are behind `ensure-module:competition`.
  *
  * `Identity\Models\User` appears here, as in `SignupHttpTest`, only because
  * `actingAs()` needs a real account.
