@@ -25,6 +25,7 @@ use Konventix\Competition\Actions\WithdrawEntrant;
 use Konventix\Competition\Data\LeaderboardSettings;
 use Konventix\Competition\Data\MatchReportData;
 use Konventix\Competition\Data\ScoreEntryData;
+use Konventix\Competition\Desk\TournamentDesk;
 use Konventix\Competition\Enums\CheckInMode;
 use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
@@ -835,5 +836,103 @@ describe('the leaderboard of a field that did not all score (part 1, I6)', funct
             ->and($table[$second->id]->placement)->toBe(2)
             ->and($table[$second->id]->tiebreaker)->toBeNull()
             ->and($table->has($noShow->id))->toBeFalse();
+    });
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * Part 4, I1 — a correction takes the old pairing's claims with it
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * Four entrants, participant-reported: A beats B and C beats D at the desk,
+ * so the final is A (slot 1) v C (slot 2). Returns the stage, the four
+ * entrant ULIDs in that naming and the roster member of each.
+ *
+ * @return array{0: Stage, 1: array{a: string, b: string, c: string, d: string}, 2: array<string, string>}
+ */
+function integrityTestFinalReached(): array
+{
+    [$competition, , $members] = competitionFieldWithRosters(4, ['result_submission_mode' => ResultSubmissionMode::Participants]);
+    $stage = competitionGeneratedStage($competition);
+    $first = competitionMatchAt($stage, 1, 1);
+    $second = competitionMatchAt($stage, 1, 2);
+    [$a, $b] = array_values(competitionSidesOf($first));
+    [$c, $d] = array_values(competitionSidesOf($second));
+
+    $desk = (string) Str::ulid();
+    app(RecordResultAtDesk::class)->handle($first, [1 => 2, 2 => 0], $a, $desk);
+    app(RecordResultAtDesk::class)->handle($second, [1 => 2, 2 => 0], $c, $desk);
+
+    return [$stage, ['a' => $a, 'b' => $b, 'c' => $c, 'd' => $d], $members];
+}
+
+describe('claims on a pairing a correction changed (part 4, I1)', function (): void {
+    it('drops the reported claim on the final when a correction replaces its reporter, so nobody can confirm it', function (): void {
+        $this->withBrand();
+
+        [$stage, $e, $members] = integrityTestFinalReached();
+        $final = competitionMatchAt($stage, 2, 1);
+
+        // A claims the final 16:12 (A in slot 1).
+        app(ReportMatchResult::class)->handle($final, integrityTestEntrant($e['a']), new MatchReportData(scores: [1 => 16, 2 => 12]), $members[$e['a']]);
+
+        // Match 1 was B's: B replaces A in the final's slot 1. The final was
+        // never played, so nothing is voided — but A's claim was about A v C.
+        app(CorrectMatchResult::class)->handle(competitionMatchAt($stage, 1, 1), [$e['a'] => 0, $e['b'] => 2], $e['b'], (string) Str::ulid());
+
+        $final->refresh();
+
+        expect(competitionSidesOf($final))->toBe([1 => $e['b'], 2 => $e['c']])
+            ->and(MatchResultReport::query()->where('competition_match_id', $final->getKey())->count())->toBe(0)
+            ->and($final->reported_at)->toBeNull();
+
+        // Before the fix C could confirm A's 16:12, and slot 1 — now B —
+        // was recorded the winner of a match B never played.
+        expect(fn () => app(ConfirmMatchResult::class)->handle($final, integrityTestEntrant($e['c']), $members[$e['c']]))
+            ->toThrow(ResultSubmissionException::class, 'nothing to confirm');
+
+        expect($final->fresh()->state)->toBe(MatchState::Pending);
+    });
+
+    it('drops a dispute about the old pairing from the desk', function (): void {
+        $this->withBrand();
+
+        [$stage, $e, $members] = integrityTestFinalReached();
+        $final = competitionMatchAt($stage, 2, 1);
+
+        // A claims 16:12, C claims 12:16: disputed, on the desk's panel.
+        app(ReportMatchResult::class)->handle($final, integrityTestEntrant($e['a']), new MatchReportData(scores: [1 => 16, 2 => 12]), $members[$e['a']]);
+        app(ReportMatchResult::class)->handle($final->fresh(), integrityTestEntrant($e['c']), new MatchReportData(scores: [1 => 12, 2 => 16]), $members[$e['c']]);
+
+        $competition = $stage->competition()->withoutGlobalScopes()->firstOrFail();
+
+        expect(app(TournamentDesk::class)->for($competition)->disputes)->toHaveCount(1);
+
+        app(CorrectMatchResult::class)->handle(competitionMatchAt($stage, 1, 1), [$e['a'] => 0, $e['b'] => 2], $e['b'], (string) Str::ulid());
+
+        // A dispute between A and C about a match A no longer plays is
+        // nobody's to decide.
+        expect($final->fresh()->isDisputed())->toBeFalse()
+            ->and($final->fresh()->disputed_at)->toBeNull()
+            ->and(app(TournamentDesk::class)->for($competition->refresh())->disputes)->toBe([]);
+    });
+
+    it('never lets a side confirm a claim filed by an entrant no longer in the match', function (): void {
+        // The belt to the cascade's braces: whatever put it there, a report
+        // by an entrant outside the match is nobody's to confirm.
+        $this->withBrand();
+
+        [$stage, $e, $members] = integrityTestFinalReached();
+        $final = competitionMatchAt($stage, 2, 1);
+
+        // A claim by D, who lost in round 1 and is not in the final (A v C).
+        integrityTestStoredClaim($final, $e['d'], [1 => 12, 2 => 16]);
+
+        expect(fn () => app(ConfirmMatchResult::class)->handle($final->fresh(), integrityTestEntrant($e['c']), $members[$e['c']]))
+            ->toThrow(ResultSubmissionException::class, 'nothing to confirm');
+
+        expect($final->fresh()->state)->toBe(MatchState::Pending);
     });
 });

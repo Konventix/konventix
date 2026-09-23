@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
+use Konventix\Competition\Actions\CorrectMatchResult;
 use Konventix\Competition\Actions\ExpressInterest;
 use Konventix\Competition\Actions\RecordResultAtDesk;
 use Konventix\Competition\Actions\ReportMatchResult;
@@ -613,6 +614,44 @@ it('offers no report on a match whose other side is still to come', function ():
         ->assertSessionHasErrors('scores');
 
     expect(MatchResultReport::query()->where('competition_match_id', $final->id)->count())->toBe(0);
+});
+
+it('shows the new side of a re-paired match no claim to confirm, and refuses the confirm', function (): void {
+    // Final review, part 4, I1. `publicPagesBracket`: $a v $d and $b v $c in
+    // round 1; the final takes the winners in slots 1 and 2.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+    $eventId = publicPagesEvent($brand);
+
+    [$competition, [$a, $b, , $d], $members, $stage] = publicPagesBracket($eventId);
+    $desk = (string) Str::ulid();
+
+    app(RecordResultAtDesk::class)->handle(competitionMatchAt($stage, 1, 1), [1 => 2, 2 => 0], $a->id, $desk);
+    app(RecordResultAtDesk::class)->handle(competitionMatchAt($stage, 1, 2), [1 => 2, 2 => 0], $b->id, $desk);
+
+    // The final is $a v $b, and $a claims it 16:12.
+    $final = competitionMatchAt($stage, 2, 1);
+    app(ReportMatchResult::class)->handle($final, $a, new MatchReportData(scores: [1 => 16, 2 => 12]), $members[$a->id]);
+
+    // Match 1 was $d's: $d replaces $a in the final's slot 1.
+    app(CorrectMatchResult::class)->handle(competitionMatchAt($stage, 1, 1), [$a->id => 0, $d->id => 2], $d->id, $desk);
+
+    $ofB = publicPagesMember($b);
+
+    // $b sees no claim of the other side and no confirm button — before the
+    // fix it saw $a's 16:12 and could confirm it for $d.
+    $this->actingAs($ofB)
+        ->get(publicPagesUrl($competition, '/matches/'.$final->id))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('page.viewer.position', 2)
+            ->where('page.viewer.opposingReport', null)
+            ->where('page.viewer.canConfirm', false));
+
+    $this->actingAs($ofB)
+        ->post('/tournaments/'.$competition->id.'/matches/'.$final->id.'/confirm')
+        ->assertSessionHasErrors(['result' => 'Es gibt noch kein Ergebnis, das ihr bestätigen könntet.']);
+
+    expect($final->fresh()->state)->toBe(MatchState::Pending);
 });
 
 it('files a participant dispute where the desk sees it', function (): void {

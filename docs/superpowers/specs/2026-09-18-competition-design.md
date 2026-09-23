@@ -1543,3 +1543,21 @@ competition checks in, the checked-in only. Every registered entrant used to
 be ranked, so the no-shows of a check-in competition sat on the public board
 at a shared last place. Bracket standings keep the wider field, because their
 calculators rank from matches that were played.
+
+### §8.5, 2026-09-23 (final review fix wave A) — a correction also takes the claims of a re-paired match
+
+§8.5 voids every downstream match that has a recorded result on a changed
+slot. A downstream match that was **reported but not confirmed**, or
+disputed but not resolved, has no recorded result, so the cascade skipped it
+and its claims stayed after `reroute()` put a different team in the slot. The
+side now standing opposite could confirm the displaced team's claim, which
+recorded a score for a pairing that never played; a report by the new side
+was compared with the stale one and became a false dispute; and a dispute
+about a team no longer in the match stayed on the desk's panel.
+
+The cascade now drops the claims of such a match — its reports,
+`reported_at` and its dispute — whenever one of its slots changes. It writes
+no history row: §8.6 has no kind for it, and the `reported` rows already on
+the timeline stay as the record of what was said. `ConfirmMatchResult` and
+`ReportMatchResult` also read only claims by an entrant who stands in the
+match now.

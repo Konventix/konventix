@@ -57,6 +57,11 @@ use Konventix\Competition\Models\MatchSlot;
  *    **mandatory** note.
  * 3. Voiding a match empties the slots *it* fed in turn, so the walk
  *    continues until it reaches matches that were never played.
+ *    A match that was never played but whose sides were **reported or
+ *    disputed** loses those claims when a slot of it changes: they were
+ *    made about a pairing that no longer exists, and the side that now
+ *    stands in the slot could otherwise confirm a score it never played
+ *    (final review, part 4, I1).
  * 4. The standings are recomputed at the end, once, for the whole stage —
  *    never row by row, for the reason `CalculateStandings` gives.
  *
@@ -207,9 +212,16 @@ final class CorrectMatchResult
             /** @var CompetitionMatch|null $downstream */
             $downstream = CompetitionMatch::withoutBrandScope()->whereKey($matchId)->first();
 
-            if ($downstream === null || ! $this->hasRecordedResult($downstream)) {
+            if ($downstream === null) {
+                continue;
+            }
+
+            if (! $this->hasRecordedResult($downstream)) {
                 // Never played on the old result, so there is nothing to undo
-                // and nothing it can have fed.
+                // and nothing it can have fed. What its sides already *said*
+                // about it was said about the old pairing, and goes.
+                $this->clearClaims($downstream);
+
                 continue;
             }
 
@@ -275,6 +287,31 @@ final class CorrectMatchResult
         }
 
         return array_values(array_unique($touched));
+    }
+
+    /**
+     * Drop the claims filed on a match whose pairing a correction changed
+     * before it was played: the reports, `reported_at`, and a dispute about
+     * them. No history row — §8.6 has no kind for it, and the `reported`
+     * rows already on the timeline stay as the record of what was said.
+     */
+    private function clearClaims(CompetitionMatch $match): void
+    {
+        $claims = MatchResultReport::withoutBrandScope()
+            ->where('brand_id', $match->brand_id)
+            ->where('competition_match_id', $match->id);
+
+        if ($match->reported_at === null && $match->disputed_at === null && ! (clone $claims)->exists()) {
+            return;
+        }
+
+        $claims->delete();
+
+        $match->forceFill([
+            'reported_at' => null,
+            'disputed_at' => null,
+            'dispute_resolved_at' => null,
+        ])->save();
     }
 
     /**

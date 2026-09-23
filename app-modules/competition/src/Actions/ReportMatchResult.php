@@ -236,12 +236,17 @@ final class ReportMatchResult
      */
     private function opposingReport(CompetitionMatch $match, Entrant $entrant): ?MatchResultReport
     {
+        // A side of the match *now*: a claim left by a team a correction
+        // moved out of the slot is no one's to agree or disagree with
+        // (final review, part 4, I1).
         /** @var MatchResultReport|null $report */
         $report = MatchResultReport::withoutBrandScope()
             ->where('brand_id', $match->brand_id)
             ->where('competition_match_id', $match->id)
             ->where('entrant_id', '!=', $entrant->id)
+            ->whereIn('entrant_id', array_values($this->entrantIdsByPosition($match)))
             ->orderBy('created_at')
+            ->orderBy('id')
             ->first();
 
         return $report;

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
+use Konventix\Competition\Actions\CorrectMatchResult;
 use Konventix\Competition\Actions\RecordResultAtDesk;
 use Konventix\Competition\Actions\ReportMatchResult;
 use Konventix\Competition\Data\MatchReportData;
@@ -547,6 +548,54 @@ it('nudges to confirm, waits on a confirmation, and flags a dispute from the rep
         ->and($rows['Golf']->nudge)->toBe(NextGameNudge::Confirm)
         ->and($rows['Hotel']->nudge)->toBe(NextGameNudge::AwaitingConfirmation)
         ->and($rows['India']->nudge)->toBe(NextGameNudge::Disputed);
+});
+
+it('drops a displaced side\'s claim from the card once a correction re-pairs the match', function (): void {
+    // Final review, part 4, I1. S(4) = [1, 4, 2, 3]: round 1 is seed 1 (P,
+    // the viewer's side) v seed 4 (Q) and seed 2 (R) v seed 3 (S); the final
+    // takes match 1's winner in slot 1 and match 2's in slot 2.
+    $brand = $this->withBrand();
+    $eventId = hubCardsEvent($brand);
+    $ofP = User::factory()->create();
+
+    [$competition, $p, $first, , $stage] = hubCardsCompetition($eventId, $ofP, 'Juliett');
+    $q = hubCardsOpponent($first, $p);
+    $second = competitionMatchAt($stage, 1, 2);
+    $r = Entrant::query()->findOrFail(competitionSidesOf($second)[1]);
+
+    $ofQ = User::factory()->create();
+    hubCardsJoin($q->competition_team_id, $q->brand_id, $ofQ);
+    $ofR = User::factory()->create();
+    hubCardsJoin($r->competition_team_id, $r->brand_id, $ofR);
+
+    // P beats Q, R beats S; P claims the final 16:12.
+    hubCardsWinAtDesk($first, $p);
+    hubCardsWinAtDesk($second, $r);
+    $final = competitionMatchAt($stage, 2, 1);
+    app(ReportMatchResult::class)->handle($final, $p, new MatchReportData(scores: [1 => 16, 2 => 12]), (string) $ofP->getKey());
+
+    // Before the correction R is asked to confirm P's claim — the control.
+    expect(hubCardsGamesByCompetition(hubCardsNextGames($brand, $ofR, $eventId))['Juliett']->nudge)->toBe(NextGameNudge::Confirm);
+
+    // Match 1 was Q's: Q replaces P in the final's slot 1.
+    app(CorrectMatchResult::class)->handle($first->fresh(), [$p->getKey() => 0, $q->getKey() => 2], $q->getKey(), (string) Str::ulid());
+
+    $forP = hubCardsGamesByCompetition(hubCardsNextGames($brand, $ofP, $eventId));
+    $forQ = hubCardsGamesByCompetition(hubCardsNextGames($brand, $ofQ, $eventId));
+    $forR = hubCardsGamesByCompetition(hubCardsNextGames($brand, $ofR, $eventId));
+
+    // P has no open match left in Juliett, so no row. Q and R now meet in a
+    // final with no time and no claim on it: nobody has reported, so the
+    // nudge is to report (§10a rule 4), not to confirm P's 16:12. Before the
+    // fix P's claim stayed and both were told "Ergebnis bestätigen".
+    expect($forP)->not->toHaveKey('Juliett')
+        ->and($forQ['Juliett']->matchId)->toBe($final->getKey())
+        ->and($forQ['Juliett']->opponentName)->toBe(hubCardsTeamName($r))
+        ->and($forQ['Juliett']->nudge)->toBe(NextGameNudge::Report)
+        ->and($forR['Juliett']->opponentName)->toBe(hubCardsTeamName($q))
+        ->and($forR['Juliett']->nudge)->toBe(NextGameNudge::Report);
+
+    expect($competition->refresh()->status)->toBe(CompetitionStatus::Running);
 });
 
 it('shows match times on the event\'s wall clock, projected from EventCreated and kept by EventRescheduled', function (): void {

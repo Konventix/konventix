@@ -61,10 +61,16 @@ final class ConfirmMatchResult
             $this->guardIsASideOf($match, $entrant);
             $this->guardIsOnTheRoster($entrant, $confirmedByUserId);
 
+            // Only a claim by an entrant who stands in the match now. A
+            // correction upstream can move a side out of a slot after it
+            // reported, and confirming its claim would record a score for a
+            // team that never played this pairing (final review, part 4, I1).
             $reports = MatchResultReport::withoutBrandScope()
                 ->where('brand_id', $match->brand_id)
                 ->where('competition_match_id', $match->id)
+                ->whereIn('entrant_id', array_values($this->entrantIdsByPosition($match)))
                 ->orderBy('created_at')
+                ->orderBy('id')
                 ->get();
 
             if ($reports->isEmpty()) {
