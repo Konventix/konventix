@@ -147,10 +147,21 @@ final class WallReader
     }
 
     /**
-     * Who is here (design §5): everyone active in the room on the
-     * connection axis, and everyone the door has checked in, whether or not
-     * they are online — "Checked-In + Offline" is a real row. Online first,
-     * then away, then offline, each by name.
+     * Who is here (design §5): everyone active in this room on the
+     * connection axis — they opened the wall, so they disclosed themselves
+     * to it — each with the Checked-In badge beside the dot when the door
+     * has scanned them in. Online first, then away, each by name.
+     *
+     * **Not an attendee roster** (ADR-0064). Somebody the door checked in
+     * who never opened the wall is not listed: an attendee list is opt-in
+     * per person and per event, and being scanned in is no consent to be
+     * named to every admitted participant. That drops design §5's
+     * "Checked-In + Offline" row. Provisional ruling of the 0.9.0 final
+     * review (I1); whether absent people who opted in may appear, by
+     * username, is the operator's open question (#324).
+     *
+     * No account ULID leaves here either (ADR-0064 §3): the page renders a
+     * name, a dot and a badge, and needs nothing to address a row by.
      *
      * The badge is read from Community's own projection and only displayed
      * (ADR-0067 decision 2); nothing here decides anything on it.
@@ -159,26 +170,29 @@ final class WallReader
      */
     public function presence(Room $room): array
     {
-        // Reported, not raised: Redis being unreachable costs the dots, not
-        // the page — the badge below is durable and still renders.
+        // Reported, not raised: Redis being unreachable empties the list,
+        // never the page.
         $connections = rescue(fn (): array => app(ConnectionState::class)->forRoom($room), []);
+        $userIds = array_map(strval(...), array_keys($connections));
 
-        $checkedIn = $room->subject_type === RoomSubject::Event
-            ? array_values(array_filter(EventPresence::query()
+        if ($userIds === []) {
+            return [];
+        }
+
+        $badged = $room->subject_type === RoomSubject::Event
+            ? array_flip(array_values(array_filter(EventPresence::query()
                 ->where('event_id', $room->subject_id)
                 ->where('checked_in', true)
+                ->whereIn('user_id', $userIds)
                 ->pluck('user_id')
-                ->all(), is_string(...)))
+                ->all(), is_string(...))))
             : [];
 
-        $userIds = array_values(array_unique([...array_map(strval(...), array_keys($connections)), ...$checkedIn]));
         $names = $this->displayNames($userIds);
-        $badged = array_flip($checkedIn);
 
         $rows = array_map(static fn (string $userId): ShoutboxPresenceData => new ShoutboxPresenceData(
-            userId: $userId,
             displayName: $names[$userId] ?? null,
-            status: $connections[$userId] ?? ConnectionStatus::Offline,
+            status: $connections[$userId],
             checkedIn: isset($badged[$userId]),
         ), $userIds);
 

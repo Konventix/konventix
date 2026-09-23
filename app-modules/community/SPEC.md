@@ -145,3 +145,8 @@ community history unless the projections are backfilled (see open questions).
   is the only durable half.
 - Whether the personal agenda (bookmarked programme items) belongs here or to
   Agenda.
+- Who "Wer ist da" may list (#324). Since the 0.9.0 final review it lists only
+  the people present in the room, with their Checked-In badge, because a list
+  of everyone the door scanned in is an attendee roster that ADR-0064 makes
+  opt-in. Whether absent attendees who opted in may appear, by username, is the
+  operator's call (design §14).

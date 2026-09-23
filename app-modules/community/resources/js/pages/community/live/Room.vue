@@ -241,12 +241,14 @@ const statusLabel: Record<Konventix.Community.Enums.ConnectionStatus, string> =
                 </p>
                 <ul v-else class="flex flex-col gap-2">
                     <li
-                        v-for="person in presence"
-                        :key="person.userId"
+                        v-for="(person, index) in presence"
+                        :key="index"
                         class="flex items-center gap-2 text-sm text-text"
                     >
-                        <!-- Checked-In + Offline is a real state: a badge
-                             with no dot (design §5). -->
+                        <!-- Only people in this room are listed (ADR-0064,
+                             WallReader::presence()), and a row carries no
+                             account id: it is keyed by position, which is
+                             all a display-only list needs. -->
                         <span
                             v-if="person.status !== 'offline'"
                             class="inline-block size-2 shrink-0 rounded-full"

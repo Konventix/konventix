@@ -436,14 +436,15 @@ it('records the heartbeat and answers with who is here, the badge beside the dot
     $bob = shoutboxPageAdmitted($brand, $eventId, 'Bob');
 
     try {
-        // Ada is here and online; Bob was checked in at the door and has not
-        // opened the room — "Checked-In + Offline", a badge with no dot.
+        // Ada is here and online, with the door's badge beside her dot. Bob
+        // was checked in at the door too, but has not opened the room, so he
+        // is not listed (ADR-0064: being scanned in is no consent to be
+        // named to every participant). No row carries an account id.
         $this->actingAs($ada)
             ->postJson('/live/shoutbox/presence', ['status' => 'online'])
             ->assertOk()
             ->assertExactJson([
-                ['userId' => $ada->id, 'displayName' => 'Ada', 'status' => 'online', 'checkedIn' => true],
-                ['userId' => $bob->id, 'displayName' => 'Bob', 'status' => 'offline', 'checkedIn' => true],
+                ['displayName' => 'Ada', 'status' => 'online', 'checkedIn' => true],
             ]);
 
         $room = Room::withoutBrandScope()->sole();
@@ -457,6 +458,61 @@ it('records the heartbeat and answers with who is here, the badge beside the dot
         $room ??= Room::withoutBrandScope()->first();
 
         Redis::connection()->del(ConnectionState::connectionKey($brand->getKey(), $ada->id));
+
+        if ($room instanceof Room) {
+            Redis::connection()->del(ConnectionState::roomKey($brand->getKey(), $room->id));
+        }
+    }
+});
+
+// I1 (final review, ADR-0064): "Wer ist da" lists the people present in
+// the room, not everyone the door has scanned in. All three are admitted,
+// which checks them in (`ProjectAdmissionBadge::admitted()`); Cara never
+// opens the wall. Before the fix she was a "Checked-In + Offline" row, with
+// her account ULID, in every other participant's list — on the heartbeat
+// and on the page's first render alike.
+it('lists the people present in the room with their badge, and not a checked-in attendee who never opened it', function (): void {
+    if (! shoutboxPageRedisReachable()) {
+        $this->markTestSkipped('Redis is not reachable from this test process.');
+    }
+
+    $brand = $this->withBrand();
+    $this->activateModule('community', $brand);
+
+    $eventId = (string) Str::ulid();
+    $ada = shoutboxPageAdmitted($brand, $eventId, 'Ada');
+    $bob = shoutboxPageAdmitted($brand, $eventId, 'Bob');
+    $cara = shoutboxPageAdmitted($brand, $eventId, 'Cara');
+
+    try {
+        $this->actingAs($ada)->postJson('/live/shoutbox/presence', ['status' => 'online'])->assertOk();
+
+        $beat = $this->actingAs($bob)
+            ->postJson('/live/shoutbox/presence', ['status' => 'away'])
+            ->assertOk()
+            ->assertExactJson([
+                ['displayName' => 'Ada', 'status' => 'online', 'checkedIn' => true],
+                ['displayName' => 'Bob', 'status' => 'away', 'checkedIn' => true],
+            ]);
+
+        expect($beat->getContent())->not->toContain('Cara')
+            ->and($beat->getContent())->not->toContain($cara->id)
+            ->and($beat->getContent())->not->toContain($ada->id);
+
+        $this->actingAs($ada)
+            ->get('/live/shoutbox')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('community/live/Room')
+                ->has('room.presence', 2)
+                ->where('room.presence.0', ['displayName' => 'Ada', 'status' => 'online', 'checkedIn' => true])
+                ->where('room.presence.1', ['displayName' => 'Bob', 'status' => 'away', 'checkedIn' => true]));
+    } finally {
+        $room = Room::withoutBrandScope()->first();
+
+        foreach ([$ada, $bob] as $member) {
+            Redis::connection()->del(ConnectionState::connectionKey($brand->getKey(), $member->id));
+        }
 
         if ($room instanceof Room) {
             Redis::connection()->del(ConnectionState::roomKey($brand->getKey(), $room->id));

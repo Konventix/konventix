@@ -14,14 +14,14 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * `checkedIn` is the durable admission badge from `community_event_presence`
  * — displayed, never enforced (ADR-0067 decision 2).
  *
- * "Checked-In + Offline" is a real row: at the event, phone in a pocket.
- * It renders as a badge with no dot.
+ * Only people active in the room have a row (`WallReader::presence()`,
+ * ADR-0064), so `status` is `online` or `away` in practice. The row carries
+ * no account ULID: the list is display only.
  */
 #[TypeScript]
 final class ShoutboxPresenceData extends Data
 {
     public function __construct(
-        public readonly string $userId,
         public readonly ?string $displayName,
         public readonly ConnectionStatus $status,
         public readonly bool $checkedIn,

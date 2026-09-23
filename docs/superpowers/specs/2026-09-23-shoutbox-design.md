@@ -232,3 +232,7 @@ Written with their reasons, not quietly contradicted:
 ## 13. Out of scope
 
 Auto-moderation (§9 leaves its seam), per-match and per-competition rooms (the subject enum is ready, the subjects are not — they wait on B), achievements, cross-event message history, direct messages, file or image posting, and any widening of who may read (D-COM-03).
+
+## 14. Deviations after review
+
+- **§5's "Checked-In + Offline" row is dropped (final review I1, 2026-09-23, provisional).** Listing every checked-in attendee to every admitted participant is an attendee roster, and [ADR-0064](../../decisions/0064-an-attendee-list-is-opt-in.md) makes an attendee list opt-in per person and per event, keeps the account ULID off it, and names people by username. "Wer ist da" therefore lists only the people active in the room on the connection axis, each still carrying the Checked-In badge, and its rows carry no account ULID (`WallReader::presence()`). Whether absent people who opted in may appear, and by which name, is open for the operator (#324).

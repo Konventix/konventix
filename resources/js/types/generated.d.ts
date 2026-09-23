@@ -632,7 +632,6 @@ declare namespace Konventix {
                 readonly muteReasonMaxLength: number;
             };
             export type ShoutboxPresenceData = {
-                readonly userId: string;
                 readonly displayName: string | null;
                 readonly status: Konventix.Community.Enums.ConnectionStatus;
                 readonly checkedIn: boolean;
