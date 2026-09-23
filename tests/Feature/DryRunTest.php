@@ -182,6 +182,14 @@ function dryRunSkippedRoutes(): array
         // for an admitted participant and for a stranger.
         'community.shoutbox.show' => 'room page for an admitted participant; 404s for anyone else by design',
         'community.shoutbox.messages' => 'JSON catch-up feed for an admitted participant; 404s for anyone else by design',
+
+        // The *Nächste Spiele* card's own refresh (competition design §10a)
+        // uses the live hub's gate the same way: it answers only a member
+        // admitted to the running event and 404s for anyone else. The
+        // walking member is scanned in nowhere, so there is nothing to
+        // serve. `HubCardsTest` walks it for an admitted viewer and for a
+        // stranger.
+        'competition.hub.next-games' => 'JSON refresh of the hub card for an admitted participant; 404s for anyone else by design',
     ];
 }
 

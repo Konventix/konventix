@@ -326,17 +326,27 @@ it('serves the card\'s own refresh as JSON without rebuilding the hub or countin
     $this->activateModule('competition', $brand);
     $this->app->forgetScopedInstances();
 
-    // Only the hub-views lines: other counters may well move with a request.
-    $views = fn (): string => collect(explode("\n", (new RenderTextFormat)->render(app(CollectorRegistry::class)->getMetricFamilySamples())))
-        ->filter(fn (string $line): bool => str_contains($line, 'platform_hub_views_total') && ! str_starts_with($line, '#'))
-        ->implode("\n");
-    // One real hub render first, so the counter has a line to compare —
-    // otherwise "unchanged" would pass on a counter that never rendered.
-    $this->actingAs($viewer)->get('/live')->assertOk();
-    $this->app->forgetScopedInstances();
+    // The hub-view counter's total across its series. Only its own sample
+    // lines: other counters may well move with a request.
+    //
+    // The test environment keeps metrics in memory (`PROMETHEUS_STORAGE`
+    // is `memory` in phpunit.xml), in the `CollectorRegistry` the container
+    // binds `scoped()`. `forgetScopedInstances()` therefore throws every
+    // count away, so none may run between the requests this compares — the
+    // first version of this test called it after `/live` and read an empty
+    // registry in the pipeline. Only one full-page GET happens here, so the
+    // SSR reason for forgetting (.ai/rules/tests.md) does not apply.
+    $views = fn (): float => (float) collect(explode("\n", (new RenderTextFormat)->render(app(CollectorRegistry::class)->getMetricFamilySamples())))
+        ->filter(fn (string $line): bool => str_starts_with($line, 'konventix_platform_hub_views_total{'))
+        ->sum(fn (string $line): float => (float) substr($line, (int) strrpos($line, ' ') + 1));
 
-    $before = $views();
-    expect($before)->toContain('platform_hub_views_total');
+    expect($views())->toBe(0.0);
+
+    // A real hub render moves the counter, so "unchanged" below cannot pass
+    // on a counter that is never written.
+    $this->actingAs($viewer)->get('/live')->assertOk();
+
+    expect($views())->toBe(1.0);
 
     $response = $this->actingAs($viewer)->getJson('/live/next-games')->assertOk();
 
@@ -348,7 +358,7 @@ it('serves the card\'s own refresh as JSON without rebuilding the hub or countin
         ->and($response->json('eventTimezone'))->toBe('Europe/Berlin')
         ->and($response->json('pollSeconds'))->toBe(NextGamesCard::POLL_SECONDS)
         // Not a hub render: the page counter does not move (I1).
-        ->and($views())->toBe($before);
+        ->and($views())->toBe(1.0);
 
     $this->app->forgetScopedInstances();
 
