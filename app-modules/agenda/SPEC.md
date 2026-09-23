@@ -6,9 +6,9 @@
 Built in 0.9.0 as sub-project **C** of that release (#106), to the design in
 `docs/superpowers/specs/2026-09-23-timetable-design.md`, whose §11 records the
 operator decisions **D-AGD-01 … D-AGD-09** this document points at. The
-module ships in two halves: the organizer-entered programme (here, done) and
-the competition selection, which waits on Competition's `starts_at` and
-lifecycle events (#296, D-AGD-01).
+module was built in two halves: the organizer-entered programme in 0.9.0, and
+the competition selection in 0.9.1 (#331), once Competition had a
+`starts_at` and lifecycle events (#296, D-AGD-01).
 
 ## Purpose
 
@@ -50,11 +50,20 @@ capability.
 - **Publication state per item** (D-AGD-08), and the participant-facing views
   of the programme. There is no programme-level publish switch: the event's
   own lifecycle already decides whether *any* public page exists.
-- *(half two, D-AGD-01)* **The competition selection** — which of the event's
-  competitions appear in the programme, plus the read model projected from
-  Competition's lifecycle events. **The programme selects the competitions**
-  (D-AGD-02); Competition does not know it is being displayed, and **owns the
-  start time**, which Agenda never writes (D-AGD-03).
+- **The competition selection** (`agenda_competition_entries`, half two,
+  D-AGD-01) — which of the event's publicly announced competitions appear in
+  the programme, under which track and in what order. **The programme selects
+  the competitions** (D-AGD-02): the editor picks them, and Competition does
+  not know it is being displayed. An entry outlives an unpublish, so that a
+  republished tournament comes back where the organizer put it.
+- **The competition read model** (`agenda_competitions`) — name, slug, start
+  and whether it is cancelled, for every announced competition, projected from
+  Competition's contract events alone (ADR-0004; no FK to Competition).
+  Competition **owns the start time**, and Agenda never writes it (D-AGD-03).
+  A selected competition is an **open-ended block** in the grid, the phone
+  list and "Jetzt / Gleich", marked "Turnier", struck through when cancelled,
+  and linked to its tournament page only while Competition is on for the
+  brand. It gains an end when #117's duration estimator exists.
 
 ## Does not own
 
@@ -103,12 +112,22 @@ Listeners are idempotent and replayable (ADR-0004).
 |---|---|---|
 | `EventCreated`, `EventDetailsUpdated`, `EventRescheduled`, `EventDaysChanged` | Event | slug, name, timezone and the day set the switcher is built from |
 | `EventAnnounced`, `EventPublished`, `EventUnpublished`, `EventStarted`, `EventConcluded`, `EventCancelled`, `EventArchived` | Event | the lifecycle state that decides whether the public programme page resolves at all |
-| Competition lifecycle events *(half two, #296)* | Competition | project the selected competitions' names and Competition-owned start times |
+| `CompetitionPublished`, `CompetitionRescheduled`, `CompetitionCancelled`, `CompetitionUnpublished`, `CompetitionAnnounced` | Competition | `agenda_competitions`: a published competition's name, slug and start; a moved start; a cancellation (the block stays, struck); an unpublish (the row goes, the selection stays); and the backfill's restatement of all of it. **Ungated, like `ProjectEventSummary`**, for the same reason |
 
-`Listeners\ProjectEventSummary` is deliberately **not** short-circuited on the
-Pennant gate, unlike a listener that *does* something: a brand that switches
-Agenda on halfway through planning must find its events already projected, or
-every programme editor would 404 on them.
+`Listeners\ProjectEventSummary` and `Listeners\ProjectProgrammeCompetition` are
+deliberately **not** short-circuited on the Pennant gate, unlike a listener
+that *does* something: a brand that switches Agenda on halfway through
+planning must find its events already projected, or every programme editor
+would 404 on them, and must find its already-published tournaments
+selectable rather than wait for someone to run
+`competition:announce-competitions`. What that costs is a row per announced
+competition for a brand without Agenda, holding what the competition's own
+public page already shows (design §8, amended 2026-09-23).
+
+**Not propagated:** renaming or re-slugging an announced competition, or
+moving it to another event. No contract event carries those, so the block
+keeps the old name, or a dead link, until `competition:announce-competitions`
+runs again (#332).
 
 ## Capabilities
 
@@ -116,8 +135,8 @@ Declared in `src/Enums/Permission.php`; roles that grant them are per-brand
 data, not code (ADR-0013).
 
 - **`agenda.manage-agenda`** (`Permission::ManageAgenda`) — compose the
-  programme: items, tracks, places, publishing, cancelling, and in half two
-  the competition selection. One case is the whole list, because that is one
+  programme: items, tracks, places, publishing, cancelling, and the
+  competition selection. One case is the whole list, because that is one
   job done by one person; splitting it would produce grants nobody would hand
   out apart.
 
@@ -138,9 +157,11 @@ editor both 404, the hub card `agenda.now-next` is still *registered* but
 filtered out at render, and no other module notices — nothing depends on
 Agenda.
 
-The one deliberate exception is the `agenda_event_summaries` projection above,
-which keeps running so that switching the module on later finds the brand's
-events already there.
+The deliberate exceptions are the two projections above,
+`agenda_event_summaries` and `agenda_competitions`, which keep running so
+that switching the module on later finds the brand's events and announced
+tournaments already there. The organizer's selection is written only by the
+editor, so a brand that has never had Agenda on has none.
 
 ## Surfaces
 
@@ -152,7 +173,9 @@ events already there.
 
 The public page is cache-free and brand-scoped; a cancelled item stays on it,
 struck through with its reason, because a participant who memorised 15:00
-needs to learn it is off, not to find it missing.
+needs to learn it is off, not to find it missing. A cancelled competition
+block stays the same way. The editor's competition selection is its own
+form and its own endpoint, `PUT admin/events/{event}/agenda/competitions`.
 
 ## GDPR
 
@@ -171,6 +194,14 @@ ADR-0059. One counter, `agenda_items_published_total{brand}`
 brand still planning, not an incident. `docs/operations.md` § *Programme* has
 the runbook, including the `event:replay-details --with-state` step a brand
 needs when it activates Agenda on events that predate the module.
+
+The competition half adds **no metric, on purpose**. It keeps no operational
+state of its own: `agenda_competitions` is a projection whose freshness is
+the backfill's, exactly like `agenda_event_summaries`, which has none either,
+and a selection is an editor's save like any other. What can go wrong with it
+is a missing or stale row, which `competition:announce-competitions`
+repairs and `docs/operations.md` § *Tournaments in the programme*
+describes.
 
 ## Answered questions
 

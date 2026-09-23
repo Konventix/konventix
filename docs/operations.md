@@ -304,10 +304,14 @@ the hand-run Eventula import, and since 0.9.1 Admission's
 registration status; **run it once after the 0.9.1 deploy**, because until it
 has run, a ticket issued before 0.9.1 shows no type and no status in the
 list), `admission:announce-ownership` (door presence, and since
-#330 the ticket half of the competition gate) and
-`identity:announce-social-identities`. On the cluster:
+#330 the ticket half of the competition gate),
+`identity:announce-social-identities` and, since 0.9.1,
+`competition:announce-competitions` (the programme's tournaments; **run it
+once after the 0.9.1 deploy**, see **Tournaments in the programme**). On the
+cluster:
 
     kubectl --context rancher -n konventix exec <web pod> -- php artisan identity:announce-social-identities
+    kubectl --context rancher -n konventix exec <web pod> -- php artisan competition:announce-competitions
 
 Run it once after the deploy that brings the table. The projection is not
 per brand and not gated on the module, so a brand that switches
@@ -684,6 +688,48 @@ being safe and the note belongs here.
 Without the flag the command touches no lifecycle state and is still the
 right one for the ticket read models (see **Backfilling the ticket's read
 models**), which now get the day set out of the same run.
+
+### Tournaments in the programme
+
+Since 0.9.1 (#331) an organizer can put the event's tournaments into the
+programme. The editor at `admin/events/{event}/agenda` has a
+*Competitions* panel listing every publicly announced competition of the
+event. The organizer ticks the ones the programme shows, picks a track for
+each and orders them. That selection is the only thing Agenda writes:
+Competition does not know it is being displayed.
+
+**Competition owns the time.** A selected tournament appears at the start
+set in Competition's console, as an open-ended block marked "Turnier",
+linked to the tournament's page while `competition` is on for the brand.
+The panel shows the start read-only, and a tournament without one is
+selectable but stays off the programme until it gets a time. Moving the
+start in Competition moves the block, and cancelling it strikes the block
+through. Neither needs anyone to touch the editor.
+
+**Unpublish and republish.** Unpublishing a tournament in Competition
+removes its block. The organizer's selection is kept and shows in the panel
+as *withdrawn*. Republishing brings the block back under the same track and
+in the same place. A withdrawn row goes only when the organizer removes it.
+
+**A rename or an event move is not propagated.** Renaming or re-slugging an
+announced tournament, or moving it to another event, emits no contract
+event (#332). The block keeps the old name, or links to the old slug and
+404s, and a tournament moved away stays in the old event's programme.
+After the repair a moved tournament leaves the old event's programme, and
+the old event's panel shows its selection as withdrawn. The repair is:
+
+    vendor/bin/sail artisan competition:announce-competitions
+    kubectl --context rancher -n konventix exec <web pod> -- php artisan competition:announce-competitions
+
+It restates every competition of every brand as it stands now, and only
+Agenda's projection listens, so it is safe to re-run at any time. A run
+that races a publish, an unpublish or a reschedule of the same tournament
+can write back the state it read a moment earlier. A second run heals that.
+**Run it once after the 0.9.1 deploy.** Until then every tournament
+published before 0.9.1 is missing from the editor's panel, because
+Agenda's read model only hears tournaments published since. The projection
+is not gated on `agenda`, so a brand that switches the programme on later
+needs no second run.
 
 ## Shoutbox
 

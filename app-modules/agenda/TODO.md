@@ -5,30 +5,28 @@
 > dashboards, percentages, or summary tables here.
 
 The module was built in 0.9.0 (sub-project **C**, #106) to
-`docs/superpowers/specs/2026-09-23-timetable-design.md`. It ships in two
-halves; the first is done and the second is below.
+`docs/superpowers/specs/2026-09-23-timetable-design.md`, in two halves: the
+organizer's programme in 0.9.0 and the competition half in 0.9.1 (#331).
 
 ## Next
 
-- [ ] **The competition half** (D-AGD-01, design §4.5): `agenda_competition_entries`
-      — the programme editor's selection of which of the event's competitions
-      appear — and `agenda_competitions`, the read model projected from
-      Competition's `CompetitionPublished` / `CompetitionRescheduled` /
-      `CompetitionCancelled`. #296 gave Competition a `starts_at` and those
-      lifecycle events; Agenda may not query Competition's tables
-      (ADR-0004), so they are the only way in. Competition owns the start
-      time and Agenda never writes it
-      (D-AGD-03); a selected competition renders as an open-ended block until
-      #117's duration estimator can answer an end (D-AGD-02).
-      **One precondition remains, on Competition's side:** `UnpublishCompetition`
-      emits no event, so a competition unpublished after it was selected
-      would stay in the public programme. Competition must add
-      `CompetitionUnpublished(competitionId, eventId, brandId,
-      unpublishedAt)` and this projection must remove its row on it, in the
-      same change that builds this half (competition design §14,
-      "Unpublishing a competition tells nobody").
+Nothing queued: both halves are built. The backlog below is somebody else's
+module or a follow-up issue.
 
 ## Backlog
+
+Left out of the competition half (#331), each waiting on something outside
+Agenda:
+
+- [ ] **A renamed, re-slugged or moved competition** — no contract event
+      carries a name, slug or event change, so the block keeps the old name
+      (or a dead link) until `competition:announce-competitions` runs again.
+      Closing it needs a new Competition event, e.g. a details-updated one
+      for announced competitions (#332).
+- [ ] **Following `CompetitionStarted` / `CompetitionFinished`** for a truer
+      "Jetzt": today a block is open-ended, and "Jetzt" gives it the same
+      two hours as an open-ended item. The block's end itself waits on
+      #117's duration estimator (D-AGD-03).
 
 Deferred by D-AGD-09 unless noted — each is somebody else's module, and none
 is waiting on anything here:
@@ -78,3 +76,14 @@ is waiting on anything here:
       with a 200 however many items were published — the harder half of the
       gap to notice. Its two listeners were audited the same way, and
       Admission's `entrance_event_profiles.days` is filled by the same run.
+- [x] **The competition half** (#331, D-AGD-01, design §4.5). Competition
+      gained `CompetitionUnpublished`, a `slug` on `CompetitionPublished` and
+      the backfill `competition:announce-competitions` (`CompetitionAnnounced`).
+      Agenda gained `agenda_competitions`, projected ungated from those five
+      events (design §8, amended), and `agenda_competition_entries`, the
+      editor's selection behind `PUT admin/events/{event}/agenda/competitions`.
+      `ProgrammeBuilder` and `NowNext` place a selected competition beside
+      the items as an open-ended "Turnier" block at Competition's start,
+      struck when cancelled, gone while unpublished, and back where the
+      organizer put it when republished. No metric, on purpose (`SPEC.md`
+      § *Observability*).
