@@ -311,9 +311,10 @@ it('lets a captain withdraw before Running and refuses once the tournament has s
 it('lets the organizer withdraw a team after the tournament has started', function (): void {
     // §5.5's other half: "the organizer may withdraw or disqualify at any
     // time (`ManageEntrants`)". A team that has gone home is a fact the desk
-    // must be able to record whatever the clock says — and unlike a
-    // disqualification it does not forfeit the pending matches, because a
-    // withdrawal is usually a round being redrawn by hand.
+    // must be able to record whatever the clock says. With no result yet
+    // it does not forfeit the pending matches, because the desk can still
+    // draw the round again by hand; the first result, or a withdrawal after
+    // one, forfeits them (`ForfeitRetiredEntrants`, design §14).
     $brand = $this->withBrand();
     $eventId = (string) Str::ulid();
     $competition = incompleteTestSolo($brand->id, $eventId);

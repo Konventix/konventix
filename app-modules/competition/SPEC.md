@@ -357,7 +357,7 @@ design's §12 and why.
 | Event | Emitted when | Payload |
 |---|---|---|
 | `MatchScheduled` | A match has a time **and** every slot holds a side: when the desk times a full match, when the bracket fills the last slot of a timed match, and when a correction voids a timed match that is then on again between new sides. Never for a bye. Again on a reschedule. Consumers upsert on `match_id`. | `match_id`, `competition_id`, `event_id`, `brand_id`, `game_id`, `game_mode` (both null unless the discipline is a video game), `round`, `scheduled_at`, `entrant_ids` (slot order), `member_user_ids` (entrant ULID => roster) |
-| `MatchFinished` | A result is recorded — **once per match**, even when a voided match is played again (D-CMP-12) | `match_id`, `competition_id`, `brand_id`, `winner_entrant_id`, `scores` (entrant ULID => score), `finished_at` |
+| `MatchFinished` | A result is recorded — **once per match**, even when a voided match is played again (D-CMP-12). Not sent for a match closed because nobody can reach it (no side, every feeder finished): nothing was played and nothing was announced | `match_id`, `competition_id`, `brand_id`, `winner_entrant_id`, `scores` (entrant ULID => score), `finished_at` |
 | `MatchResultCorrected` (D-CMP-12) | The desk corrects a recorded result | `match_id`, `competition_id`, `brand_id`, `previous_winner_entrant_id`, `winner_entrant_id`, `scores`, `corrected_by_user_id`, `corrected_at` |
 | `CompetitionPublished` (D-CMP-15) | A competition becomes publicly visible | `competition_id`, `event_id`, `discipline_id`, `brand_id`, `name`, `status`, `starts_at`, `at` |
 | `CompetitionRescheduled` | An announced competition's `starts_at` moves | `competition_id`, `event_id`, `brand_id`, `previous_starts_at`, `starts_at`, `at` |

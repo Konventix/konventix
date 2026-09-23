@@ -219,6 +219,20 @@ Found on the way and not built. Each one is still true as of #302.
       prompts the desk for it. And a later correction that makes a
       disqualified entrant the winner of a match it lost routes it on again:
       `AdvanceBracket` does not look at entrant states.
+- [ ] **M-h: a correction that voids a match with no winner does not re-open
+      the bye-settled match below it.** A match with no winner (a closed empty
+      match, or a lone disqualification forfeit) feeds nobody, so when a
+      correction voids it `reroute()` touches nothing downstream — but the
+      match below may already have been settled as a bye on the strength of
+      that finished feeder, and it stays finished. When the voided match is
+      replayed, `AdvanceBracket` writes its winner into the *finished* match
+      below (walk: SE5 with two disqualifications, then the desk corrects r1 p2
+      to s5; r2 p1 is voided, and its winner lands in the finished final's
+      slot 1). Needs a disqualification plus a correction; without the round-2
+      closing the same brackets dead-ended instead. Fix: after a void, add the
+      edge targets that are finished and whose fed slot is empty to the
+      cascade's touched set, or have `AdvanceBracket` refuse to fill a finished
+      match (final review, fix wave A round 3).
 - [ ] **The signup tick's close does not re-check `signup_closes_at` under the
       lock**: `SignupWindowTickCommand::dueToClose()` reads the date outside
       the lock, and `TransitionsCompetitionStatus::transition()` re-checks
