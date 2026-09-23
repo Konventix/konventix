@@ -2940,11 +2940,411 @@
     {
       "id": 56,
       "type": "row",
-      "title": "Runtime",
+      "title": "Tournaments",
       "collapsed": false,
       "gridPos": {
         "x": 0,
         "y": 117,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Open disputes",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 0,
+        "y": 118
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(konventix_competition_disputes_open{job=\"$release\"})",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "Disputed matches the desk has not decided, in running competitions (competition design §8.4). KonventixCompetitionDisputeWaiting fires when a brand has had one open for 30 minutes.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 57
+    },
+    {
+      "type": "stat",
+      "title": "Scores to verify",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 4,
+        "y": 118
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(konventix_competition_score_entries_unverified{job=\"$release\"})",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "Leaderboard entries nobody has verified or rejected yet (§8.3). They do not count until the desk verifies them.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 58
+    },
+    {
+      "type": "stat",
+      "title": "Matches finished (range)",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 8,
+        "y": 118
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(increase(konventix_competition_matches_total{job=\"$release\", state=\"finished\"}[$__range]))",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "Counted once per match: a correction never finishes a match twice (D-CMP-12).",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 59
+    },
+    {
+      "type": "timeseries",
+      "title": "Open disputes by brand",
+      "gridPos": {
+        "w": 8,
+        "h": 8,
+        "x": 12,
+        "y": 118
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "konventix_competition_disputes_open{job=\"$release\"}",
+          "legendFormat": "{{brand}}",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 60
+    },
+    {
+      "type": "timeseries",
+      "title": "Entrants per hour by state",
+      "gridPos": {
+        "w": 8,
+        "h": 8,
+        "x": 0,
+        "y": 126
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (state) (increase(konventix_competition_entrants_total{job=\"$release\"}[1h]))",
+          "legendFormat": "{{state}}",
+          "range": true
+        }
+      ],
+      "description": "Entries (registered, or incomplete while a roster is short), check-ins, withdrawals and disqualifications.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 61
+    },
+    {
+      "type": "timeseries",
+      "title": "Matches per hour by state",
+      "gridPos": {
+        "w": 8,
+        "h": 8,
+        "x": 8,
+        "y": 126
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (state) (increase(konventix_competition_matches_total{job=\"$release\"}[1h]))",
+          "legendFormat": "{{state}}",
+          "range": true
+        }
+      ],
+      "description": "scheduled counts every announcement, a reschedule included; finished counts each match once.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 62
+    },
+    {
+      "type": "timeseries",
+      "title": "Scores to verify by brand",
+      "gridPos": {
+        "w": 8,
+        "h": 8,
+        "x": 16,
+        "y": 126
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "konventix_competition_score_entries_unverified{job=\"$release\"}",
+          "legendFormat": "{{brand}}",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 63
+    },
+    {
+      "id": 64,
+      "type": "row",
+      "title": "Runtime",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 134,
         "w": 24,
         "h": 1
       },
@@ -2957,7 +3357,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 118
+        "y": 135
       },
       "targets": [
         {
@@ -3002,7 +3402,7 @@
           "sort": "desc"
         }
       },
-      "id": 57
+      "id": 65
     },
     {
       "type": "timeseries",
@@ -3011,7 +3411,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 118
+        "y": 135
       },
       "targets": [
         {
@@ -3056,7 +3456,7 @@
           "sort": "desc"
         }
       },
-      "id": 58
+      "id": 66
     },
     {
       "type": "timeseries",
@@ -3065,7 +3465,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 126
+        "y": 143
       },
       "targets": [
         {
@@ -3110,7 +3510,7 @@
           "sort": "desc"
         }
       },
-      "id": 59
+      "id": 67
     },
     {
       "type": "timeseries",
@@ -3119,7 +3519,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 126
+        "y": 143
       },
       "targets": [
         {
@@ -3164,16 +3564,16 @@
           "sort": "desc"
         }
       },
-      "id": 60
+      "id": 68
     },
     {
-      "id": 61,
+      "id": 69,
       "type": "row",
       "title": "Database",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 134,
+        "y": 151,
         "w": 24,
         "h": 1
       },
@@ -3186,7 +3586,7 @@
         "w": 6,
         "h": 4,
         "x": 0,
-        "y": 135
+        "y": 152
       },
       "targets": [
         {
@@ -3240,7 +3640,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 62
+      "id": 70
     },
     {
       "type": "stat",
@@ -3249,7 +3649,7 @@
         "w": 6,
         "h": 4,
         "x": 6,
-        "y": 135
+        "y": 152
       },
       "targets": [
         {
@@ -3299,7 +3699,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 63
+      "id": 71
     },
     {
       "type": "timeseries",
@@ -3308,7 +3708,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 135
+        "y": 152
       },
       "targets": [
         {
@@ -3353,7 +3753,7 @@
           "sort": "desc"
         }
       },
-      "id": 64
+      "id": 72
     }
   ]
 }

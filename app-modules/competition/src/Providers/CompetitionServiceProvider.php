@@ -24,14 +24,22 @@ use Konventix\Competition\Brackets\Formats\SwissGenerator;
 use Konventix\Competition\Data\MyCompetitionsCardData;
 use Konventix\Competition\Data\NextGamesCardData;
 use Konventix\Competition\Enums\Permission;
+use Konventix\Competition\Events\EntrantCheckedIn;
+use Konventix\Competition\Events\EntrantRegistered;
+use Konventix\Competition\Events\EntrantWithdrawn;
+use Konventix\Competition\Events\MatchFinished;
+use Konventix\Competition\Events\MatchScheduled;
 use Konventix\Competition\Gdpr\CompetitionGdprHandler;
 use Konventix\Competition\Hub\MyCompetitionsCard;
 use Konventix\Competition\Hub\NextGamesCard;
+use Konventix\Competition\Listeners\Metrics\RecordCompetitionMetrics;
 use Konventix\Competition\Listeners\ProjectAdmissionPresence;
 use Konventix\Competition\Listeners\ProjectEligibilityOnRegistrationEvents;
 use Konventix\Competition\Listeners\ProjectEventSummary;
 use Konventix\Competition\Listeners\ProjectLinkedIdentity;
 use Konventix\Competition\Listeners\ProjectParticipantProfile;
+use Konventix\Competition\Metrics\CompetitionGauges;
+use Konventix\Competition\Metrics\CompetitionMetrics;
 use Konventix\Competition\Seeding\RandomSeedSource;
 use Konventix\Competition\Seeding\SeedSourceRegistry;
 use Konventix\Competition\Seeding\SignupField;
@@ -66,9 +74,11 @@ use Konventix\Platform\Hub\HubRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationSubmitted;
+use Spatie\Prometheus\Facades\Prometheus;
 
 /**
  * Competition is Pennant-gated: a brand that runs no tournaments switches it
@@ -118,16 +128,28 @@ class CompetitionServiceProvider extends ModuleServiceProvider
     }
 
     /**
-     * The bracket formats absorbed from LanBrackets (ADR-0019), registered
-     * rather than switched on: a sixth format is one more `register()` call,
-     * and LanBrackets' `race_heat`/`final_stage` stubs can arrive without
-     * touching anything that already works.
+     * The participant and hub budgets (rate limiters) and the metrics, on
+     * top of the base provider's wiring.
      */
     public function boot(): void
     {
         parent::boot();
 
         $this->configureRateLimiting();
+        $this->registerMetrics();
+    }
+
+    /**
+     * ADR-0059, design §13: the two counters in the catalogue, recorded by
+     * `RecordCompetitionMetrics` on this module's own events
+     * (registerListeners()), and the two gauges answered by
+     * `CompetitionGauges` at scrape time.
+     */
+    protected function registerMetrics(): void
+    {
+        $this->app->make(MetricCatalog::class)->register(...CompetitionMetrics::definitions());
+
+        Prometheus::registerCollectorClasses([CompetitionGauges::class]);
     }
 
     /**
@@ -149,6 +171,12 @@ class CompetitionServiceProvider extends ModuleServiceProvider
             ->by('competition-hub:'.($request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown')));
     }
 
+    /**
+     * The bracket formats absorbed from LanBrackets (ADR-0019), registered
+     * rather than switched on: a sixth format is one more `register()` call,
+     * and LanBrackets' `race_heat`/`final_stage` stubs can arrive without
+     * touching anything that already works.
+     */
     protected function registerBindings(): void
     {
         $this->app->singleton(FormatRegistry::class, function (): FormatRegistry {
@@ -343,6 +371,15 @@ class CompetitionServiceProvider extends ModuleServiceProvider
         Event::listen(AdmissionCheckedIn::class, [ProjectAdmissionPresence::class, 'handleCheckedIn']);
         Event::listen(AdmissionRevoked::class, [ProjectAdmissionPresence::class, 'handleRevoked']);
         Event::listen(AdmissionOwnershipAnnounced::class, [ProjectAdmissionPresence::class, 'handleOwnershipAnnounced']);
+
+        // The recorders behind §13's two counters, on this module's own
+        // events. They need no gate: these events only exist where a brand
+        // runs tournaments.
+        Event::listen(EntrantRegistered::class, [RecordCompetitionMetrics::class, 'handleEntrantRegistered']);
+        Event::listen(EntrantCheckedIn::class, [RecordCompetitionMetrics::class, 'handleEntrantCheckedIn']);
+        Event::listen(EntrantWithdrawn::class, [RecordCompetitionMetrics::class, 'handleEntrantWithdrawn']);
+        Event::listen(MatchScheduled::class, [RecordCompetitionMetrics::class, 'handleMatchScheduled']);
+        Event::listen(MatchFinished::class, [RecordCompetitionMetrics::class, 'handleMatchFinished']);
     }
 
     /**

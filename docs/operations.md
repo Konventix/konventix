@@ -1138,6 +1138,28 @@ sending, which points at the database rather than Reverb. Nothing needs
 replaying once Reverb is back: clients catch up over HTTP when their socket
 reconnects.
 
+### KonventixCompetitionDisputeWaiting
+
+A brand has had at least one disputed tournament match that the desk has not
+decided, in a running competition, for 30 minutes (competition design §8.4,
+§13). The two sides reported different results, or one side disputed a
+recorded result, and both teams are waiting. Competition keeps no list of who
+is on the desk, so nobody was messaged about it: the desk's own screen and
+this alert are the only places a dispute shows.
+
+Open the competition's desk in the console
+(`/admin/competitions/{id}/desk`). Open disputes are listed at the top, each
+with both sides' claims. Resolving one needs `RecordResults` before a result
+exists and `CorrectResults` after, and it always needs a note, which both
+sides are shown. The gauge drops the moment the dispute is resolved, and the
+alert clears with it.
+
+The gauge counts disputes, not how old each one is. A desk that resolves
+every dispute within ten minutes but always has a new one open will also
+fire this after 30 minutes. That is still worth a look, because it means the
+desk is busy all the time. The *Tournaments* row of the Platform dashboard
+shows the open disputes per brand over time.
+
 ### KonventixRoleUnavailable
 
 A deployment has had unavailable replicas for ten minutes. `kubectl -n

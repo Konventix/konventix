@@ -93,6 +93,15 @@ export default dashboard({
             timeseries('Lines posted per hour by brand', [prom(`sum by (brand) (increase(konventix_community_messages_posted_total{${J}}[1h]))`, '{{brand}}')], { w: 8 }),
             timeseries('Broadcasts per minute by outcome', [prom(`sum by (brand, outcome) (rate(konventix_community_shoutbox_broadcasts_total{${J}}[5m])) * 60`, '{{brand}} {{outcome}}')], { w: 8, description: 'sent against failed. A failed broadcast leaves the line on the wall for the next reload or reconnect; only the live push is lost.' }),
         ]),
+        row('Tournaments', [
+            stat('Open disputes', [prom(`sum(konventix_competition_disputes_open{${J}})`)], { thresholds: thresholds('green', [1, 'orange']), description: 'Disputed matches the desk has not decided, in running competitions (competition design §8.4). KonventixCompetitionDisputeWaiting fires when a brand has had one open for 30 minutes.' }),
+            stat('Scores to verify', [prom(`sum(konventix_competition_score_entries_unverified{${J}})`)], { description: 'Leaderboard entries nobody has verified or rejected yet (§8.3). They do not count until the desk verifies them.' }),
+            stat('Matches finished (range)', [prom(`sum(increase(konventix_competition_matches_total{${J}, state="finished"}[$__range]))`)], { description: 'Counted once per match: a correction never finishes a match twice (D-CMP-12).' }),
+            timeseries('Open disputes by brand', [prom(`konventix_competition_disputes_open{${J}}`, '{{brand}}')], { w: 8 }),
+            timeseries('Entrants per hour by state', [prom(`sum by (state) (increase(konventix_competition_entrants_total{${J}}[1h]))`, '{{state}}')], { w: 8, description: 'Entries (registered, or incomplete while a roster is short), check-ins, withdrawals and disqualifications.' }),
+            timeseries('Matches per hour by state', [prom(`sum by (state) (increase(konventix_competition_matches_total{${J}}[1h]))`, '{{state}}')], { w: 8, description: 'scheduled counts every announcement, a reschedule included; finished counts each match once.' }),
+            timeseries('Scores to verify by brand', [prom(`konventix_competition_score_entries_unverified{${J}}`, '{{brand}}')], { w: 8 }),
+        ]),
         row('Runtime', [
             timeseries('CPU per role', [prom(`sum by (container) (rate(container_cpu_usage_seconds_total{${K}, container!="", container!="POD"}[5m]))`, '{{container}}')], { unit: 'short' }),
             timeseries('Memory per role', [prom(`sum by (container) (container_memory_working_set_bytes{${K}, container!="", container!="POD"})`, '{{container}}')], { unit: 'bytes' }),

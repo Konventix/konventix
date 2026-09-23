@@ -442,3 +442,28 @@ tests:
             exp_annotations:
               summary: "Over 20% of shoutbox broadcasts for sxlan failed in 10 minutes"
               runbook: "docs/operations.md#konventixshoutboxbroadcastfailing"
+
+  # Competition design §8.4, §13: the desk hears about a dispute from its own
+  # screen, so a dispute nobody looks at is silent by construction. sxlan has
+  # one open from the start (fires once it has been open 30 minutes, not at
+  # 29); xpertise has one for ten minutes and the desk resolves it (stays
+  # quiet).
+  - interval: 1m
+    input_series:
+      - series: 'konventix_competition_disputes_open{job="konventix", brand="sxlan"}'
+        values: '1x40'
+      - series: 'konventix_competition_disputes_open{job="konventix", brand="xpertise"}'
+        values: '1x10 0x30'
+    alert_rule_test:
+      - eval_time: 29m
+        groupname: konventix.app
+        alertname: KonventixCompetitionDisputeWaiting
+        exp_alerts: []
+      - eval_time: 31m
+        groupname: konventix.app
+        alertname: KonventixCompetitionDisputeWaiting
+        exp_alerts:
+          - exp_labels: {brand: sxlan, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "A tournament dispute for sxlan has waited for the desk for 30 minutes"
+              runbook: "docs/operations.md#konventixcompetitiondisputewaiting"
