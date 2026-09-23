@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 use Konventix\Admission\Actions\CheckInFromConsole;
+use Konventix\Admission\Enums\CheckInRejectionReason;
 use Konventix\Admission\Enums\CheckInResult;
 use Konventix\Admission\Enums\ReentryPolicy;
 use Konventix\Admission\Exceptions\ConsoleCheckInRefusedException;
@@ -91,4 +92,56 @@ it('reads every accepted row when the event has no calendar', function (): void 
     // No profile, so no day: the one accepted `in` from the day before counts.
     expect(LatestAcceptedCheckIn::dayFor($brand->id, $eventId, now()))->toBeNull()
         ->and(LatestAcceptedCheckIn::direction($brand->id, $admission->id, null))->toBe('in');
+});
+
+it('falls back to every accepted row when the calendar has no day for the moment, and says so', function (): void {
+    $brand = $this->withBrand();
+    $event = consoleCheckInDayEvent();
+    $admission = Admission::factory()->create(['event_id' => $event['eventId']]);
+
+    $this->travelTo(CarbonImmutable::parse('2026-10-16 18:00:00', 'UTC'));
+    app(CheckInFromConsole::class)->handle($admission, $event['eventId'], (string) Str::ulid(), 'in');
+
+    // 2026-10-19: the calendar has 2026-10-16 and 2026-10-17 only.
+    $this->travelTo(CarbonImmutable::parse('2026-10-19 18:00:00', 'UTC'));
+    $day = LatestAcceptedCheckIn::day($brand->id, $event['eventId'], now());
+
+    // Derivation: no covering day, so no day id and "outside every day";
+    // with no day id every accepted row counts, and the latest is day 1's `in`.
+    expect($day->dayId)->toBeNull()
+        ->and($day->outsideEveryDay)->toBeTrue()
+        ->and(LatestAcceptedCheckIn::direction($brand->id, $admission->id, $day->dayId))->toBe('in');
+
+    // An event with no calendar is not "outside every day".
+    expect(LatestAcceptedCheckIn::day($brand->id, (string) Str::ulid(), now())->outsideEveryDay)->toBeFalse();
+});
+
+it('lets the core refuse as outside_event_day when no event day covers the moment, never "already in" or "not in"', function (): void {
+    $brand = $this->withBrand();
+    $event = consoleCheckInDayEvent();
+    $wasIn = Admission::factory()->create(['event_id' => $event['eventId']]);
+    $neverIn = Admission::factory()->create(['event_id' => $event['eventId']]);
+    $actorId = (string) Str::ulid();
+
+    $this->travelTo(CarbonImmutable::parse('2026-10-16 18:00:00', 'UTC'));
+    app(CheckInFromConsole::class)->handle($wasIn, $event['eventId'], $actorId, 'in');
+
+    // 2026-10-19 lies outside both calendar days.
+    $this->travelTo(CarbonImmutable::parse('2026-10-19 18:00:00', 'UTC'));
+
+    // Derivation: read across every day, $wasIn is `in` (would have thrown
+    // ALREADY_IN on `in`) and $neverIn is not (would have thrown NOT_IN on
+    // `out`). Outside every day those refusals are skipped, and the core
+    // rejects all three attempts with outside_event_day, writing a row each.
+    $again = app(CheckInFromConsole::class)->handle($wasIn, $event['eventId'], $actorId, 'in');
+    $out = app(CheckInFromConsole::class)->handle($wasIn, $event['eventId'], $actorId, 'out');
+    $notIn = app(CheckInFromConsole::class)->handle($neverIn, $event['eventId'], $actorId, 'out');
+
+    foreach ([$again, $out, $notIn] as $checkIn) {
+        expect($checkIn->result)->toBe(CheckInResult::Rejected)
+            ->and($checkIn->reason_code)->toBe(CheckInRejectionReason::OutsideEventDay->value);
+    }
+
+    // Derivation: day 1's accepted `in` plus the three rejected rows.
+    expect(CheckIn::query()->count())->toBe(4);
 });

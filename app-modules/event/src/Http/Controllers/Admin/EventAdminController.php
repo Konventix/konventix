@@ -136,6 +136,14 @@ class EventAdminController
                 'agenda' => $this->modules->isActiveForBrand('agenda', (string) $model->brand_id),
                 'community' => $this->modules->isActiveForBrand('community', (string) $model->brand_id),
             ],
+            // Links out of this page that a capability opens, asked by name
+            // so the button is not an offer of a 403. Event names another
+            // module's capability as a string, never its enum (ADR-0004),
+            // the way `modules` above names modules: Admission's attendee
+            // list needs `admission.check-in-attendees` (#329).
+            'can' => [
+                'attendees' => Gate::allows('admission.check-in-attendees'),
+            ],
             'slots' => $this->slots->for('event.admin.dashboard')
                 ->map(fn (array $entry): array => [
                     'module' => $entry['module'],

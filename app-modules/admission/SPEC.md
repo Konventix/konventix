@@ -333,7 +333,8 @@ hand. It is apart from `ScanCheckIn` because the door never sees a name
 only it (D-ATT-06) is deferred to #334: console capabilities resolve against
 the operator's team (ADR-0029) and a module can declare default roles at
 brand scope only (ADR-0045), so a brand-scoped Einlass would open no page.
-Until then Operator Admin holds it through its full grant.
+Until then Operator Admin and Brand Admin hold it through their full grants;
+only Operator Admin's, on the operator's scope, opens the console.
 
 ## Activation
 

@@ -5,6 +5,7 @@ declare namespace Konventix {
                 readonly direction: 'in' | 'out' | null;
                 readonly at: string | null;
                 readonly source: 'door' | 'console' | null;
+                readonly lastKnown: boolean;
             };
             export type AttendeeRowData = {
                 readonly admissionId: string;

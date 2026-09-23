@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Konventix\Admission\Queries;
 
-use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\EventSummary;
+use Konventix\Admission\Support\CheckInDay;
 use Konventix\Admission\Support\LatestAcceptedCheckIn;
 use Konventix\Admission\Support\TicketReference;
 
@@ -61,13 +61,14 @@ final class AttendeeListQuery
     /**
      * @param  array<string, string|null>  $filters  `presence` and `view`, as `HasDataTableQuery::resolveFilters()` resolved them
      * @param  array{column: string, direction: 'asc'|'desc'}  $sort
+     * @param  CheckInDay  $day  resolved once by the caller (`LatestAcceptedCheckIn::day()`), which needs it again for the owed door checks
      * @return LengthAwarePaginator<int, Admission>
      */
-    public function handle(EventSummary $event, ?string $search, array $filters, array $sort, int $perPage, CarbonInterface $at): LengthAwarePaginator
+    public function handle(EventSummary $event, ?string $search, array $filters, array $sort, int $perPage, CheckInDay $day): LengthAwarePaginator
     {
         $brandId = $event->brand_id;
         $eventId = $event->event_id;
-        $dayId = LatestAcceptedCheckIn::dayFor($brandId, $eventId, $at);
+        $dayId = $day->dayId;
 
         $query = Admission::withoutBrandScope()
             ->where('admissions.brand_id', $brandId)

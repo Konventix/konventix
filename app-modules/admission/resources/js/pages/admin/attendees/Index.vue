@@ -41,6 +41,11 @@ const props = defineProps<{
         view: string | null;
     };
     canPrintBadge: boolean;
+    /**
+     * No day of the event's calendar covers now: every check-in state is the
+     * last one known, not today's, and nobody can be checked in or out.
+     */
+    outsideEventDay: boolean;
 }>();
 
 const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
@@ -109,6 +114,17 @@ const pagination = computed(() => ({
                 </Link>
             </Button>
         </AdminPageHeader>
+
+        <p
+            v-if="props.outsideEventDay"
+            role="status"
+            class="rounded-lg border border-border bg-subtle px-3 py-2 text-sm text-text-muted"
+            data-test="attendees-outside-event-day"
+        >
+            No event day covers today. The check-in column shows each ticket's
+            last known state, and nobody can be checked in or out until the next
+            event day.
+        </p>
 
         <DataTableToolbar
             :search="filters.search ?? ''"

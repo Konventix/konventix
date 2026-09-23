@@ -24,9 +24,11 @@ use Konventix\Admission\Models\EntranceEventProfile;
  * `EntranceEventProfile::dayCovering($at)`), and a check-in row records it in
  * `event_day_id`. With no calendar there is no day to scope to, so every
  * accepted row counts. A calendar that has no day for the moment falls back
- * to every row too: the core refuses any check-in or check-out then
- * (`outside_event_day`), so the reading only decides what the list shows,
- * and the latest state is more useful there than "nobody".
+ * to every row too, but says so (`CheckInDay::$outsideEveryDay`): the core
+ * refuses any check-in or check-out then (`outside_event_day`), so the
+ * console skips its own in/out refusals and lets the core's reason stand,
+ * and the list shows the latest state marked "last known" rather than an
+ * empty "nobody".
  *
  * Plain query builders: `check_ins` is brand-owned, and on the admin host
  * `BrandScope` reads nothing (`.ai/rules/app-modules-src.md`), so the brand
@@ -35,16 +37,31 @@ use Konventix\Admission\Models\EntranceEventProfile;
 final class LatestAcceptedCheckIn
 {
     /**
-     * The event day "in or not" is read on at `$at`, or null for every row.
+     * The event day "in or not" is read on at `$at`, resolved the way the
+     * core resolves it (`RecordCheckIn`), and whether the moment falls
+     * outside every day of an existing calendar.
      */
-    public static function dayFor(string $brandId, string $eventId, CarbonInterface $at): ?string
+    public static function day(string $brandId, string $eventId, CarbonInterface $at): CheckInDay
     {
         $profile = EntranceEventProfile::withoutBrandScope()
             ->where('brand_id', $brandId)
             ->where('event_id', $eventId)
             ->first();
 
-        return $profile?->dayCovering($at)['day_id'] ?? null;
+        $dayId = $profile?->dayCovering($at)['day_id'] ?? null;
+
+        return new CheckInDay(
+            dayId: $dayId,
+            outsideEveryDay: $profile !== null && ($profile->days ?? []) !== [] && $dayId === null,
+        );
+    }
+
+    /**
+     * The event day "in or not" is read on at `$at`, or null for every row.
+     */
+    public static function dayFor(string $brandId, string $eventId, CarbonInterface $at): ?string
+    {
+        return self::day($brandId, $eventId, $at)->dayId;
     }
 
     /**

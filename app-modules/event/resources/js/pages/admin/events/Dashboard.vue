@@ -57,6 +57,11 @@ const props = defineProps<{
      * instead and sends the answer here (ADR-0003, enforcement point 3).
      */
     modules: Record<string, boolean>;
+    /**
+     * Links out of this page that a capability opens: shown only to an
+     * account that holds it, so the button never leads to a 403.
+     */
+    can: { attendees: boolean };
     slots: SlotContribution[];
 }>();
 
@@ -211,8 +216,14 @@ function refresh(): void {
                 </Button>
                 <!-- Admission's attendee list (#329). No module flag:
                      Admission is Core and cannot be switched off for a
-                     brand, so the page always exists. -->
-                <Button as-child variant="secondary" size="sm">
+                     brand, so the page always exists — but only an account
+                     holding `admission.check-in-attendees` may open it. -->
+                <Button
+                    v-if="props.can.attendees"
+                    as-child
+                    variant="secondary"
+                    size="sm"
+                >
                     <Link :href="attendeesIndex(props.event.id).url">
                         <Users class="size-4" />
                         Attendees

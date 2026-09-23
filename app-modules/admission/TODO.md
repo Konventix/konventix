@@ -17,7 +17,11 @@
       (`Http\Controllers\Admin\Concerns\ScopesToOperator`, 404 otherwise).
       "In" is read on the current event day only, through
       `Support\LatestAcceptedCheckIn`, which `CheckInFromConsole` uses too
-      (Task 3 review I1).
+      (Task 3 review I1). When the calendar has no day for now, the list
+      shows each ticket's last known state, marked so, and the console
+      skips its in/out refusals so the core's `outside_event_day` is the
+      reason given (Task 4 review M2). The event dashboard's Attendees
+      button shows only to holders of the capability.
       The reference column links to the ticket page (Task 5).
 
 - [x] The console check-in, check-out and the ticket page (#329, Task 5).
@@ -52,7 +56,8 @@
       module declare default roles at brand scope only — so a brand-scoped
       Einlass would open no page. Until #334 lands operator-scope console
       roles (it covers Competition's Tournament Desk too), Operator Admin
-      holds `CheckInAttendees` through its full grant, and nothing narrower
+      and Brand Admin hold `CheckInAttendees` through their full grants
+      (only Operator Admin's opens the console), and nothing narrower
       exists.
 
 - [x] The console check-in core (#329, Task 3). `Actions\CheckInFromConsole`

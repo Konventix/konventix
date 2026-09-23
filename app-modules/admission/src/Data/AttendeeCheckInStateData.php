@@ -15,6 +15,10 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * (an ISO instant the page formats in the reader's zone), and whether it came
  * from a door device or the console — read off the checkpoint's `kind`, so a
  * scan at a door (or an old row with no checkpoint) reads `door`.
+ *
+ * `lastKnown` is true when no day of the event's calendar covers now: the
+ * state is then the latest across every day, not today's
+ * (`Support\CheckInDay::$outsideEveryDay`), and the page says so.
  */
 #[TypeScript]
 final class AttendeeCheckInStateData extends Data
@@ -29,19 +33,21 @@ final class AttendeeCheckInStateData extends Data
         public readonly ?string $at,
         #[LiteralTypeScriptType("'door' | 'console' | null")]
         public readonly ?string $source,
+        public readonly bool $lastKnown = false,
     ) {}
 
-    public static function never(): self
+    public static function never(bool $lastKnown = false): self
     {
-        return new self(null, null, null);
+        return new self(null, null, null, $lastKnown);
     }
 
-    public static function ofLatest(string $direction, string $at, ?string $checkpointKind): self
+    public static function ofLatest(string $direction, string $at, ?string $checkpointKind, bool $lastKnown = false): self
     {
         return new self(
             direction: $direction === 'out' ? 'out' : 'in',
             at: $at,
             source: $checkpointKind === CheckpointKind::Console->value ? 'console' : 'door',
+            lastKnown: $lastKnown,
         );
     }
 }

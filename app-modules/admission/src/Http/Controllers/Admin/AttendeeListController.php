@@ -49,23 +49,28 @@ final class AttendeeListController
 
         $filters = $this->resolveFilters($request, AttendeeListQuery::FILTERS);
         $search = $request->filled('search') ? $request->string('search')->toString() : null;
-        $now = now();
+        $day = LatestAcceptedCheckIn::day($summary->brand_id, $summary->event_id, now());
 
-        $attendees = $query->handle($summary, $search, $filters, $sort, $perPage, $now);
+        $attendees = $query->handle($summary, $search, $filters, $sort, $perPage, $day);
 
-        $owed = OwedDoorChecks::forMany(
+        // Outside every event day the core refuses any check-in, so no row
+        // owes a door check (the dialog then shows the core's own sentence).
+        $owed = $day->outsideEveryDay ? [] : OwedDoorChecks::forMany(
             $attendees->getCollection()->filter(
                 fn (Admission $admission): bool => AttendeeRowData::admits($admission->state, $this->lastDirection($admission)),
             )->values(),
-            LatestAcceptedCheckIn::dayFor($summary->brand_id, $summary->event_id, $now),
+            $day->dayId,
         );
 
         return Inertia::render('admin/attendees/Index', [
             'event' => ['id' => $summary->event_id, 'name' => $summary->name ?? $summary->event_id],
             'attendees' => $attendees->through(
-                fn (Admission $admission): AttendeeRowData => AttendeeRowData::ofListRow($admission, $owed[$admission->id] ?? []),
+                fn (Admission $admission): AttendeeRowData => AttendeeRowData::ofListRow($admission, $owed[$admission->id] ?? [], $day->outsideEveryDay),
             ),
             'filters' => $this->currentFilters($request, $sort, $perPage, $filters),
+            // No event day covers now: every check-in state is the last one
+            // known, not today's (Task 4 review M2).
+            'outsideEventDay' => $day->outsideEveryDay,
             'canPrintBadge' => Gate::allows(Permission::PrintBadge->value),
         ]);
     }

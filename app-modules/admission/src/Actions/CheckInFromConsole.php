@@ -35,8 +35,10 @@ use Konventix\Platform\Brands\BrandContext;
  *    another event is refused (`wrong_event`) before anything is written.
  * 2. Inside the lock, `in` is refused while the last accepted check-in of
  *    the current event day is `in`, and `out` while it is not
- *    (`Support\LatestAcceptedCheckIn`). The door has no such rule, so there is
- *    no door-shaped rejection to record: the refusal throws and writes no row.
+ *    (`Support\LatestAcceptedCheckIn`). The door has no such rule, so there
+ *    is no door-shaped rejection to record: the refusal throws and writes no
+ *    row. Outside every day of the event's calendar both are skipped, so the
+ *    core's own `outside_event_day` rejection is what gets written and shown.
  * 3. The door checks the ticket owes today (`OwedDoorChecks`) must all be
  *    answered, `confirmed` or `refused`, and nothing else may be — refused
  *    likewise before any write. A `refused` answer still checks in, as at the
@@ -97,19 +99,23 @@ final class CheckInFromConsole
 
             // "In" is read on the event day the check-in lands on, as the
             // door reads it (Task 3 review I1): in on day 1 and never out
-            // does not make a guest "already in" on day 2.
-            $lastDirection = LatestAcceptedCheckIn::direction(
-                $brandId,
-                $locked->id,
-                LatestAcceptedCheckIn::dayFor($brandId, $eventId, $at),
-            );
+            // does not make a guest "already in" on day 2. Outside every day
+            // of the calendar there is no such day, and the core refuses
+            // either direction as `outside_event_day` — so the in/out
+            // refusals are skipped and that real reason is what the console
+            // shows (Task 4 review M2), never "already in" / "not in".
+            $day = LatestAcceptedCheckIn::day($brandId, $eventId, $at);
 
-            if ($direction === 'in' && $lastDirection === 'in') {
-                throw ConsoleCheckInRefusedException::alreadyIn();
-            }
+            if (! $day->outsideEveryDay) {
+                $lastDirection = LatestAcceptedCheckIn::direction($brandId, $locked->id, $day->dayId);
 
-            if ($direction === 'out' && $lastDirection !== 'in') {
-                throw ConsoleCheckInRefusedException::notIn();
+                if ($direction === 'in' && $lastDirection === 'in') {
+                    throw ConsoleCheckInRefusedException::alreadyIn();
+                }
+
+                if ($direction === 'out' && $lastDirection !== 'in') {
+                    throw ConsoleCheckInRefusedException::notIn();
+                }
             }
 
             $answers = $this->answers($locked, $brandId, $eventId, $direction, $conditionsChecked, $at);

@@ -26,7 +26,8 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  *   Registration's own states — and null without a summary; the page labels
  *   it.
  * - `checkIn` is the latest accepted check-in on the current event day
- *   (`Support\LatestAcceptedCheckIn`).
+ *   (`Support\LatestAcceptedCheckIn`), or the latest across every day,
+ *   marked `lastKnown`, when no day of the calendar covers now.
  * - `owedDoorChecks` is filled only for a row that can check in now; it
  *   carries the labels the check-in dialog asks about, never an entry
  *   condition's assertion (ADR-0066, Consequences).
@@ -75,7 +76,7 @@ final class AttendeeRowData extends Data
      *
      * @param  list<array{key: string, label: string, documentHint: string|null}>  $owedDoorChecks
      */
-    public static function ofListRow(Admission $admission, array $owedDoorChecks): self
+    public static function ofListRow(Admission $admission, array $owedDoorChecks, bool $lastKnown = false): self
     {
         $direction = self::nullableString($admission->getAttribute('last_direction'));
         $scannedAt = self::nullableString($admission->getAttribute('last_scanned_at'));
@@ -99,13 +100,14 @@ final class AttendeeRowData extends Data
             registrationShortId: $registrationId === null ? null : strtoupper(substr($registrationId, -8)),
             registrationStatus: self::nullableString($admission->getAttribute('registration_status')),
             checkIn: $direction === null || $scannedAt === null
-                ? AttendeeCheckInStateData::never()
+                ? AttendeeCheckInStateData::never($lastKnown)
                 : AttendeeCheckInStateData::ofLatest(
                     $direction,
                     // A plain `timestamp` column read without the model's
                     // cast: the digits are the application's zone (UTC).
                     CarbonImmutable::parse($scannedAt, (string) config('app.timezone'))->toIso8601String(),
                     self::nullableString($admission->getAttribute('last_checkpoint_kind')),
+                    $lastKnown,
                 ),
             canCheckIn: $canCheckIn,
             canCheckOut: $direction === 'in',

@@ -395,3 +395,33 @@ it("refuses a slug equal to another event's legacy slug", function (): void {
 
     expect($event->fresh()->slug)->toBe($payload['slug']);
 });
+
+/**
+ * Admission's attendee list is always there (Admission is Core), but only an
+ * account holding `admission.check-in-attendees` may open it — so the
+ * dashboard offers its button to that account and to nobody else, instead of
+ * a link onto a 403 (#329, Task 4 review M4).
+ */
+it('hides the Attendees button from an account without admission.check-in-attendees', function (): void {
+    [, $admin] = eventsAdminOperator();
+
+    $this->withBrand();
+    $event = Event::factory()->create();
+
+    $this->actingAs($admin)
+        ->get("http://admin.eventsadmin.test/admin/events/{$event->id}")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('can.attendees', false));
+});
+
+it('offers the Attendees button to an account holding admission.check-in-attendees', function (): void {
+    [, $admin] = eventsAdminOperator(['platform.access-admin', 'event.view-events', 'admission.check-in-attendees']);
+
+    $this->withBrand();
+    $event = Event::factory()->create();
+
+    $this->actingAs($admin)
+        ->get("http://admin.eventsadmin.test/admin/events/{$event->id}")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('can.attendees', true));
+});

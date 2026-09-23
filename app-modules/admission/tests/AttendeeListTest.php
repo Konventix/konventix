@@ -112,6 +112,7 @@ function attendeeListSearchTerm(string $case, array $trio): string
         'reference without hyphen' => str_replace('-', '', TicketReference::of($trio['c']->id)),
         'reference in lower case' => strtolower(TicketReference::of($trio['a']->id)),
         'full admission id' => $trio['c']->id,
+        'full admission id in upper case' => strtoupper($trio['b']->id),
         'registration id' => (string) $trio['b']->registration_id,
         'type label' => 'weekend',
     };
@@ -130,8 +131,9 @@ dataset('attendee search terms', [
     ['buyer email', 'a', 'only a\'s buyer mails from bernd@'],
     ['reference with hyphen', 'b', 'b\'s reference as printed; searchFragment() drops the hyphen, and only b\'s id ends in those eight characters'],
     ['reference without hyphen', 'c', 'the eight tail characters only c\'s id ends with'],
-    ['reference in lower case', 'a', 'ILIKE ignores case, so a\'s reference typed lower-case still finds a'],
+    ['reference in lower case', 'a', 'a\'s reference typed lower-case, the way ids are stored (HasUlids lower-cases them)'],
     ['full admission id', 'c', 'a whole ULID is contained only in itself'],
+    ['full admission id in upper case', 'b', 'ids are stored lower-case, so only ILIKE (not LIKE) lets b\'s id typed upper-case find b'],
     ['registration id', 'b', 'each ticket has its own random registration ULID'],
     ['type label', 'a', 'only a\'s type is "Weekend Pass"'],
 ]);
@@ -186,6 +188,24 @@ it('matches % and _ literally rather than as wildcards', function (): void {
         ->assertInertia(fn (Assert $page) => $page->where('attendees.total', 0));
 });
 
+it('matches a backslash literally', function (): void {
+    $brand = $this->withBrand();
+    $event = attendeeFixture($brand);
+    attendeeListSearchTrio($brand, $event['eventId']);
+    $slashed = attendeeTicket($brand, $event['eventId'], holder: ticketPerson(['display_name' => 'Tom Back\\Slash']));
+    [$operator, $admin] = attendeeConsoleOperator($brand);
+
+    // Derivation: the term `k\S` escaped is `k\\S`, a literal backslash, so
+    // it matches "Tom Back\Slash" only (none of the trio contains a
+    // backslash): 1 of 4. Unescaped, `\S` would read as an escaped `S`, the
+    // pattern would be `%kS%`, and "Tom Back\Slash" would not be found.
+    $this->actingAs($admin)
+        ->get(attendeeListUrl($operator, $event['eventId'], ['search' => 'k\\S']))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('attendees.total', 1)
+            ->where('attendees.data.0.admissionId', $slashed->id));
+});
+
 it('partitions the list into checked in and not checked in, on today only', function (): void {
     $brand = $this->withBrand();
     $event = attendeeFixture($brand);
@@ -201,12 +221,29 @@ it('partitions the list into checked in and not checked in, on today only', func
     // (`LatestAcceptedCheckIn`, Task 3 review I1).
     CheckIn::factory()->onDay((string) Str::ulid())->create(['admission_id' => $yesterday->id, 'direction' => 'in', 'scanned_at' => now()->subDay()]);
 
+    // Rows the list must never show (Task 4 review I1), each checked in today
+    // so that dropping a scope would add it to `in`: a ticket of ANOTHER
+    // event of the same brand, and a ticket of ANOTHER brand carrying this
+    // very event id (the only way the brand condition is what excludes it).
+    $otherEvent = attendeeTicket($brand, (string) Str::ulid());
+    CheckIn::factory()->onDay($event['dayId'])->create(['admission_id' => $otherEvent->id, 'direction' => 'in', 'scanned_at' => now()->subMinutes(10)]);
+
+    $otherBrand = Brand::factory()->create();
+    $this->withBrand($otherBrand);
+    $otherBrandTicket = attendeeTicket($otherBrand, $event['eventId']);
+    CheckIn::factory()->onDay($event['dayId'])->create(['admission_id' => $otherBrandTicket->id, 'direction' => 'in', 'scanned_at' => now()->subMinutes(10)]);
+    $this->withBrand($brand);
+
     [$operator, $admin] = attendeeConsoleOperator($brand);
 
-    // Derivation: today's latest accepted direction is `in` for $in, `out`
-    // for $out, none for $never and none for $yesterday (its row is another
-    // day's). So `in` = {$in} (1) and `not_in` = {$out, $never, $yesterday}
-    // (3); 1 + 3 = the 4 tickets, and the two sets share none.
+    // Derivation: the list is this brand's tickets of this event — $in, $out,
+    // $never, $yesterday — so $otherEvent (wrong event) and $otherBrandTicket
+    // (wrong brand) are in neither set, although both are `in` today. Today's
+    // latest accepted direction is `in` for $in, `out` for $out, none for
+    // $never and none for $yesterday (its row is another day's). So `in` =
+    // {$in} (1) and `not_in` = {$out, $never, $yesterday} (3); 1 + 3 = the 4
+    // tickets, and the two sets share none. With either scope dropped, `in`
+    // would read 2 or 3.
     $this->actingAs($admin)
         ->get(attendeeListUrl($operator, $event['eventId'], ['presence' => 'in']))
         ->assertInertia(fn (Assert $page) => $page
@@ -456,4 +493,50 @@ it('is 404 for an event Admission has no summary of', function (): void {
 it('has no module-off case, because Admission is Core and cannot be switched off', function (): void {
     // Stands in for design §7's "module off → 404": there is no off.
     expect(app(ModuleGate::class)->isGateable('admission'))->toBeFalse();
+});
+
+it('marks the check-in state last known when no event day covers now', function (): void {
+    $brand = $this->withBrand();
+    $event = attendeeFixture($brand);
+    $wasIn = attendeeTicket($brand, $event['eventId']);
+    $never = attendeeTicket($brand, $event['eventId'], overrides: [
+        'entry_conditions' => [
+            ['key' => 'student', 'label' => 'Student ticket', 'verification' => 'document_at_door', 'document_hint' => null],
+        ],
+    ]);
+    CheckIn::factory()->onDay($event['dayId'])->create(['admission_id' => $wasIn->id, 'direction' => 'in', 'scanned_at' => now()]);
+
+    [$operator, $admin] = attendeeConsoleOperator($brand);
+
+    // 2026-10-18 has no day in the calendar (its only day is 2026-10-16), so
+    // the list falls back to every accepted row and says so.
+    $this->travelTo(CarbonImmutable::parse('2026-10-18 18:00:00', 'UTC'));
+
+    // Derivation: $wasIn's latest accepted row across every day is the `in`
+    // of 2026-10-16 18:00, so it reads `in`, last known; $never has none.
+    // By activity descending, nulls last: $wasIn, then $never. $never could
+    // check in and carries a door check, yet owes none here — the core would
+    // refuse any check-in as outside_event_day.
+    $this->actingAs($admin)
+        ->get(attendeeListUrl($operator, $event['eventId']))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('outsideEventDay', true)
+            ->where('attendees.data.0.admissionId', $wasIn->id)
+            ->where('attendees.data.0.checkIn.direction', 'in')
+            ->where('attendees.data.0.checkIn.lastKnown', true)
+            ->where('attendees.data.1.admissionId', $never->id)
+            ->where('attendees.data.1.checkIn.direction', null)
+            ->where('attendees.data.1.owedDoorChecks', []));
+
+    $this->app->forgetScopedInstances();
+
+    // Back on the event day, the same row is today's state, not last known.
+    $this->travelTo(CarbonImmutable::parse('2026-10-16 19:00:00', 'UTC'));
+
+    $this->actingAs($admin)
+        ->get(attendeeListUrl($operator, $event['eventId']))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('outsideEventDay', false)
+            ->where('attendees.data.0.checkIn.lastKnown', false));
 });

@@ -7,7 +7,8 @@ type CheckIn = Konventix.Admission.Data.AttendeeCheckInStateData;
 /**
  * The check-in column (attendee-list design §4.1): in, out or never on the
  * current event day, with the time in the reader's own zone and whether the
- * door or the console recorded it.
+ * door or the console recorded it. When no event day covers now, the state
+ * is the latest across every day and says "last known" (Task 4 review M2).
  */
 const props = defineProps<{ checkIn: CheckIn }>();
 
@@ -48,6 +49,12 @@ const sourceLabel = computed(() =>
         </span>
         <span v-if="checkIn.direction !== null" class="text-xs text-text-muted">
             {{ formatDateTime(checkIn.at) }} · {{ sourceLabel }}
+        </span>
+        <span
+            v-if="checkIn.lastKnown && checkIn.direction !== null"
+            class="text-xs text-text-muted italic"
+        >
+            Last known — no event day today
         </span>
     </div>
 </template>
