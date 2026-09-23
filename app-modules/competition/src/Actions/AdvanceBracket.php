@@ -21,6 +21,13 @@ use Konventix\Competition\Models\MatchSlot;
  *
  * Idempotent: filling a slot that already holds the same entrant is a no-op,
  * so re-advancing after a correction cannot duplicate anyone.
+ *
+ * A filled slot can be the last one a **timed** match was waiting for: the
+ * desk schedules whole rounds before the previous round is decided. That is
+ * the moment the match has its time and its sides, so this is where
+ * `MatchScheduled` goes out for it (`ScheduleMatch::announce()`, design §14,
+ * "§12 reconciled"). A no-op fill announces nothing, so re-advancing after a
+ * correction cannot announce a match twice.
  */
 final class AdvanceBracket
 {
@@ -61,7 +68,18 @@ final class AdvanceBracket
                 $touched[] = $edge->target_match_id;
             }
 
-            return array_values(array_unique($touched));
+            $touched = array_values(array_unique($touched));
+
+            foreach ($touched as $targetId) {
+                /** @var CompetitionMatch|null $target */
+                $target = CompetitionMatch::withoutBrandScope()->whereKey($targetId)->first();
+
+                if ($target !== null) {
+                    app(ScheduleMatch::class)->announce($target);
+                }
+            }
+
+            return $touched;
         });
     }
 
