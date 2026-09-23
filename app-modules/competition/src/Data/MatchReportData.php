@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Konventix\Competition\Data;
 
-use Spatie\LaravelData\Attributes\Validation\ArrayType;
 use Spatie\LaravelData\Attributes\Validation\Max;
 use Spatie\LaravelData\Attributes\Validation\Nullable;
-use Spatie\LaravelData\Attributes\Validation\Required;
 use Spatie\LaravelData\Attributes\Validation\StringType;
 use Spatie\LaravelData\Attributes\Validation\Ulid;
 use Spatie\LaravelData\Data;
@@ -32,7 +30,6 @@ final class MatchReportData extends Data
      * @param  array<int|string, int|null>  $scores  slot position => score
      */
     public function __construct(
-        #[Required, ArrayType]
         public readonly array $scores,
 
         /** Platform media (ADR-0035); the competition's policy decides whether it is owed. */
@@ -43,6 +40,22 @@ final class MatchReportData extends Data
         #[Nullable, StringType, Max(255)]
         public readonly ?string $note = null,
     ) {}
+
+    /**
+     * The same bounds the desk's score line has (`DeskScoreLineData`): a
+     * score is a whole number from 0, or empty. Before the final review a
+     * negative number or a string passed, and a claim of two empty scores
+     * reached the settle path as a draw (final review, part 1, I1).
+     *
+     * @return array<string, array<int, string>>
+     */
+    public static function rules(): array
+    {
+        return [
+            'scores' => ['required', 'array', 'min:1'],
+            'scores.*' => ['nullable', 'integer', 'min:0', 'max:65535'],
+        ];
+    }
 
     /**
      * The claim as `position => score`, integer keys, ascending.

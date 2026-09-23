@@ -6,16 +6,11 @@ namespace Konventix\Competition\Actions\Concerns;
 
 use Konventix\Competition\Actions\AdvanceBracket;
 use Konventix\Competition\Actions\RecordMatchResult;
-use Konventix\Competition\Brackets\FormatRegistry;
 use Konventix\Competition\Enums\MatchState;
-use Konventix\Competition\Enums\StageFormat;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
-use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionMatch;
-use Konventix\Competition\Models\Discipline;
 use Konventix\Competition\Models\MatchConnection;
 use Konventix\Competition\Models\MatchSlot;
-use Konventix\Competition\Models\Stage;
 
 /**
  * The three things that always happen together once a head-to-head result is
@@ -36,10 +31,18 @@ use Konventix\Competition\Models\Stage;
  */
 trait SettlesAMatch
 {
+    use GuardsMatchOutcome;
     use RecomputesStageStandings;
 
     /**
      * Record an agreed result, advance the bracket, recompute the standings.
+     *
+     * The winner is checked here, on every settle path, rather than by each
+     * caller (`GuardsMatchOutcome`): it has to be a side of the match, and a
+     * null winner — a tie, or two empty scores — is refused wherever the
+     * bracket cannot carry a draw. Before the final review only the desk's
+     * two paths asked, and two sides agreeing on 1:1 finished an elimination
+     * match with nobody to send on (final review, part 1, I1).
      *
      * @param  array<int, int|null>  $scoresByPosition
      */
@@ -49,6 +52,9 @@ trait SettlesAMatch
         ?string $winnerEntrantId,
         ?string $recordedByUserId = null,
     ): CompetitionMatch {
+        $this->guardWinnerIsASide($match, $winnerEntrantId, $this->entrantIdsByPosition($match));
+        $this->guardDrawIsPossible($match, $winnerEntrantId);
+
         $settled = app(RecordMatchResult::class)->handle(
             $match,
             $this->scoresByEntrant($match, $scoresByPosition),
@@ -170,39 +176,6 @@ trait SettlesAMatch
 
         if ($awaited) {
             throw ResultSubmissionException::sideStillToCome($match->id);
-        }
-    }
-
-    /**
-     * Refuses a draw (a null winner) where none is possible: always on an
-     * elimination bracket, which cannot send "nobody" on to the next round
-     * and would dead-end; elsewhere unless both the discipline (ADR-0062,
-     * the source of record for draws) and the stage's format settings allow
-     * one. A bye is never a draw — its lone side is the winner.
-     */
-    protected function guardDrawIsPossible(CompetitionMatch $match, ?string $winnerEntrantId): void
-    {
-        if ($winnerEntrantId !== null) {
-            return;
-        }
-
-        /** @var Stage $stage */
-        $stage = Stage::withoutBrandScope()->whereKey($match->stage_id)->firstOrFail();
-
-        /** @var Competition $competition */
-        $competition = Competition::withoutBrandScope()->whereKey($match->competition_id)->firstOrFail();
-
-        /** @var Discipline $discipline */
-        $discipline = Discipline::withoutBrandScope()->whereKey($competition->discipline_id)->firstOrFail();
-
-        $elimination = in_array($stage->stageFormat(), [StageFormat::SingleElimination, StageFormat::DoubleElimination], true);
-
-        $settings = app(FormatRegistry::class)->has($stage->format)
-            ? array_merge(app(FormatRegistry::class)->get($stage->format)->defaults(), $stage->settings ?? [])
-            : [];
-
-        if ($elimination || ! $discipline->allow_draws || ! (bool) ($settings['allow_draws'] ?? false)) {
-            throw ResultSubmissionException::drawNotPossible($match->id, $stage->format);
         }
     }
 }

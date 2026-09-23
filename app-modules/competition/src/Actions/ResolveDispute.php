@@ -86,7 +86,13 @@ final class ResolveDispute
                 ]);
             }
 
-            $this->guardScoreLineIsComplete($match, $scoresByPosition, $this->entrantIdsByPosition($match));
+            $sides = $this->entrantIdsByPosition($match);
+
+            // Both branches below check the winner again (`settleMatch()`,
+            // `CorrectMatchResult`); asking here refuses before anything is
+            // stamped, and names the field the desk got wrong.
+            $this->guardScoreLineIsComplete($match, $scoresByPosition, $sides);
+            $this->guardWinnerIsASide($match, $winnerEntrantId, $sides);
             $this->guardDrawIsPossible($match, $winnerEntrantId);
 
             $match->forceFill(['dispute_resolved_at' => now()])->save();

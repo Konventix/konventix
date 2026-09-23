@@ -88,6 +88,12 @@ final class ReportMatchResult
             $scores = $data->normalisedScores();
             $this->guardScoreLineIsComplete($match, $scores, $sides);
 
+            // A claim that names no winner — a tie, or no scores at all — is
+            // a draw, and a draw is refused here, when it is filed, wherever
+            // the bracket cannot carry one: filing it would ask the other
+            // side to confirm a result that could never be recorded.
+            $this->guardDrawIsPossible($match, $this->winnerFromScores($match, $scores));
+
             $proofMediaId = $this->proofs->resolve($competition, $match->brand_id, $data->proofMediaId);
 
             $report = $this->fileReport($match, $entrant, $scores, $proofMediaId, $reportedByUserId);

@@ -7,6 +7,7 @@ namespace Konventix\Competition\Actions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Konventix\Competition\Actions\Concerns\GuardsCompetitionLifecycle;
+use Konventix\Competition\Actions\Concerns\GuardsMatchOutcome;
 use Konventix\Competition\Actions\Concerns\RecomputesStageStandings;
 use Konventix\Competition\Data\MatchHistoryPayload;
 use Konventix\Competition\Enums\MatchHistoryKind;
@@ -76,6 +77,7 @@ use Konventix\Competition\Models\MatchSlot;
 final class CorrectMatchResult
 {
     use GuardsCompetitionLifecycle;
+    use GuardsMatchOutcome;
     use RecomputesStageStandings;
 
     public function __construct(
@@ -99,6 +101,14 @@ final class CorrectMatchResult
             if ($match->state !== MatchState::Finished) {
                 throw IllegalMatchStateTransitionException::forAction($match, 'corrected');
             }
+
+            // The same two rules every settle path keeps (`GuardsMatchOutcome`):
+            // a correction naming somebody who is not in the match would push
+            // them into the next round, and a null winner on an elimination
+            // bracket would empty the successor slot, which then reads as a
+            // bye and hands the waiting opponent a walkover.
+            $this->guardWinnerIsASide($match, $winnerEntrantId, $this->sidesOf($match));
+            $this->guardDrawIsPossible($match, $winnerEntrantId);
 
             $previousWinner = $match->winner_entrant_id;
             $previousLoser = $this->loserOf($match);
@@ -319,6 +329,21 @@ final class CorrectMatchResult
             ->where('competition_match_id', $match->id)
             ->whereNotNull('score')
             ->exists();
+    }
+
+    /**
+     * The entrants standing in the match's slots.
+     *
+     * @return list<string>
+     */
+    private function sidesOf(CompetitionMatch $match): array
+    {
+        return array_values(array_map(strval(...), MatchSlot::withoutBrandScope()
+            ->where('brand_id', $match->brand_id)
+            ->where('competition_match_id', $match->id)
+            ->whereNotNull('entrant_id')
+            ->pluck('entrant_id')
+            ->all()));
     }
 
     /**

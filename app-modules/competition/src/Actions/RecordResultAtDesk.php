@@ -23,7 +23,8 @@ use Konventix\Competition\Models\CompetitionMatch;
  * It will not finish a match against nobody: every slot must be filled, or
  * be a **bye** that nothing will ever fill (`guardEverySideHasArrived`) — a
  * round-two match whose other side is still being played waits. Nor will it
- * record a draw where the bracket cannot advance one (`guardDrawIsPossible`).
+ * name a winner who is not a side or record a draw where the bracket cannot
+ * advance one; `settleMatch()` refuses both (`GuardsMatchOutcome`).
  *
  * Two matches it will not take, and each has its own door:
  *
@@ -62,12 +63,8 @@ final class RecordResultAtDesk
             $this->guardEverySideHasArrived($match, $sides);
             $this->guardScoreLineIsComplete($match, $scoresByPosition, $sides);
 
-            if ($winnerEntrantId !== null && ! in_array($winnerEntrantId, $sides, true)) {
-                throw ResultSubmissionException::notASide($match->id, $winnerEntrantId);
-            }
-
-            $this->guardDrawIsPossible($match, $winnerEntrantId);
-
+            // The winner is a side, and a draw only where the bracket carries
+            // one: `settleMatch()` checks both for every settle path.
             return $this->settleMatch($match, $scoresByPosition, $winnerEntrantId, $recordedByUserId);
         });
     }
