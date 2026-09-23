@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Exceptions\CompetitionEntryException;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionInterest;
@@ -33,6 +34,13 @@ final class ExpressInterest
     public function handle(Competition $competition, string $userId, ?string $note = null): CompetitionInterest
     {
         return DB::transaction(function () use ($competition, $userId, $note): CompetitionInterest {
+            // Only while a team can still be found (final review, part 2,
+            // M4): the page 404s a draft, and nothing is left to find once
+            // the competition runs or is over.
+            if (! in_array($competition->status, [CompetitionStatus::Published, CompetitionStatus::SignupClosed], true)) {
+                throw CompetitionEntryException::interestClosed($competition->id, $competition->status->value);
+            }
+
             if (! EligibleRegistration::userMayEnter($competition->brand_id, $competition->event_id, $userId)) {
                 throw CompetitionEntryException::noConfirmedRegistration($userId, $competition->event_id);
             }

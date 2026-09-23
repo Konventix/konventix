@@ -10,6 +10,7 @@ use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Enums\ProofPolicy;
 use Konventix\Competition\Enums\ResultSubmissionMode;
 use Konventix\Competition\Enums\TeamRole;
+use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionInterest;
 use Konventix\Competition\Models\CompetitionTeamMember;
 use Konventix\Competition\Models\Entrant;
@@ -170,4 +171,44 @@ it('refuses a proof for a finished or cancelled competition and from a team that
     $upload()->assertCreated()->assertJsonStructure(['proofMediaId']);
 
     expect(Storage::disk('media')->allFiles())->not->toBe([]);
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * Item 4, part 2, M4: interest only while a team can still be found
+ * ---------------------------------------------------------------------------
+ */
+
+it('takes interest while signup is on or closed, refuses it once the competition runs or is over, and 404s a draft', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+
+    $eventId = competitionPublicEvent($brand->id);
+    $competition = Competition::factory()->forEvent($eventId)->create();
+    $player = User::factory()->create();
+    competitionEligibleUser($eventId, $brand->id, (string) $player->getKey());
+
+    $url = '/tournaments/'.$competition->id.'/interest';
+    $refusal = 'Für dieses Turnier kannst du dich nicht mehr als interessiert eintragen: es hat schon begonnen oder ist vorbei.';
+
+    foreach ([CompetitionStatus::Running, CompetitionStatus::Finished, CompetitionStatus::Cancelled] as $status) {
+        $competition->forceFill(['status' => $status])->save();
+
+        $this->actingAs($player)->post($url, ['note' => null])->assertSessionHasErrors(['note' => $refusal]);
+    }
+
+    $competition->forceFill(['status' => CompetitionStatus::Draft])->save();
+    $this->actingAs($player)->post($url, ['note' => null])->assertNotFound();
+
+    expect(CompetitionInterest::query()->where('competition_id', $competition->id)->exists())->toBeFalse();
+
+    // The controls: `Published`, then `SignupClosed`, where §5.4 fills
+    // incomplete rosters from this list. Six requests, inside the ten.
+    foreach ([CompetitionStatus::Published, CompetitionStatus::SignupClosed] as $status) {
+        $competition->forceFill(['status' => $status])->save();
+
+        $this->actingAs($player)->post($url, ['note' => $status->value])->assertSessionHasNoErrors();
+    }
+
+    expect(CompetitionInterest::query()->where('competition_id', $competition->id)->sole()->note)->toBe('signup_closed');
 });

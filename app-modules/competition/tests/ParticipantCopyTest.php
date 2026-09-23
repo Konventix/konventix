@@ -62,11 +62,14 @@ function participantCopyReachable(): array
         'selfServiceCheckInClosed' => CompetitionEntryException::selfServiceCheckInClosed($id),
         'notTheCaptain' => CompetitionEntryException::notTheCaptain($id, $id),
         'rosterNotAtTheDoor' => CompetitionEntryException::rosterNotAtTheDoor($id, ['Mia', 'Tom']),
+        // Interest once the competition runs or is over (fix wave B, M4).
+        'interestClosed' => CompetitionEntryException::interestClosed($id, 'running'),
         // Join by code.
         'unknownInviteCode' => CompetitionEntryException::unknownInviteCode('ZZZZZZZZ'),
         // Report, confirm, dispute, a score entry, a proof upload.
         'deskOnly' => ResultSubmissionException::deskOnly($id),
         'takesNoProofs' => ResultSubmissionException::takesNoProofs($id),
+        'takesNoMoreProofs' => ResultSubmissionException::takesNoMoreProofs($id, 'finished'),
         'notASide' => ResultSubmissionException::notASide($id, $id),
         'notOnRoster' => ResultSubmissionException::notOnRoster($id, $id),
         'alreadyRecorded' => ResultSubmissionException::alreadyRecorded($id),

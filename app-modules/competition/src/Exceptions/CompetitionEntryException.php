@@ -130,6 +130,20 @@ final class CompetitionEntryException extends RuntimeException
         );
     }
 
+    /**
+     * §5.3's list is for finding a team, which ends when the competition
+     * starts: interest is taken while it is `Published` or `SignupClosed`
+     * (where §5.4 fills incomplete rosters from the list), and not once it
+     * is `Running`, `Finished` or `Cancelled` (final review, part 2, M4).
+     */
+    public static function interestClosed(string $competitionId, string $status): self
+    {
+        return self::refusal(
+            sprintf('Competition [%s] is `%s` and takes no more interest.', $competitionId, $status),
+            __('Für dieses Turnier kannst du dich nicht mehr als interessiert eintragen: es hat schon begonnen oder ist vorbei.'),
+        );
+    }
+
     public static function alreadyEntered(string $competitionId, string $teamId): self
     {
         return self::refusal(
