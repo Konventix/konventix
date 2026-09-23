@@ -6,6 +6,19 @@
 
 ## Next (Phase 1 PoC — admissions produced by the one registration flow)
 
+- [x] The console check-in core (#329, Task 3). `Actions\CheckInFromConsole`
+      re-reads the admission by event under a lock (`wrong_event`
+      otherwise), refuses `in` while in and `out` while not in, checks the
+      answers against `Support\OwedDoorChecks`, and writes through
+      `RecordCheckIn` against the event's one console checkpoint
+      (`checkpoints.kind`, `CheckpointKind`, `Checkpoint::doors()` for any
+      enrolment surface, #328). `ConsoleCheckInRecorded` is auditable and
+      feeds `admission_console_check_ins_total`; the GDPR handler exports and
+      nulls `check_ins.actor_user_id`. ADR-0033 amended. #333:
+      `AdmissionCheckedIn::$registrationId` is nullable, so a crew badge no
+      longer throws at the door or the console, and Commerce skips it.
+      Follow-up: the list, the ticket page and the dialog (Tasks 4 and 5).
+
 - [x] Registration summary and one ticket reference for the attendee list
       (#329, Task 2). `admission_registration_summaries`
       (`Models\RegistrationSummary`, projected by

@@ -6,6 +6,7 @@ use Illuminate\Support\Str;
 use Konventix\Admission\Gdpr\AdmissionGdprHandler;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\AdmissionClaimLink;
+use Konventix\Admission\Models\CheckIn;
 use Konventix\Admission\Models\EntranceEventProfile;
 use Konventix\Admission\Models\EventPresence;
 use Konventix\Compliance\Enums\DeletionMode;
@@ -110,3 +111,62 @@ it('erases presence rows on a full erasure too', function (): void {
     expect(EventPresence::query()->where('user_id', $holder->id)->count())->toBe(0)
         ->and(EventPresence::query()->where('user_id', $other->id)->count())->toBe(1);
 });
+
+// #329 §6: `check_ins.actor_user_id` is the admin who checked a guest in
+// from the console. It is exported with the admin's data and forgotten on
+// erasure in both modes, while the row — the guest's attendance — stays.
+it('exports the console check-ins an admin wrote, and nulls the actor on erasure in both modes', function (DeletionMode $mode): void {
+    $this->withBrand();
+    $adminId = (string) Str::ulid();
+    $otherAdminId = (string) Str::ulid();
+
+    $in = CheckIn::factory()->create([
+        'actor_user_id' => $adminId,
+        'direction' => 'in',
+        'scanned_at' => now()->subHour(),
+    ]);
+    $out = CheckIn::factory()->create([
+        'actor_user_id' => $adminId,
+        'direction' => 'out',
+        'scanned_at' => now(),
+    ]);
+    $someoneElses = CheckIn::factory()->create(['actor_user_id' => $otherAdminId]);
+    $doorScan = CheckIn::factory()->create(['actor_user_id' => null]);
+
+    $handler = new AdmissionGdprHandler;
+    $export = $handler->exportFor(SubjectRef::forUser($adminId));
+
+    // Derivation: two rows carry this admin as the actor, ordered by
+    // scanned_at — the check-in an hour ago, then the check-out now. The
+    // other admin's row and the door scan (no actor) are not theirs.
+    expect($export['console_check_ins'])->toBe([
+        [
+            'id' => $in->id,
+            'admission_id' => $in->admission_id,
+            'direction' => 'in',
+            'result' => 'accepted',
+            'scanned_at' => $in->fresh()->scanned_at->toIso8601String(),
+        ],
+        [
+            'id' => $out->id,
+            'admission_id' => $out->admission_id,
+            'direction' => 'out',
+            'result' => 'accepted',
+            'scanned_at' => $out->fresh()->scanned_at->toIso8601String(),
+        ],
+    ]);
+
+    $handler->delete(SubjectRef::forUser($adminId), $mode);
+
+    // Derivation: four rows before, four after — nothing is deleted. The two
+    // rows of this admin lose the actor; the other admin's keeps theirs.
+    expect(CheckIn::query()->count())->toBe(4)
+        ->and($in->fresh()->actor_user_id)->toBeNull()
+        ->and($out->fresh()->actor_user_id)->toBeNull()
+        ->and($someoneElses->fresh()->actor_user_id)->toBe($otherAdminId)
+        ->and($doorScan->fresh()->actor_user_id)->toBeNull()
+        ->and($handler->exportFor(SubjectRef::forUser($adminId))['console_check_ins'])->toBe([]);
+})->with([
+    'anonymize' => [DeletionMode::Anonymize],
+    'erase' => [DeletionMode::Erase],
+]);

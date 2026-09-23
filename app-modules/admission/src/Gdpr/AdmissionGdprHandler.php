@@ -6,6 +6,7 @@ namespace Konventix\Admission\Gdpr;
 
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\AdmissionClaimLink;
+use Konventix\Admission\Models\CheckIn;
 use Konventix\Admission\Models\EventPresence;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
@@ -35,6 +36,12 @@ use Konventix\Compliance\Gdpr\SubjectRef;
  * is exported, and deleted in both modes — a presence without a person
  * means nothing, and unlike the admission it records no obligation of
  * the operator's.
+ *
+ * The console check-ins an admin wrote (#329, attendee-list design §6) are
+ * the third thing: `check_ins.actor_user_id` says who let a guest in from
+ * the console. Exported with the admin's data, and nulled on deletion in both
+ * modes — but the rows stay, because they are the *guest's* attendance
+ * record, not the admin's.
  *
  * Both methods are idempotent.
  */
@@ -123,6 +130,20 @@ final class AdmissionGdprHandler implements GdprHandler
                     'hub_access' => $presence->hub_access,
                 ])
                 ->all(),
+            // Check-ins this person wrote as an operator (#329 §6): ids and
+            // facts only — the guest on the other end is not this subject.
+            'console_check_ins' => CheckIn::withoutBrandScope()
+                ->where('actor_user_id', $subjectId)
+                ->orderBy('scanned_at')
+                ->get()
+                ->map(fn (CheckIn $checkIn): array => [
+                    'id' => $checkIn->getKey(),
+                    'admission_id' => $checkIn->admission_id,
+                    'direction' => $checkIn->direction,
+                    'result' => $checkIn->result->value,
+                    'scanned_at' => $checkIn->scanned_at->toIso8601String(),
+                ])
+                ->all(),
         ];
     }
 
@@ -162,5 +183,11 @@ final class AdmissionGdprHandler implements GdprHandler
         EventPresence::withoutBrandScope()
             ->where('user_id', $subjectId)
             ->delete();
+
+        // Both modes (#329 §6): the check-in stays — it is the guest's
+        // attendance — and forgets which admin wrote it.
+        CheckIn::withoutBrandScope()
+            ->where('actor_user_id', $subjectId)
+            ->update(['actor_user_id' => null]);
     }
 }

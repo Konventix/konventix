@@ -20,6 +20,9 @@ use Konventix\Commerce\Actions\ProjectCheckedInAdmission;
  * Only the `in` direction counts. A check-out means the person was inside,
  * which the matching check-in already recorded; treating it as a second
  * signal would add nothing and would double-handle every exit.
+ *
+ * A null `registrationId` is a crew badge (D-STF-01, #333): nobody bought it,
+ * so there is no refund for a check-in to block, and nothing is projected.
  */
 final class ProjectCheckInOnAdmissionCheckedIn
 {
@@ -29,7 +32,7 @@ final class ProjectCheckInOnAdmissionCheckedIn
 
     public function handle(AdmissionCheckedIn $event): void
     {
-        if ($event->direction !== 'in') {
+        if ($event->direction !== 'in' || $event->registrationId === null) {
             return;
         }
 

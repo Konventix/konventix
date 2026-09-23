@@ -22,6 +22,7 @@ use Konventix\Admission\Events\CheckInRejected;
 use Konventix\Admission\Events\ClaimLinkIssued;
 use Konventix\Admission\Events\ClaimLinkRevoked;
 use Konventix\Admission\Events\ClaimLinkSent;
+use Konventix\Admission\Events\ConsoleCheckInRecorded;
 use Konventix\Admission\Events\ParticipantAdmitted;
 use Konventix\Admission\Events\ParticipantHubAccessEnded;
 use Konventix\Admission\Gdpr\AdmissionGdprHandler;
@@ -33,6 +34,7 @@ use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationAmended;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
 use Konventix\Admission\Listeners\IssueCrewAdmissionOnAssignmentAccepted;
 use Konventix\Admission\Listeners\Metrics\RecordAdmissionTokenMetrics;
+use Konventix\Admission\Listeners\Metrics\RecordConsoleCheckInMetrics;
 use Konventix\Admission\Listeners\Metrics\RecordHolderMetrics;
 use Konventix\Admission\Listeners\Metrics\RecordPresenceMetrics;
 use Konventix\Admission\Listeners\MintEntranceSigningKeyOnBrandCreated;
@@ -299,6 +301,11 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         // ADR-0059, D-HUB-01: hub admissions and endings, by outcome.
         Event::listen(ParticipantAdmitted::class, [RecordPresenceMetrics::class, 'handleAdmitted']);
         Event::listen(ParticipantHubAccessEnded::class, [RecordPresenceMetrics::class, 'handleEnded']);
+
+        // ADR-0059, #329: check-ins written from the operator console, by
+        // outcome. The audit entry off the same event is Compliance's own
+        // wildcard subscriber (ConsoleCheckInRecorded is an AuditableEvent).
+        Event::listen(ConsoleCheckInRecorded::class, RecordConsoleCheckInMetrics::class);
 
         // Admission's own metric (ADR-0059, design doc §9): the one
         // rejection reason among CheckInRejected's nine that answers

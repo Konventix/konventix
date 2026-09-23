@@ -16,6 +16,13 @@ namespace Konventix\Admission\Events;
  * refund flow is blocked until this ships, which is why it leads Slice 5.
  * Removing or renaming this field breaks that contract.
  *
+ * It is **nullable** (#333): a crew badge (D-STF-01, `IssueCrewAdmission`)
+ * has no registration behind it, and a non-null `string` here made every
+ * accepted scan of one a `TypeError` under `strict_types`, at the door and
+ * from the console alike. The widening is additive; Commerce's projection
+ * skips a null, because a registration that does not exist has no refund to
+ * block.
+ *
  * `eventDayId` is nullable only because an event may have no day calendar at
  * all; a scan that fell outside a defined calendar is rejected and never
  * reaches this event (D-ADM-04).
@@ -41,7 +48,7 @@ final readonly class AdmissionCheckedIn
     public function __construct(
         public string $checkInId,
         public string $admissionId,
-        public string $registrationId,
+        public ?string $registrationId,
         public string $eventId,
         public string $brandId,
         public ?string $eventDayId,

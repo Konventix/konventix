@@ -70,6 +70,8 @@ export default dashboard({
             timeseries('Holder changes per hour by outcome', [prom(`sum by (brand, outcome) (increase(konventix_admission_holder_changes_total{${J}}[1h]))`, '{{brand}} {{outcome}}')], { w: 12 }),
             timeseries('Invites per hour by outcome', [prom(`sum by (brand, outcome) (increase(konventix_admission_claim_invites_total{${J}}[1h]))`, '{{brand}} {{outcome}}')], { w: 12 }),
             timeseries('Hub access endings per hour', [prom(`sum by (brand, outcome) (increase(konventix_admission_hub_access_total{${J}, outcome!="admitted"}[1h]))`, '{{brand}} {{outcome}}')], { w: 8 }),
+            stat('Console check-ins', [prom(`sum(increase(konventix_admission_console_check_ins_total{${J}, outcome="in"}[$__range]))`)], { description: 'Guests checked in by name from the operator console (#329) instead of a door scan. A desk carrying the door is the shape of broken scanners or unreadable tickets.' }),
+            timeseries('Console check-ins per hour by outcome', [prom(`sum by (brand, outcome) (increase(konventix_admission_console_check_ins_total{${J}}[1h]))`, '{{brand}} {{outcome}}')], { w: 12, description: 'in and out are written rows; refused is a row the shared core rejected with the door\'s reason (revoked, wrong day, no re-entry).' }),
         ]),
         row('Tickets and calendars', [
             stat('Tickets rendered', [prom(`sum(increase(konventix_admission_tickets_rendered_total{${J}}[$__range]))`)], { description: 'Ticket PDF pages served in the selected range.' }),

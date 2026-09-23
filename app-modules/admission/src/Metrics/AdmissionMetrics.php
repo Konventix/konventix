@@ -65,6 +65,18 @@ final class AdmissionMetrics
                 'Live-hub admissions and access endings, by outcome.',
                 ['brand', 'outcome'],
             ),
+            // #329, attendee-list design §3.1: check-ins written from the
+            // operator console. `in`/`out` for an accepted row, `refused`
+            // for one the shared core rejected with the door's reason;
+            // recorded by Listeners\Metrics\RecordConsoleCheckInMetrics off
+            // ConsoleCheckInRecorded. A console desk carrying the door is
+            // the shape of broken scanners, worth seeing on the sale day.
+            new MetricDefinition(
+                'admission_console_check_ins_total',
+                MetricKind::Counter,
+                'Check-ins and check-outs written from the operator console, by outcome.',
+                ['brand', 'outcome'],
+            ),
         ];
     }
 }
