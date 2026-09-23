@@ -17,6 +17,8 @@ import {
     withdraw as withdrawEntrant,
 } from '@/routes/admin/entrants';
 import TeamRosterEditor from '../../../components/admin/TeamRosterEditor.vue';
+import ConfirmDialog from '../../../components/confirm/ConfirmDialog.vue';
+import { useConfirmation } from '../../../components/confirm/useConfirmation';
 
 /**
  * The field of one competition (design §5.2, §5.4, §5.5).
@@ -131,20 +133,66 @@ function fill(entrant: EntrantRow): void {
     );
 }
 
+/**
+ * Decline, withdraw and disqualify are terminal entrant states, and a
+ * disqualification while the competition runs forfeits the team's bracket
+ * position, so each asks first (final review, part 3, I2).
+ */
+const {
+    pending: pendingQuestion,
+    open: asking,
+    ask,
+    confirm,
+} = useConfirmation();
+
 function decline(entrant: EntrantRow): void {
-    router.post(declineEntrant(entrant.id).url, {}, { preserveScroll: true });
+    ask({
+        title: `Decline ${entrant.teamName}?`,
+        description:
+            'The entry is withdrawn as an incomplete roster, its members are notified, and the slot is freed. It cannot be undone.',
+        confirmLabel: 'Decline entry',
+        cancelLabel: 'Keep it',
+        run: () =>
+            router.post(
+                declineEntrant(entrant.id).url,
+                {},
+                { preserveScroll: true },
+            ),
+    });
 }
 
 function withdraw(entrant: EntrantRow): void {
-    router.post(withdrawEntrant(entrant.id).url, {}, { preserveScroll: true });
+    ask({
+        title: `Withdraw ${entrant.teamName}?`,
+        description:
+            'The team leaves this competition and its slot is freed. It cannot be undone.',
+        confirmLabel: 'Withdraw entry',
+        cancelLabel: 'Keep it',
+        run: () =>
+            router.post(
+                withdrawEntrant(entrant.id).url,
+                {},
+                { preserveScroll: true },
+            ),
+    });
 }
 
 function disqualify(entrant: EntrantRow): void {
-    router.post(
-        disqualifyEntrant(entrant.id).url,
-        {},
-        { preserveScroll: true },
-    );
+    ask({
+        title: `Disqualify ${entrant.teamName}?`,
+        description:
+            props.competition.status === 'running'
+                ? 'The team is taken out of every match it has still to play, and the bracket goes on without it. It cannot be undone.'
+                : 'The team is out of this competition for good. It cannot be undone.',
+        confirmLabel: 'Disqualify',
+        cancelLabel: 'Keep it',
+        run: () =>
+            router.post(
+                disqualifyEntrant(entrant.id).url,
+                {},
+                { preserveScroll: true },
+            ),
+    });
 }
 
 function regenerate(entrant: EntrantRow): void {
@@ -361,5 +409,11 @@ function regenerate(entrant: EntrantRow): void {
                 </li>
             </ul>
         </section>
+
+        <ConfirmDialog
+            v-model:open="asking"
+            :confirmation="pendingQuestion"
+            @confirm="confirm"
+        />
     </div>
 </template>

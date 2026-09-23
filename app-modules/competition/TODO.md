@@ -187,6 +187,10 @@ Found on the way and not built. Each one is still true as of #302.
       rather than on `entrants.seed`.
 - [ ] **Free text on erasure**: a note that names its own author survives
       the author's erasure (design §14).
+- [x] Destructive clicks ask first on the dialog primitive (final review
+      fix wave B, part 3, I2): a participant's withdraw and leave; the
+      console's decline, withdraw and disqualify, *Cancel competition* and
+      *Finish*, and the desk's redraw and reset (no `window.confirm` left).
 - [x] Every time on the tournament pages is on the event's wall clock
       (§10a, final review fix wave B): the schedule, the bracket table, the
       team page, both start times and *Meine Turniere*'s check-in time.
@@ -211,8 +215,7 @@ Found on the way and not built. Each one is still true as of #302.
       `my/Tournaments.vue` declares a `brandId` prop it never uses; decline
       is possible before signup closes; `ScheduleRound` silently does nothing
       for a round with no open match; the default time on the desk's round
-      form is set for the first round only; `window.confirm` where the dialog
-      primitive belongs; the console scope test walks a hand-written route
+      form is set for the first round only; the console scope test walks a hand-written route
       list; a replayed `AdmissionIssued` out of order can null an existing
       holder; the deferred `afterCommit()` dispatches do not restore the
       brand context a later listener might read.

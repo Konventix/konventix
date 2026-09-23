@@ -416,7 +416,9 @@ class CompetitionAdminController
             $to === CompetitionStatus::SignupClosed => 'Close signup',
             $to === CompetitionStatus::Running => 'Start',
             $to === CompetitionStatus::Finished => 'Finish',
-            $to === CompetitionStatus::Cancelled => 'Cancel',
+            // Not "Cancel", which reads as "close this form" beside a save
+            // button (final review, part 3, I2).
+            $to === CompetitionStatus::Cancelled => 'Cancel competition',
         };
     }
 }

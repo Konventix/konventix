@@ -5,6 +5,8 @@ import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { page as matchPage } from '@/routes/competition/match';
+import ConfirmDialog from '../../../components/confirm/ConfirmDialog.vue';
+import { useConfirmation } from '../../../components/confirm/useConfirmation';
 import { formatEventDateTime } from '../../../components/public/eventTime';
 import { usePollWhile } from '../../../components/public/usePollWhile';
 
@@ -134,9 +136,30 @@ function stateClass(state: string): string {
     return 'text-text-muted';
 }
 
+/**
+ * Leaving and withdrawing ask first (final review, part 3, I2): back on the
+ * team needs the captain to share the code again, and a withdrawn slot may
+ * be gone for good once the field fills or signup closes.
+ */
+const {
+    pending: pendingQuestion,
+    open: asking,
+    ask,
+    confirm,
+} = useConfirmation();
+
 function leave(team: Team): void {
-    router.delete(`/my/tournaments/teams/${team.id}/members/me`, {
-        preserveScroll: true,
+    ask({
+        title: `${team.name} verlassen?`,
+        description: team.isCaptain
+            ? 'Du gibst damit auch die Captain-Rolle ab. Zurück ins Team kommst du nur mit einem neuen Einladungscode.'
+            : 'Zurück ins Team kommst du nur mit dem Einladungscode vom Captain.',
+        confirmLabel: 'Team verlassen',
+        cancelLabel: 'Abbrechen',
+        run: () =>
+            router.delete(`/my/tournaments/teams/${team.id}/members/me`, {
+                preserveScroll: true,
+            }),
     });
 }
 
@@ -149,8 +172,16 @@ function regenerate(team: Team): void {
 }
 
 function withdraw(entry: Entry): void {
-    router.delete(`/my/tournaments/entries/${entry.id}`, {
-        preserveScroll: true,
+    ask({
+        title: `Von ${entry.competitionName} abmelden?`,
+        description:
+            'Euer Platz wird frei. Ist das Feld danach voll oder die Anmeldung geschlossen, kommt ihr nicht wieder hinein.',
+        confirmLabel: 'Anmeldung zurückziehen',
+        cancelLabel: 'Abbrechen',
+        run: () =>
+            router.delete(`/my/tournaments/entries/${entry.id}`, {
+                preserveScroll: true,
+            }),
     });
 }
 
@@ -404,5 +435,11 @@ function canWithdraw(entry: Entry): boolean {
                 >
             </div>
         </section>
+
+        <ConfirmDialog
+            v-model:open="asking"
+            :confirmation="pendingQuestion"
+            @confirm="confirm"
+        />
     </div>
 </template>

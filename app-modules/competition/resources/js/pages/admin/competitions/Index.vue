@@ -19,6 +19,8 @@ import {
     index as competitionsIndex,
     transition as transitionCompetition,
 } from '@/routes/admin/competitions';
+import ConfirmDialog from '../../../components/confirm/ConfirmDialog.vue';
+import { useConfirmation } from '../../../components/confirm/useConfirmation';
 
 /**
  * The competitions of an event (design §9): status, entrants against the
@@ -118,16 +120,48 @@ const statusClass: Record<string, string> = {
     cancelled: 'bg-danger/15 text-danger',
 };
 
+/**
+ * "Finish" is the one forward move nothing comes back from (`Finished` is
+ * terminal), so it asks first, like the competition's own screen does
+ * (final review, part 3, I2).
+ */
+const {
+    pending: pendingQuestion,
+    open: asking,
+    ask,
+    confirm,
+} = useConfirmation();
+
 function move(row: CompetitionRow): void {
-    if (row.nextStatus === null) {
+    const status = row.nextStatus;
+
+    if (status === null) {
         return;
     }
 
-    router.post(
-        transitionCompetition(row.id).url,
-        { status: row.nextStatus },
-        { preserveScroll: true },
-    );
+    const post = (): void => {
+        router.post(
+            transitionCompetition(row.id).url,
+            { status },
+            { preserveScroll: true },
+        );
+    };
+
+    if (status !== 'finished') {
+        post();
+
+        return;
+    }
+
+    ask({
+        title: `Finish ${row.name}?`,
+        description:
+            'The standings become final and nothing moves from here. Open matches stay unplayed.',
+        confirmLabel: row.nextLabel ?? 'Finish',
+        cancelLabel: 'Keep it running',
+        destructive: false,
+        run: post,
+    });
 }
 
 const columns: ColumnDef<CompetitionRow>[] = [
@@ -251,6 +285,12 @@ const columns: ColumnDef<CompetitionRow>[] = [
             empty-message="No competitions yet — create one per contest of this event."
             @update:sorting="onSortingChange"
             @update:page="setPage"
+        />
+
+        <ConfirmDialog
+            v-model:open="asking"
+            :confirmation="pendingQuestion"
+            @confirm="confirm"
         />
     </div>
 </template>

@@ -10,6 +10,8 @@ import {
     seed as seedStage,
     shuffle as shuffleStage,
 } from '@/routes/admin/competition-stages';
+import ConfirmDialog from '../../confirm/ConfirmDialog.vue';
+import { useConfirmation } from '../../confirm/useConfirmation';
 
 /**
  * Seed order and the draw (design §7.5, D-CMP-20).
@@ -78,8 +80,38 @@ function save(): void {
     );
 }
 
-function confirmed(question: string): boolean {
-    return window.confirm(question);
+/**
+ * Redrawing and resetting throw the current draw away, so both ask first —
+ * on the dialog primitive, not `window.confirm` (final review, part 3, I2).
+ */
+const {
+    pending: pendingQuestion,
+    open: asking,
+    ask,
+    confirm,
+} = useConfirmation();
+
+function drawAgain(): void {
+    ask({
+        title: 'Draw the bracket again?',
+        description:
+            'Every match of this bracket is drawn anew from the current seed order.',
+        confirmLabel: 'Draw again',
+        cancelLabel: 'Keep the draw',
+        run: () =>
+            router.post(regenerateStage(props.stage.id).url, {}, options),
+    });
+}
+
+function reset(): void {
+    ask({
+        title: 'Reset this bracket?',
+        description:
+            'Every match of this bracket is deleted and the stage is undrawn again. The seeds are kept.',
+        confirmLabel: 'Reset',
+        cancelLabel: 'Keep the draw',
+        run: () => router.post(resetStage(props.stage.id).url, {}, options),
+    });
 }
 </script>
 
@@ -174,27 +206,11 @@ function confirmed(question: string): boolean {
                     size="sm"
                     variant="outline"
                     :disabled="dirty"
-                    @click="
-                        confirmed('Draw the bracket again from this order?') &&
-                        router.post(
-                            regenerateStage(props.stage.id).url,
-                            {},
-                            options,
-                        )
-                    "
+                    @click="drawAgain"
                 >
                     Draw again
                 </Button>
-                <Button
-                    size="sm"
-                    variant="destructive"
-                    @click="
-                        confirmed(
-                            'Delete every match of this bracket? Seeds are kept.',
-                        ) &&
-                        router.post(resetStage(props.stage.id).url, {}, options)
-                    "
-                >
+                <Button size="sm" variant="destructive" @click="reset">
                     Reset
                 </Button>
             </template>
@@ -202,5 +218,11 @@ function confirmed(question: string): boolean {
         <p v-if="dirty" class="text-sm text-warning" role="status">
             Save the order before drawing.
         </p>
+
+        <ConfirmDialog
+            v-model:open="asking"
+            :confirmation="pendingQuestion"
+            @confirm="confirm"
+        />
     </section>
 </template>

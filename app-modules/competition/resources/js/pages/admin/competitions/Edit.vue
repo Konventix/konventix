@@ -21,6 +21,8 @@ import {
     transition as transitionCompetition,
     update as updateCompetition,
 } from '@/routes/admin/competitions';
+import ConfirmDialog from '../../../components/confirm/ConfirmDialog.vue';
+import { useConfirmation } from '../../../components/confirm/useConfirmation';
 
 /**
  * One competition and its first stage (design §7.1, §9), plus the lifecycle
@@ -105,6 +107,52 @@ function submit(): void {
  */
 const transitionError = ref<string | undefined>(undefined);
 
+/**
+ * The two moves nothing comes back from — `Cancelled` and `Finished` are
+ * terminal (`CompetitionStatus::isTerminal()`) — ask first, and cancelling is
+ * styled as the destructive act it is (final review, part 3, I2).
+ */
+const {
+    pending: pendingQuestion,
+    open: asking,
+    ask,
+    confirm,
+} = useConfirmation();
+
+const terminalQuestions: Record<
+    string,
+    { title: string; description: string }
+> = {
+    cancelled: {
+        title: 'Cancel this competition?',
+        description:
+            'It will not be played. The public page stays up, marked as cancelled, and nothing moves from here: it cannot be reopened.',
+    },
+    finished: {
+        title: 'Finish this competition?',
+        description:
+            'The standings become final and nothing moves from here. Open matches stay unplayed.',
+    },
+};
+
+function choose(option: { status: string; label: string }): void {
+    const question = terminalQuestions[option.status];
+
+    if (question === undefined) {
+        move(option.status);
+
+        return;
+    }
+
+    ask({
+        ...question,
+        confirmLabel: option.label,
+        cancelLabel: 'Keep it',
+        destructive: option.status === 'cancelled',
+        run: () => move(option.status),
+    });
+}
+
 function move(status: string): void {
     transitionError.value = undefined;
 
@@ -168,9 +216,13 @@ function move(status: string): void {
                         v-for="option in props.transitions"
                         :key="option.status"
                         type="button"
-                        variant="outline"
+                        :variant="
+                            option.status === 'cancelled'
+                                ? 'destructive'
+                                : 'outline'
+                        "
                         size="sm"
-                        @click="move(option.status)"
+                        @click="choose(option)"
                     >
                         {{ option.label }}
                     </Button>
@@ -181,7 +233,12 @@ function move(status: string): void {
                         This competition is history — nothing moves from here.
                     </span>
                 </div>
-                <InputError :message="transitionError" />
+                <InputError :message="transitionError" role="alert" />
+                <ConfirmDialog
+                    v-model:open="asking"
+                    :confirmation="pendingQuestion"
+                    @confirm="confirm"
+                />
             </CardContent>
         </Card>
 

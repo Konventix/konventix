@@ -312,7 +312,7 @@ it('renders the create and edit pages with the Data object and the arrows out of
             ->where('transitions', [
                 ['status' => 'published', 'label' => 'Reopen signup'],
                 ['status' => 'running', 'label' => 'Start'],
-                ['status' => 'cancelled', 'label' => 'Cancel'],
+                ['status' => 'cancelled', 'label' => 'Cancel competition'],
             ]));
 });
 
