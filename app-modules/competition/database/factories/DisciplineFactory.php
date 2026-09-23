@@ -7,6 +7,7 @@ namespace Konventix\Competition\Database\Factories;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 use Konventix\Competition\Enums\DisciplineKind;
+use Konventix\Competition\Enums\LinkedProvider;
 use Konventix\Competition\Models\Discipline;
 
 /**
@@ -44,6 +45,15 @@ class DisciplineFactory extends Factory
             'kind' => DisciplineKind::VideoGame,
             'game_id' => $gameId ?? (string) Str::ulid(),
         ]);
+    }
+
+    /**
+     * The linked-account signup rule (design §5.6), Steam unless told
+     * otherwise.
+     */
+    public function requiresLinkedProvider(LinkedProvider $provider = LinkedProvider::Steam): static
+    {
+        return $this->state(fn (array $attributes): array => ['requires_linked_provider' => $provider]);
     }
 
     public function teamSize(int $size): static

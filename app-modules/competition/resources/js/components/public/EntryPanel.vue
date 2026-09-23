@@ -12,6 +12,7 @@ import {
 } from '@/routes/competition/interest';
 import { join } from '@/routes/competition/my';
 import { store as teamStore } from '@/routes/competition/my/teams';
+import { edit as editLinkedAccounts } from '@/routes/linked-accounts';
 
 /**
  * The competition page's calls to action (design §10): "the entry /
@@ -24,6 +25,11 @@ import { store as teamStore } from '@/routes/competition/my/teams';
  * A team is started here, where the event is known — "Meine Turniere" has no
  * such form on purpose — and then entered with the select beside it: a team
  * the viewer captains shows up there as soon as it exists.
+ *
+ * A discipline may require a linked account of everyone who plays it
+ * (design §5.6). The panel says so to every reader, and a signed-in viewer
+ * who has not linked it gets the link to their account settings, the same
+ * place the refusal sends them.
  */
 const props = defineProps<{
     event: Konventix.Competition.Data.EventRefData;
@@ -71,6 +77,27 @@ function withdrawInterest(): void {
         <h2 id="entry-heading" class="text-lg font-medium text-text">
             Mitspielen
         </h2>
+
+        <p
+            v-if="props.competition.requiredLinkedAccount"
+            class="text-sm text-text-muted"
+        >
+            Für dieses Turnier brauchen alle im Team ein verknüpftes
+            {{ props.competition.requiredLinkedAccount }}-Konto.
+            <template
+                v-if="
+                    props.viewer.signedIn && props.viewer.missingLinkedAccount
+                "
+            >
+                Deins fehlt noch:
+                <Link
+                    :href="editLinkedAccounts().url"
+                    class="underline underline-offset-4"
+                    >{{ props.competition.requiredLinkedAccount }}-Konto
+                    verknüpfen</Link
+                >.
+            </template>
+        </p>
 
         <p v-if="!props.viewer.signedIn" class="text-sm text-text-muted">
             <Link :href="login().url" class="underline underline-offset-4"

@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { edit as editLinkedAccounts } from '@/routes/linked-accounts';
 
 /**
  * Join by invite code (design §5.2, §10) — the only self-service way onto a
@@ -18,6 +20,10 @@ import { Label } from '@/components/ui/label';
  *
  * Participant copy is German (ADR-0001).
  *
+ * One refusal carries a second key, `linkedAccount` (design §5.6): the team
+ * plays a competition that requires a linked account the person has not
+ * linked. The page then links to the account settings below the error.
+ *
  * a11y: the error is linked to the field through `aria-describedby` and
  * `aria-invalid`, per `.ai/rules/js.md` — the public pages target WCAG 2.1 AA
  * whatever the operator's own exemption says (ADR-0055).
@@ -25,6 +31,13 @@ import { Label } from '@/components/ui/label';
 const props = defineProps<{ code: string }>();
 
 const form = useForm({ code: props.code ?? '' });
+
+const page = usePage();
+
+/** The provider the refused join asked for, e.g. "Steam" (design §5.6). */
+const missingLinkedAccount = computed<string | undefined>(
+    () => page.props.errors?.linkedAccount,
+);
 
 const nonAlphanumeric = /[^A-Za-z0-9]/g;
 
@@ -75,6 +88,13 @@ function submit(): void {
                     id="invite-code-error"
                     :message="form.errors.code"
                 />
+                <p v-if="missingLinkedAccount" class="text-sm text-text">
+                    <Link
+                        :href="editLinkedAccounts().url"
+                        class="underline underline-offset-4"
+                        >{{ missingLinkedAccount }}-Konto verknüpfen</Link
+                    >
+                </p>
             </div>
 
             <Button

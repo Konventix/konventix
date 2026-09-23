@@ -41,6 +41,7 @@ use Konventix\Competition\Models\Discipline;
 use Konventix\Competition\Models\EligibleRegistration;
 use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\EventSummary;
+use Konventix\Competition\Models\LinkedIdentity;
 use Konventix\Competition\Models\MatchConnection;
 use Konventix\Competition\Models\MatchHistoryEntry;
 use Konventix\Competition\Models\MatchResultReport;
@@ -360,6 +361,7 @@ final class TournamentPages
             proofRequired: $competition->proof_policy === ProofPolicy::Required,
             unit: $settings?->unit,
             heats: $settings?->heats,
+            requiredLinkedAccount: $discipline?->requires_linked_provider?->label(),
         );
     }
 
@@ -560,7 +562,22 @@ final class TournamentPages
                 && $competition->proof_policy !== ProofPolicy::Required
                 && $entered !== null
                 && $entered->isActive(),
+            missingLinkedAccount: $this->missingLinkedAccount($competition, $userId),
         );
+    }
+
+    /**
+     * Whether the competition's discipline requires a linked provider (§5.6)
+     * that the viewer has not linked. It is a courtesy to the page, which then
+     * links to the account settings; the Actions decide again.
+     */
+    private function missingLinkedAccount(Competition $competition, string $userId): bool
+    {
+        /** @var Discipline|null $discipline */
+        $discipline = Discipline::query()->whereKey($competition->discipline_id)->first();
+        $provider = $discipline?->requires_linked_provider;
+
+        return $provider !== null && ! LinkedIdentity::hasLinked($userId, $provider->value);
     }
 
     /**

@@ -50,6 +50,11 @@ use Konventix\Competition\Models\Entrant;
  * run. The index covers `incomplete` too, or a team could enter twice while
  * short-handed and appear twice once it filled up.
  *
+ * **A linked-account requirement is checked on the whole roster** (§5.6).
+ * When the competition's discipline requires a linked provider, every member
+ * who has not linked it is named in one refusal, whether they were on the
+ * team already or were added by this call.
+ *
  * `max_entrants` is checked in the transaction rather than by a constraint:
  * it is a soft limit the organizer may raise, and overshooting it by one on a
  * simultaneous double signup is a thing to fix in the console, not a
@@ -110,6 +115,12 @@ final class EnterCompetition
                     count($roster),
                 );
             }
+
+            // §5.6: everyone on the roster that enters has linked the
+            // provider the discipline requires. Checked on the whole roster,
+            // not only the members this call added, because a team formed
+            // before the entry has not been measured against this contest.
+            $this->guardRosterLinkedAccounts($competition, $roster);
 
             $state = count($roster) === $teamSize
                 ? EntrantState::Registered

@@ -8,10 +8,12 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use Konventix\Competition\Enums\LinkedProvider;
 use Konventix\Competition\Exceptions\CompetitionEntryException;
 use Konventix\Competition\Exceptions\CompetitionLifecycleException;
 use Konventix\Competition\Exceptions\IllegalMatchStateTransitionException;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
+use Konventix\Competition\Models\ParticipantProfile;
 
 /**
  * How a participant write answers (design §8, §10): a refusal the person can
@@ -32,7 +34,19 @@ trait AnswersTheParticipant
     {
         try {
             return $work();
-        } catch (ResultSubmissionException|CompetitionEntryException $e) {
+        } catch (CompetitionEntryException $e) {
+            // The linked-account rule (§5.6) is answered in German with the
+            // names of whoever still lacks the link; the page shows the link
+            // to the account settings beside it. Every other entry refusal
+            // is still the Action's English (see the docblock).
+            $provider = $e->missingLinkedProvider();
+
+            throw ValidationException::withMessages([
+                $field => $provider === null
+                    ? $e->getMessage()
+                    : $this->linkedAccountRefusal($provider, $e->usersMissingTheLink(), null),
+            ]);
+        } catch (ResultSubmissionException $e) {
             throw ValidationException::withMessages([$field => $e->getMessage()]);
         } catch (CompetitionLifecycleException) {
             // The desk's refusal, in the desk's English with a ULID in it. The
@@ -49,6 +63,34 @@ trait AnswersTheParticipant
                 $field => __('Dieses Spiel hat sich inzwischen geändert. Lade die Seite neu.'),
             ]);
         }
+    }
+
+    /**
+     * The German answer to the linked-account rule (design §5.6). When the
+     * viewer is the only one missing the link, they are told so directly;
+     * otherwise the teammates who still have to link an account are named,
+     * because only they can fix it.
+     *
+     * @param  list<string>  $missingUserIds
+     */
+    private function linkedAccountRefusal(LinkedProvider $provider, array $missingUserIds, ?string $viewerId): string
+    {
+        if ($viewerId !== null && $missingUserIds === [$viewerId]) {
+            return __('Für dieses Turnier brauchst du ein verknüpftes :provider-Konto.', [
+                'provider' => $provider->label(),
+            ]);
+        }
+
+        $names = [];
+
+        foreach (ParticipantProfile::displayNamesFor($missingUserIds) as $userId => $name) {
+            $names[] = $userId === $viewerId ? __('du') : $name;
+        }
+
+        return __('Für dieses Turnier brauchen alle im Team ein verknüpftes :provider-Konto – noch ohne: :names.', [
+            'provider' => $provider->label(),
+            'names' => implode(', ', $names),
+        ]);
     }
 
     private function done(string $message): RedirectResponse

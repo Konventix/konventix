@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Konventix\Competition\Database\Factories\DisciplineFactory;
 use Konventix\Competition\Enums\DisciplineKind;
+use Konventix\Competition\Enums\LinkedProvider;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
 /**
@@ -26,6 +27,10 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * disagrees with D-GOP-04 on the fields). ADR-0024 sanctions shipping the
  * table and the reference now and adding the projection later.
  *
+ * `requires_linked_provider` is the linked-account signup rule (design §5.6):
+ * a provider everyone who enters or joins a team for this discipline must
+ * have linked, checked against `LinkedIdentity`. Null means no requirement.
+ *
  * @property string $id
  * @property string $brand_id
  * @property DisciplineKind $kind
@@ -35,6 +40,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property int $avg_match_minutes
  * @property int $team_size
  * @property bool $allow_draws
+ * @property LinkedProvider|null $requires_linked_provider
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -46,7 +52,7 @@ class Discipline extends Model
     use HasFactory, HasUlids;
 
     protected $fillable = [
-        'kind', 'name', 'slug', 'game_id', 'avg_match_minutes', 'team_size', 'allow_draws',
+        'kind', 'name', 'slug', 'game_id', 'avg_match_minutes', 'team_size', 'allow_draws', 'requires_linked_provider',
     ];
 
     /** A solo discipline is one where a "team" is a single person (D-CMP-13). */
@@ -65,6 +71,7 @@ class Discipline extends Model
             'avg_match_minutes' => 'integer',
             'team_size' => 'integer',
             'allow_draws' => 'boolean',
+            'requires_linked_provider' => LinkedProvider::class,
         ];
     }
 

@@ -24,6 +24,10 @@ import {
  * that were complete when they entered. `UpdateDiscipline` is the authority
  * and refuses it server-side; the form only disables what it can see.
  *
+ * The linked-account requirement (design §5.6) does not freeze: switching it
+ * changes no entrant or roster that already exists, and it applies at the
+ * next entry or join.
+ *
  * The game id is typed by hand on purpose: GameOps publishes no catalogue
  * event yet, so there is nothing to build a picker from (ADR-0024). Null for
  * every kind that is not a video game.
@@ -33,7 +37,10 @@ type Props = {
         id: string;
         brandName: string;
     };
-    options: { kind: string[] };
+    options: {
+        kind: string[];
+        linkedProvider: { value: string; label: string }[];
+    };
     competitions: number;
 };
 
@@ -47,6 +54,8 @@ const form = useForm({
     avgMatchMinutes: props.discipline.avgMatchMinutes,
     allowDraws: props.discipline.allowDraws,
     gameId: props.discipline.gameId ?? '',
+    requiresLinkedProvider: (props.discipline.requiresLinkedProvider ??
+        null) as string | null,
 });
 
 useUnsavedChanges(() => form.isDirty);
@@ -185,6 +194,35 @@ function submit(): void {
                             Draws are possible
                         </label>
                         <InputError :message="form.errors.allowDraws" />
+                        <div class="grid gap-2">
+                            <Label for="discipline-linked-provider">
+                                Required linked account
+                            </Label>
+                            <select
+                                id="discipline-linked-provider"
+                                v-model="form.requiresLinkedProvider"
+                                class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
+                            >
+                                <option :value="null">None</option>
+                                <option
+                                    v-for="provider in props.options
+                                        .linkedProvider"
+                                    :key="provider.value"
+                                    :value="provider.value"
+                                >
+                                    {{ provider.label }}
+                                </option>
+                            </select>
+                            <p class="text-xs text-text-muted">
+                                Everyone who enters or joins a team must have
+                                linked this account. Switching it on does not
+                                touch teams that are already in; it applies to
+                                the next entry or join.
+                            </p>
+                            <InputError
+                                :message="form.errors.requiresLinkedProvider"
+                            />
+                        </div>
                     </CardContent>
                 </Card>
 

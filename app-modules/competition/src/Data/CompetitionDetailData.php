@@ -15,6 +15,9 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * `proofRequired` is §8.1's `required` policy. The participant pages offer
  * no upload while Platform cannot guard who reads a proof (§8.7, #322), so
  * they say that a proof is owed and that the desk collects it.
+ *
+ * `requiredLinkedAccount` is the display name of the provider the
+ * discipline requires everyone to have linked (design §5.6), or null.
  */
 #[TypeScript]
 final class CompetitionDetailData extends Data
@@ -39,5 +42,7 @@ final class CompetitionDetailData extends Data
         /** The leaderboard's unit and heat count (§7.2), null on a bracket. */
         public readonly ?string $unit,
         public readonly ?int $heats,
+        /** The provider every player must have linked (§5.6), e.g. "Steam". */
+        public readonly ?string $requiredLinkedAccount = null,
     ) {}
 }

@@ -33,6 +33,7 @@ final class CreateDiscipline
                 'team_size' => $data->teamSize,
                 'avg_match_minutes' => $data->avgMatchMinutes,
                 'allow_draws' => $data->allowDraws,
+                'requires_linked_provider' => $data->requiresLinkedProvider,
             ])->save();
 
             return $discipline;

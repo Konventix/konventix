@@ -123,6 +123,19 @@ ADR-0062). The build order for #32, each item its own merge request:
       entrant keeps polling until the competition ends, because there is
       no eliminated state (review M2); the `v-for` key in
       `MyCompetitionsCard.vue` (M3) and the duplicated `eventSlug()` (M4).
+- [x] Linked-account signup rule (§5.6, operator decision 2026-09-22):
+      `disciplines.requires_linked_provider` (None / Steam on the console
+      form), checked by `EnterCompetition` on the whole roster and by
+      `MaintainsTeamRoster` on every join against the contests the team
+      holds a slot in, answered in German with a link to the account
+      settings. Competition keeps `competition_linked_identities`,
+      projected from Identity's link, unlink, announcement and merge events.
+      It is global, stores no provider id, and is gated on any brand running
+      the module. The new `identity:announce-social-identities` backfills it
+      as the fourth post-rollout step (docs/operations.md). Nothing is
+      retroactive, and unlinking removes nobody. Left: GameOps' catalogue
+      event may suggest the value one day (ADR-0062); check-in does not ask
+      for the link.
 - [ ] Capabilities and roles (D-CMP-23): `ViewEntrantContacts`; Tournament
       Desk as a second default role. (`CheckInEntrants` and
       `ManageSchedule` landed with the desk actions they gate.)

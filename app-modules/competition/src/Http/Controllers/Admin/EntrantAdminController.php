@@ -271,7 +271,18 @@ class EntrantAdminController
         try {
             $work();
         } catch (CompetitionEntryException $e) {
-            throw ValidationException::withMessages(['entrant' => $e->getMessage()]);
+            $provider = $e->missingLinkedProvider();
+
+            // The linked-account rule (design §5.6) names the people, not
+            // their ULIDs: the organizer has to tell them what to do.
+            throw ValidationException::withMessages(['entrant' => $provider === null
+                ? $e->getMessage()
+                : sprintf(
+                    '%s must link a %s account first: a competition this team is entered in requires one.',
+                    implode(', ', ParticipantProfile::displayNamesFor($e->usersMissingTheLink())),
+                    $provider->label(),
+                ),
+            ]);
         }
     }
 

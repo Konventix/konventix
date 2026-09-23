@@ -14,6 +14,7 @@ use Konventix\Competition\Actions\UpdateDiscipline;
 use Konventix\Competition\Data\DisciplineData;
 use Konventix\Competition\Data\DisciplineRowData;
 use Konventix\Competition\Enums\DisciplineKind;
+use Konventix\Competition\Enums\LinkedProvider;
 use Konventix\Competition\Enums\Permission;
 use Konventix\Competition\Http\Controllers\Admin\Concerns\ScopesToOperator;
 use Konventix\Competition\Models\Competition;
@@ -28,7 +29,7 @@ use Konventix\Platform\Operators\ConsoleSelection;
  * the contest defaults every competition of that discipline inherits: team
  * size, the duration hint the later schedule estimator reads, and whether
  * draws exist (ADR-0062: the discipline is the source of record, not the
- * GameOps game).
+ * GameOps game), and the linked account every player must have (design §5.6).
  *
  * Runs on the admin host, where `BrandScope` hardens every brand-owned
  * query to zero rows (ADR-0029): every query here escapes it deliberately,
@@ -157,10 +158,20 @@ class DisciplineAdminController
     }
 
     /**
-     * @return array<string, list<string>>
+     * The form's two closed sets: the kinds, and the providers a discipline
+     * may require everyone to have linked (design §5.6). The select adds
+     * "None" itself.
+     *
+     * @return array{kind: list<string>, linkedProvider: list<array{value: string, label: string}>}
      */
     private function kindOptions(): array
     {
-        return ['kind' => array_column(DisciplineKind::cases(), 'value')];
+        return [
+            'kind' => array_column(DisciplineKind::cases(), 'value'),
+            'linkedProvider' => array_map(
+                static fn (LinkedProvider $provider): array => ['value' => $provider->value, 'label' => $provider->label()],
+                LinkedProvider::cases(),
+            ),
+        ];
     }
 }

@@ -35,5 +35,10 @@ final class CompetitionViewerData extends Data
         public readonly bool $interested,
         /** A leaderboard score form for the viewer's own entrant (§8.3). */
         public readonly bool $canSubmitScore,
+        /**
+         * The discipline requires a linked account (§5.6) and the viewer has
+         * not linked it, so the page links to the account settings.
+         */
+        public readonly bool $missingLinkedAccount = false,
     ) {}
 }

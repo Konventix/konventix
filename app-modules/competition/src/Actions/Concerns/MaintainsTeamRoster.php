@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Competition\Actions\Concerns;
 
 use Konventix\Competition\Actions\SyncEntrantCompleteness;
+use Konventix\Competition\Enums\LinkedProvider;
 use Konventix\Competition\Enums\TeamRole;
 use Konventix\Competition\Exceptions\CompetitionEntryException;
 use Konventix\Competition\Models\Competition;
@@ -14,6 +15,7 @@ use Konventix\Competition\Models\CompetitionTeamMember;
 use Konventix\Competition\Models\Discipline;
 use Konventix\Competition\Models\EligibleRegistration;
 use Konventix\Competition\Models\Entrant;
+use Konventix\Competition\Models\LinkedIdentity;
 
 /**
  * The three things that must happen together whenever a roster changes
@@ -30,6 +32,12 @@ use Konventix\Competition\Models\Entrant;
  *    can break one; `SyncEntrantCompleteness` moves the entry between
  *    `incomplete` and `registered` so the state is never something a caller
  *    has to remember to set (§5.4).
+ *
+ * 4. **The linked-account rule holds** (§5.6). The person joining must have
+ *    linked every provider that the disciplines of the team's current
+ *    contests require. It is checked last, after the gate and the roster
+ *    bound, so that the join form's distinct "link your Steam account"
+ *    answer only reaches somebody the code would otherwise have let in.
  *
  * Captaincy is maintained here too: the first member of a team is its captain
  * and a departing captain hands over to the longest-standing member. Every
@@ -55,6 +63,7 @@ trait MaintainsTeamRoster
         }
 
         $this->guardRosterBounds($team, count($team->memberUserIds()) + 1);
+        $this->guardLinkedAccounts($team, $userId);
 
         $member = new CompetitionTeamMember([
             'competition_team_id' => (string) $team->getKey(),
@@ -168,13 +177,9 @@ trait MaintainsTeamRoster
      */
     protected function rosterBounds(CompetitionTeam $team): array
     {
-        $competitionIds = Entrant::withoutBrandScope()
-            ->where('brand_id', $team->brand_id)
-            ->where('competition_team_id', $team->getKey())
-            ->whereIn('state', Entrant::slotHoldingStates())
-            ->pluck('competition_id');
+        $competitionIds = $this->slotHeldCompetitionIds($team);
 
-        if ($competitionIds->isEmpty()) {
+        if ($competitionIds === []) {
             return [];
         }
 
@@ -201,13 +206,9 @@ trait MaintainsTeamRoster
      */
     protected function retireInterest(CompetitionTeam $team, string $userId): void
     {
-        $competitionIds = Entrant::withoutBrandScope()
-            ->where('brand_id', $team->brand_id)
-            ->where('competition_team_id', $team->getKey())
-            ->whereIn('state', Entrant::slotHoldingStates())
-            ->pluck('competition_id');
+        $competitionIds = $this->slotHeldCompetitionIds($team);
 
-        if ($competitionIds->isEmpty()) {
+        if ($competitionIds === []) {
             return;
         }
 
@@ -216,6 +217,110 @@ trait MaintainsTeamRoster
             ->whereIn('competition_id', $competitionIds)
             ->where('user_id', $userId)
             ->delete();
+    }
+
+    /**
+     * Refuses to put `$userId` on a roster when they have not linked a
+     * provider that any contest the team holds a slot in requires (§5.6).
+     *
+     * The measure is the same set of contests as the roster bound: a team
+     * that has entered nothing has no requirement yet, so a squad can gather
+     * first and enter later, and entering checks the whole roster
+     * (`guardRosterLinkedAccounts()`). Only the person joining is asked. The
+     * rest of the roster was checked when it entered or joined, and a
+     * requirement switched on after that is not retroactive.
+     */
+    protected function guardLinkedAccounts(CompetitionTeam $team, string $userId): void
+    {
+        foreach ($this->linkedAccountRequirements($team) as $competitionId => $provider) {
+            if (! LinkedIdentity::hasLinked($userId, $provider->value)) {
+                throw CompetitionEntryException::linkedAccountMissing([$userId], $provider, $competitionId);
+            }
+        }
+    }
+
+    /**
+     * Refuses an entry when any member of the roster entering has not linked
+     * the provider the competition's discipline requires (§5.6). Every
+     * member who lacks the link is named, so the captain knows who still has
+     * to act.
+     *
+     * @param  list<string>  $roster
+     */
+    protected function guardRosterLinkedAccounts(Competition $competition, array $roster): void
+    {
+        $provider = $this->requiredLinkedProvider($competition);
+
+        if ($provider === null) {
+            return;
+        }
+
+        $missing = LinkedIdentity::missingAmong($roster, $provider->value);
+
+        if ($missing !== []) {
+            throw CompetitionEntryException::linkedAccountMissing($missing, $provider, (string) $competition->getKey());
+        }
+    }
+
+    protected function requiredLinkedProvider(Competition $competition): ?LinkedProvider
+    {
+        /** @var Discipline|null $discipline */
+        $discipline = Discipline::withoutBrandScope()->whereKey($competition->discipline_id)->first();
+
+        return $discipline?->requires_linked_provider;
+    }
+
+    /**
+     * The provider each contest this team holds a slot in requires, for the
+     * contests whose discipline requires one.
+     *
+     * @return array<string, LinkedProvider> competition ULID => required provider
+     */
+    protected function linkedAccountRequirements(CompetitionTeam $team): array
+    {
+        $competitionIds = $this->slotHeldCompetitionIds($team);
+
+        if ($competitionIds === []) {
+            return [];
+        }
+
+        $competitions = Competition::withoutBrandScope()->whereIn('id', $competitionIds)->get();
+
+        $providers = Discipline::withoutBrandScope()
+            ->whereIn('id', $competitions->pluck('discipline_id')->unique())
+            ->whereNotNull('requires_linked_provider')
+            ->get()
+            ->keyBy('id');
+
+        $requirements = [];
+
+        foreach ($competitions as $competition) {
+            /** @var Discipline|null $discipline */
+            $discipline = $providers->get($competition->discipline_id);
+
+            if ($discipline?->requires_linked_provider !== null) {
+                $requirements[(string) $competition->getKey()] = $discipline->requires_linked_provider;
+            }
+        }
+
+        return $requirements;
+    }
+
+    /**
+     * The contests this team currently holds a slot in (`incomplete`,
+     * `registered` or `checked_in`), which are what the roster bound, the
+     * interest retirement and the linked-account rule are measured against.
+     *
+     * @return list<string>
+     */
+    protected function slotHeldCompetitionIds(CompetitionTeam $team): array
+    {
+        return array_values(array_map(strval(...), Entrant::withoutBrandScope()
+            ->where('brand_id', $team->brand_id)
+            ->where('competition_team_id', $team->getKey())
+            ->whereIn('state', Entrant::slotHoldingStates())
+            ->pluck('competition_id')
+            ->all()));
     }
 
     protected function syncCompleteness(CompetitionTeam $team): void

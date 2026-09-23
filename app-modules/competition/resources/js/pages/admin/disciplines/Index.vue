@@ -44,7 +44,10 @@ interface PaginatedDisciplines {
 const props = defineProps<{
     disciplines: PaginatedDisciplines;
     brands: { id: string; name: string }[];
-    options: { kind: string[] };
+    options: {
+        kind: string[];
+        linkedProvider: { value: string; label: string }[];
+    };
     filters: DataTableFilters & { brand: string | null; kind: string | null };
 }>();
 

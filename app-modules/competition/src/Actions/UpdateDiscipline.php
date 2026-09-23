@@ -18,6 +18,10 @@ use Konventix\Competition\Models\Discipline;
  * entrant is `incomplete` (§5.4), so lowering it mid-event would silently
  * re-classify teams that were complete when they entered. Rename it, change
  * the duration hint, flip draws — those are cosmetic by comparison.
+ *
+ * The linked-account requirement (§5.6) does **not** freeze, because
+ * switching it changes nothing that exists. No entrant or roster is
+ * touched, and the rule applies at the next entry or join.
  */
 final class UpdateDiscipline
 {
@@ -35,6 +39,7 @@ final class UpdateDiscipline
                 'team_size' => $data->teamSize,
                 'avg_match_minutes' => $data->avgMatchMinutes,
                 'allow_draws' => $data->allowDraws,
+                'requires_linked_provider' => $data->requiresLinkedProvider,
             ])->save();
 
             return $discipline;

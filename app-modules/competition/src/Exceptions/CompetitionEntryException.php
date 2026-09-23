@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Competition\Exceptions;
 
+use Konventix\Competition\Enums\LinkedProvider;
 use RuntimeException;
 
 /**
@@ -13,6 +14,56 @@ use RuntimeException;
  */
 final class CompetitionEntryException extends RuntimeException
 {
+    /**
+     * Set only by `linkedAccountMissing()`, so that a caller can answer that
+     * one refusal in its own words (a German sentence and a link on a
+     * participant page) without parsing the message.
+     */
+    private ?LinkedProvider $missingProvider = null;
+
+    /** @var list<string> */
+    private array $missingUserIds = [];
+
+    /**
+     * The people who have not linked the provider a competition's discipline
+     * requires (design §5.6). On entry these are every roster member without
+     * the link; on a join, the one person joining.
+     *
+     * @param  list<string>  $userIds
+     */
+    public static function linkedAccountMissing(array $userIds, LinkedProvider $provider, string $competitionId): self
+    {
+        $exception = new self(sprintf(
+            'User(s) [%s] have not linked a %s account, which competition [%s] requires of everyone on its '
+            .'rosters (design §5.6).',
+            implode(', ', $userIds),
+            $provider->label(),
+            $competitionId,
+        ));
+
+        $exception->missingProvider = $provider;
+        $exception->missingUserIds = $userIds;
+
+        return $exception;
+    }
+
+    /**
+     * The provider this refusal is about, or null when the refusal has a
+     * different cause.
+     */
+    public function missingLinkedProvider(): ?LinkedProvider
+    {
+        return $this->missingProvider;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function usersMissingTheLink(): array
+    {
+        return $this->missingUserIds;
+    }
+
     public static function signupClosed(string $competitionId): self
     {
         return new self(sprintf('Signup for competition [%s] is not open.', $competitionId));

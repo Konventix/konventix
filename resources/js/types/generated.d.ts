@@ -746,6 +746,7 @@ declare namespace Konventix {
                 readonly proofRequired: boolean;
                 readonly unit: string | null;
                 readonly heats: number | null;
+                readonly requiredLinkedAccount: string | null;
             };
             export type CompetitionPageData = {
                 readonly event: Konventix.Competition.Data.EventRefData;
@@ -778,6 +779,7 @@ declare namespace Konventix {
                 readonly enterableTeams: Konventix.Competition.Data.TeamOptionData[];
                 readonly interested: boolean;
                 readonly canSubmitScore: boolean;
+                readonly missingLinkedAccount: boolean;
             };
             export type DeskDisputeData = {
                 readonly matchId: string;
@@ -865,6 +867,7 @@ declare namespace Konventix {
                 readonly avgMatchMinutes: number;
                 readonly allowDraws: boolean;
                 readonly gameId: string | null;
+                readonly requiresLinkedProvider: Konventix.Competition.Enums.LinkedProvider | null;
             };
             export type DisciplineRowData = {
                 readonly id: string;
@@ -1040,6 +1043,7 @@ declare namespace Konventix {
                 | 'disqualified';
             export type LeaderboardAggregate = 'best' | 'sum' | 'average';
             export type LeaderboardDirection = 'higher' | 'lower';
+            export type LinkedProvider = 'steam';
             export type MatchHistoryKind =
                 | 'scheduled'
                 | 'rescheduled'

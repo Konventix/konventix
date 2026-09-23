@@ -29,6 +29,15 @@ use Konventix\Platform\Brands\BrandContext;
  * genuinely holds no registration is told what to do about it by the page
  * they came from, not by this one.
  *
+ * **One exception: the linked-account rule** (design §5.6). A team entered in
+ * a competition whose discipline requires a linked Steam account refuses a
+ * joiner without one, and saying only "dieser Code passt nicht" would leave
+ * that person with no idea what to do. The check runs after every other one
+ * (`MaintainsTeamRoster`), so this answer only reaches somebody the code
+ * would otherwise have let in, and it tells them nothing they could not learn
+ * by linking Steam and trying again. The page shows the link to the account
+ * settings beside it (the `linkedAccount` key).
+ *
  * Copy is German (ADR-0001).
  */
 final class TeamJoinController
@@ -57,7 +66,18 @@ final class TeamJoinController
                 $validated['code'],
                 (string) $user->getAuthIdentifier(),
             );
-        } catch (CompetitionEntryException) {
+        } catch (CompetitionEntryException $e) {
+            $provider = $e->missingLinkedProvider();
+
+            if ($provider !== null) {
+                return back()->withErrors([
+                    'code' => __('Für dieses Team brauchst du ein verknüpftes :provider-Konto. Verknüpfe es und gib den Code dann noch einmal ein.', [
+                        'provider' => $provider->label(),
+                    ]),
+                    'linkedAccount' => $provider->label(),
+                ]);
+            }
+
             return back()->withErrors([
                 'code' => __('Dieser Code passt nicht — er ist unbekannt, das Team ist voll, du bist schon dabei, '
                     .'oder du bist für diese Veranstaltung nicht angemeldet.'),

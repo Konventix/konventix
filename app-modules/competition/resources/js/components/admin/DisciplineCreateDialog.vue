@@ -22,12 +22,18 @@ import { store as storeDiscipline } from '@/routes/admin/disciplines';
  * there is no catalogue picker yet, because GameOps publishes no catalogue
  * event to build one from.
  *
+ * The linked-account requirement (design §5.6) is a select of None or a
+ * provider; None sends null.
+ *
  * The slug follows the name until the operator edits it by hand, the way
  * every slug field in the console behaves.
  */
 const props = defineProps<{
     brands: { id: string; name: string }[];
-    options: { kind: string[] };
+    options: {
+        kind: string[];
+        linkedProvider: { value: string; label: string }[];
+    };
 }>();
 
 const open = ref(false);
@@ -42,6 +48,7 @@ const form = useForm({
     avgMatchMinutes: 30,
     allowDraws: false,
     gameId: null as string | null,
+    requiresLinkedProvider: null as string | null,
 });
 
 function slugify(value: string): string {
@@ -179,6 +186,31 @@ function submit(): void {
                     Draws are possible
                 </label>
                 <InputError :message="form.errors.allowDraws" />
+
+                <div class="grid gap-2">
+                    <Label for="discipline-linked-provider">
+                        Required linked account
+                    </Label>
+                    <select
+                        id="discipline-linked-provider"
+                        v-model="form.requiresLinkedProvider"
+                        class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
+                    >
+                        <option :value="null">None</option>
+                        <option
+                            v-for="provider in props.options.linkedProvider"
+                            :key="provider.value"
+                            :value="provider.value"
+                        >
+                            {{ provider.label }}
+                        </option>
+                    </select>
+                    <p class="text-xs text-text-muted">
+                        Everyone who enters or joins a team must have linked
+                        this account.
+                    </p>
+                    <InputError :message="form.errors.requiresLinkedProvider" />
+                </div>
 
                 <Button type="submit" :disabled="form.processing">
                     Create

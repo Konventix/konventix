@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Competition\Data;
 
 use Konventix\Competition\Enums\DisciplineKind;
+use Konventix\Competition\Enums\LinkedProvider;
 use Konventix\Competition\Models\Discipline;
 use Spatie\LaravelData\Attributes\Validation\BooleanType;
 use Spatie\LaravelData\Attributes\Validation\IntegerType;
@@ -29,6 +30,11 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * (ADR-0014), null for every kind that is not a video game. There is no
  * catalogue picker yet because GameOps publishes no catalogue event; the
  * field takes the id by hand until it does.
+ *
+ * `requiresLinkedProvider` is the linked-account signup rule (design §5.6):
+ * null for none, otherwise the provider everyone entering or joining a team
+ * must have linked. The enum keeps the console's select and the validation
+ * to the providers Competition knows.
  *
  * Uniqueness of the slug per brand is the table's index and the Action's
  * job, not a rule here.
@@ -57,6 +63,9 @@ final class DisciplineData extends Data
 
         #[Nullable, Ulid]
         public readonly ?string $gameId = null,
+
+        #[Nullable]
+        public readonly ?LinkedProvider $requiresLinkedProvider = null,
     ) {}
 
     public static function fromModel(Discipline $discipline): self
@@ -69,6 +78,7 @@ final class DisciplineData extends Data
             avgMatchMinutes: $discipline->avg_match_minutes,
             allowDraws: $discipline->allow_draws,
             gameId: $discipline->game_id,
+            requiresLinkedProvider: $discipline->requires_linked_provider,
         );
     }
 }

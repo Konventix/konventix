@@ -317,7 +317,7 @@ trying again.
 
 **Copy.** Participant copy is German. The competition page's entry panel
 says that the competition needs a linked Steam account and whether the
-viewer has one, with a link to the account's *Verknüpfte Konten* page
+viewer has one, with a link to the account's *Linked accounts* settings page
 (`/settings/linked-accounts`). The entry refusal names the teammates who
 still have to link one. The join page shows the same link beside its
 refusal. Console copy is English.
