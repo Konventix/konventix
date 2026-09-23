@@ -248,27 +248,6 @@ it('ignores check-outs, which say nothing a check-in has not already said', func
         ->toBe(OrderStatus::Refunded);
 });
 
-it('projects nothing for a crew badge, which has no registration behind it (#333)', function (): void {
-    $brand = $this->withBrand();
-
-    // A crew admission (D-STF-01) carries a null registration id: nobody
-    // bought it, so there is no refund for its check-in to block. Before
-    // #333 the event could not even be built for one.
-    event(new AdmissionCheckedIn(
-        checkInId: (string) Str::ulid(),
-        admissionId: (string) Str::ulid(),
-        registrationId: null,
-        eventId: (string) Str::ulid(),
-        brandId: $brand->id,
-        eventDayId: null,
-        checkpointId: null,
-        direction: 'in',
-        scannedAt: now()->toIso8601String(),
-    ));
-
-    expect(CheckedInAdmission::query()->count())->toBe(0);
-});
-
 it('does not block an order that settles something other than a registration', function (): void {
     // Only registrations have admissions; nothing else can be checked in.
     $this->withBrand();

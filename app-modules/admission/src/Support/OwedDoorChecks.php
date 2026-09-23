@@ -30,6 +30,12 @@ use Konventix\Admission\Models\CheckIn;
  */
 final class OwedDoorChecks
 {
+    /**
+     * Written as a literal because this module does not import
+     * `Konventix\Registration\Enums\EntryConditionVerification`: the string
+     * is the contract. `IssueAdmissionsForRegistration` filters on this same
+     * constant before telling the door.
+     */
     public const string VERIFICATION_DOCUMENT_AT_DOOR = 'document_at_door';
 
     /** The two answers the door accepts (`EntranceController`'s `Rule::in`). */

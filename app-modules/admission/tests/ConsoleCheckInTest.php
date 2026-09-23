@@ -282,6 +282,61 @@ it('refuses unanswered or unknown door checks before anything is written', funct
     Event::assertNotDispatched(CheckInRejected::class);
 });
 
+it('asks no door checks of a ticket that fails validity, and writes the door\'s admission_not_valid instead', function (): void {
+    $brand = $this->withBrand();
+    $event = consoleCheckInEvent($brand);
+    $revoked = Admission::factory()->revoked()->create([
+        'event_id' => $event['eventId'],
+        'entry_conditions' => consoleCheckInConditions(),
+    ]);
+    // The window closed the day before the clock (2026-10-16 18:00 UTC).
+    $expired = Admission::factory()
+        ->validBetween(CarbonImmutable::parse('2026-10-14 00:00:00', 'UTC'), CarbonImmutable::parse('2026-10-15 23:59:59', 'UTC'))
+        ->create([
+            'event_id' => $event['eventId'],
+            'entry_conditions' => consoleCheckInConditions(),
+        ]);
+    $actorId = (string) Str::ulid();
+
+    $revokedRow = app(CheckInFromConsole::class)->handle($revoked, $event['eventId'], $actorId, 'in');
+    // Answers sent anyway (the dialog showed the check) are dropped, not
+    // refused: the core rejects, and a rejected row carries none.
+    $expiredRow = app(CheckInFromConsole::class)->handle($expired, $event['eventId'], $actorId, 'in', [['key' => 'student', 'outcome' => 'confirmed']]);
+
+    // Derivation: both tickets owe the `student` check on a valid ticket, but
+    // one is revoked and the other's valid_until (10-15 23:59:59) is before
+    // now (10-16 18:00), so validity fails for both. They owe nothing, no
+    // ConsoleCheckInRefusedException is thrown, and the core writes
+    // `admission_not_valid` for each — not `checks_unanswered`.
+    expect($revokedRow->result)->toBe(CheckInResult::Rejected)
+        ->and($revokedRow->reason_code)->toBe(CheckInRejectionReason::AdmissionNotValid->value)
+        ->and($expiredRow->result)->toBe(CheckInResult::Rejected)
+        ->and($expiredRow->reason_code)->toBe(CheckInRejectionReason::AdmissionNotValid->value)
+        ->and($expiredRow->fresh()->conditions_checked)->toBeNull()
+        ->and(CheckIn::query()->count())->toBe(2);
+});
+
+it('asks no door checks outside every event day, and writes the door\'s outside_event_day instead', function (): void {
+    $brand = $this->withBrand();
+    $event = consoleCheckInEvent($brand);
+    $admission = Admission::factory()->create([
+        'event_id' => $event['eventId'],
+        'entry_conditions' => consoleCheckInConditions(),
+    ]);
+
+    // The calendar's only day is 2026-10-16; four days later no day covers.
+    $this->travelTo(CarbonImmutable::parse('2026-10-20 18:00:00', 'UTC'));
+
+    $checkIn = app(CheckInFromConsole::class)->handle($admission, $event['eventId'], (string) Str::ulid(), 'in');
+
+    // Derivation: a calendar exists and `dayCovering(2026-10-20)` is null, so
+    // the ticket owes nothing and the core's first check refuses:
+    // `outside_event_day`, with no day id — not `checks_unanswered`.
+    expect($checkIn->result)->toBe(CheckInResult::Rejected)
+        ->and($checkIn->reason_code)->toBe(CheckInRejectionReason::OutsideEventDay->value)
+        ->and($checkIn->event_day_id)->toBeNull();
+});
+
 it('writes a rejected row for a revoked ticket, exactly as the door does, with a sentence for the reason', function (): void {
     $brand = $this->withBrand();
     $event = consoleCheckInEvent($brand);

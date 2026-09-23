@@ -24,15 +24,15 @@ use RuntimeException;
  */
 final class ConsoleCheckInRefusedException extends RuntimeException
 {
-    public const ALREADY_IN = 'already_in';
+    public const string ALREADY_IN = 'already_in';
 
-    public const NOT_IN = 'not_in';
+    public const string NOT_IN = 'not_in';
 
-    public const CHECKS_UNANSWERED = 'checks_unanswered';
+    public const string CHECKS_UNANSWERED = 'checks_unanswered';
 
-    public const CHECKS_INVALID = 'checks_invalid';
+    public const string CHECKS_INVALID = 'checks_invalid';
 
-    public const WRONG_EVENT = 'wrong_event';
+    public const string WRONG_EVENT = 'wrong_event';
 
     public function __construct(
         public readonly string $reason,

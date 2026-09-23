@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Admission\Actions;
 
 use Carbon\CarbonInterface;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -40,7 +40,9 @@ use Konventix\Platform\Brands\BrandContext;
  * 3. The door checks the ticket owes today (`OwedDoorChecks`) must all be
  *    answered, `confirmed` or `refused`, and nothing else may be — refused
  *    likewise before any write. A `refused` answer still checks in, as at the
- *    door (ADR-0066 §5, T-8).
+ *    door (ADR-0066 §5, T-8). A ticket the core will refuse for its day or
+ *    its validity owes nothing, so the core's door-equivalent rejection is
+ *    what gets written.
  * 4. The event's console checkpoint is found or created (one per event, a
  *    partial unique index), and the core writes the row with a fresh
  *    `console-` scan id, no device, and the acting admin. Every door rule —
@@ -58,6 +60,7 @@ final class CheckInFromConsole
 
     public function __construct(
         private readonly RecordCheckIn $recordCheckIn,
+        private readonly EvaluateAdmissionValidity $evaluateValidity,
     ) {}
 
     /**
@@ -143,6 +146,14 @@ final class CheckInFromConsole
      * check-in lands on. A check-out owes nothing, so any answer to one is an
      * unknown key.
      *
+     * A ticket the core is about to refuse owes nothing either (Task 3 review
+     * M2): when no event day covers the moment, or the admission fails
+     * validity (revoked, outside its window), the answers are not asked for
+     * and not checked, and the core writes the door's own rejection —
+     * `outside_event_day` or `admission_not_valid` — rather than the console
+     * asking for a document it would then refuse anyway. A rejected row
+     * never carries answers, so nothing is lost by dropping them.
+     *
      * @param  list<array{key: string, outcome: string}>  $conditionsChecked
      * @return list<array{key: string, outcome: string}>
      */
@@ -156,7 +167,14 @@ final class CheckInFromConsole
                 ->where('event_id', $eventId)
                 ->first();
 
-            $owed = OwedDoorChecks::for($admission, $profile?->dayCovering($at)['day_id'] ?? null);
+            $dayId = $profile?->dayCovering($at)['day_id'] ?? null;
+            $outsideEveryDay = $profile !== null && ($profile->days ?? []) !== [] && $dayId === null;
+
+            if ($outsideEveryDay || ! $this->evaluateValidity->handle($admission, $at)) {
+                return [];
+            }
+
+            $owed = OwedDoorChecks::for($admission, $dayId);
         }
 
         $owedKeys = array_column($owed, 'key');
@@ -189,25 +207,46 @@ final class CheckInFromConsole
 
     /**
      * The event's one console checkpoint, created on first use. The lookup
-     * comes first so the steady state is a read; the create converges on the
-     * partial unique index when two first check-ins race
-     * (`firstOrCreate()` is a read followed by `createOrFirst()`, which
-     * inserts in a savepoint and re-reads on the violation).
+     * comes first so the steady state is a read. The insert runs in its own
+     * savepoint, so when two first check-ins race and the partial unique
+     * index refuses the second, only that savepoint aborts, and the loser
+     * re-reads the winner's row (the shape of Community's `EventRooms`).
      *
-     * `brand_id` is written explicitly — the admission's own, never the
-     * ambient context, which the admin host does not have (ADR-0010,
-     * ADR-0029) — hence the unguarded create.
+     * `brand_id` is written with `forceFill`, never mass-assigned (ADR-0010):
+     * the admission's own brand, not the ambient context, which the admin
+     * host does not have (ADR-0029).
      */
     private function consoleCheckpoint(string $brandId, string $eventId): Checkpoint
     {
-        return Model::unguarded(static fn (): Checkpoint => Checkpoint::withoutBrandScope()->firstOrCreate(
-            [
-                'brand_id' => $brandId,
-                'event_id' => $eventId,
-                'kind' => CheckpointKind::Console->value,
-            ],
-            ['name' => self::CHECKPOINT_NAME],
-        ));
+        $existing = $this->findConsoleCheckpoint($brandId, $eventId);
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        try {
+            return DB::transaction(static function () use ($brandId, $eventId): Checkpoint {
+                $checkpoint = new Checkpoint([
+                    'event_id' => $eventId,
+                    'name' => self::CHECKPOINT_NAME,
+                    'kind' => CheckpointKind::Console,
+                ]);
+                $checkpoint->forceFill(['brand_id' => $brandId])->save();
+
+                return $checkpoint;
+            });
+        } catch (UniqueConstraintViolationException $collision) {
+            return $this->findConsoleCheckpoint($brandId, $eventId) ?? throw $collision;
+        }
+    }
+
+    private function findConsoleCheckpoint(string $brandId, string $eventId): ?Checkpoint
+    {
+        return Checkpoint::withoutBrandScope()
+            ->where('brand_id', $brandId)
+            ->where('event_id', $eventId)
+            ->where('kind', CheckpointKind::Console->value)
+            ->first();
     }
 
     private function announce(ConsoleCheckInRecorded $event): void

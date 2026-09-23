@@ -2,7 +2,8 @@
 
 **Status:** accepted, amended
 
-> **Amended 2026-09-23 by the attendee-list design** (`docs/superpowers/specs/2026-09-23-attendee-list-design.md`, #329).
+> **Amended 2026-09-23 by the attendee-list design**
+> (`docs/superpowers/specs/2026-09-23-attendee-list-design.md`, #329).
 > A second, online path to a check-in exists: the operator console, which is
 > capability-gated and name-aware, and which finds a guest by name when their
 > QR code does not work. It writes through the same core as the door,

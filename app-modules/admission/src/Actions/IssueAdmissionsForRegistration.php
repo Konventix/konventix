@@ -9,6 +9,7 @@ use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Events\AdmissionIssued;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\EntranceDeltaEntry;
+use Konventix\Admission\Support\OwedDoorChecks;
 
 /**
  * Issues one `Admission` per granted admission entry on a confirmed
@@ -50,13 +51,6 @@ use Konventix\Admission\Models\EntranceDeltaEntry;
 final class IssueAdmissionsForRegistration
 {
     private const string ADMISSION_GRANT_KIND = 'admission';
-
-    /**
-     * Written as a literal for the reason `ADMISSION_GRANT_KIND` is: this
-     * module does not import `Konventix\Registration\Enums\
-     * EntryConditionVerification`, so the string is the contract.
-     */
-    private const string VERIFICATION_DOCUMENT_AT_DOOR = 'document_at_door';
 
     /**
      * @param  list<array{kind: string, role: string, quantity: int, resource_type_id: string|null}>  $grants
@@ -175,7 +169,7 @@ final class IssueAdmissionsForRegistration
     {
         $atDoor = array_values(array_filter(
             $entryConditions,
-            static fn (array $condition): bool => $condition['verification'] === self::VERIFICATION_DOCUMENT_AT_DOOR,
+            static fn (array $condition): bool => $condition['verification'] === OwedDoorChecks::VERIFICATION_DOCUMENT_AT_DOOR,
         ));
 
         if ($atDoor === []) {
