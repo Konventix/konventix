@@ -936,3 +936,202 @@ describe('claims on a pairing a correction changed (part 4, I1)', function (): v
         expect($final->fresh()->state)->toBe(MatchState::Pending);
     });
 });
+
+/*
+ * ---------------------------------------------------------------------------
+ * Round 2, N1 — a match nobody can reach is closed, so no bracket dead-ends
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * The desk records `$winnerId` the winner of `$match`, 2:0, or 2 alone on a
+ * bye — the production path (`RecordResultAtDesk`), which advances the
+ * bracket.
+ */
+function integrityTestWin(CompetitionMatch $match, string $winnerId): void
+{
+    $scores = [];
+
+    foreach (competitionSidesOf($match->fresh()) as $position => $entrantId) {
+        $scores[$position] = $entrantId === $winnerId ? 2 : 0;
+    }
+
+    app(RecordResultAtDesk::class)->handle($match->fresh(), $scores, $winnerId, (string) Str::ulid());
+}
+
+describe('matches nobody can reach (round 2, N1)', function (): void {
+    it('closes the losers\' match a disqualification and a bye left empty, and plays double elimination of three to the grand final', function (): void {
+        $this->withBrand();
+
+        [$competition, [$a, $b, $c]] = competitionFieldWithRosters(3);
+        $stage = competitionGeneratedStage($competition, 'double_elimination');
+
+        // Three entrants, bracket size 4, S(4) = [1, 4, 2, 3]:
+        //   WB r1 p1: A (seed 1) v bye        WB r1 p2: B (seed 2) v C (seed 3)
+        //   WB r2 p1: slot 1 <- winner WB r1 p1, slot 2 <- winner WB r1 p2
+        //   LB r1 p1: slot 1 <- loser WB r1 p1, slot 2 <- loser WB r1 p2
+        //   LB r2 p1: slot 1 <- winner LB r1 p1, slot 2 <- loser WB r2 p1
+        //   GF (round 3): slot 1 <- winner WB r2 p1, slot 2 <- winner LB r2 p1
+        $wb1 = integrityTestMatchIn($stage, 'winners', 1, 1);
+        $wb2 = integrityTestMatchIn($stage, 'winners', 1, 2);
+        $wbFinal = integrityTestMatchIn($stage, 'winners', 2, 1);
+        $lb1 = integrityTestMatchIn($stage, 'losers', 1, 1);
+        $lb2 = integrityTestMatchIn($stage, 'losers', 2, 1);
+        $grandFinal = integrityTestMatchIn($stage, 'grand_final', 3, 1);
+
+        expect(competitionSidesOf($wb1))->toBe([1 => $a->id])
+            ->and(competitionSidesOf($wb2))->toBe([1 => $b->id, 2 => $c->id]);
+
+        // B is disqualified before the desk has settled A's bye. Pass 1: WB r1
+        // p2 is forfeited to C; C goes to WB r2 p1 slot 2 and B, the loser, to
+        // LB r1 p1 slot 2. Pass 2: LB r1 p1's slot 1 is fed by WB r1 p1, still
+        // pending, so B is emptied out. LB r1 p1 now has no side.
+        app(DisqualifyEntrant::class)->handle($b);
+
+        expect(competitionSidesOf($lb1->fresh()))->toBe([])
+            ->and($lb1->fresh()->state)->toBe(MatchState::Pending);
+
+        // The desk settles A's bye. WB r1 p1 has no loser, so its loser edge
+        // delivers nobody: LB r1 p1 has no side and both its feeders are
+        // finished — it is closed with no winner. Before the fix it stayed
+        // pending for ever, and LB r2 p1's slot 1 waited on it for ever.
+        integrityTestWin($wb1, $a->id);
+
+        expect($lb1->fresh()->state)->toBe(MatchState::Finished)
+            ->and($lb1->fresh()->winner_entrant_id)->toBeNull()
+            ->and(competitionSidesOf($wbFinal->fresh()))->toBe([1 => $a->id, 2 => $c->id]);
+
+        // A beats C: A to the grand final's slot 1, C drops to LB r2 p1 slot
+        // 2. Its slot 1 sits behind LB r1 p1, now finished: a bye for C.
+        integrityTestWin($wbFinal, $a->id);
+
+        expect(competitionSidesOf($lb2->fresh()))->toBe([2 => $c->id]);
+
+        integrityTestWin($lb2, $c->id);
+
+        expect(competitionSidesOf($grandFinal->fresh()))->toBe([1 => $a->id, 2 => $c->id]);
+    });
+
+    it('closes a single-elimination match two disqualifications on converging paths left empty, and plays to the final', function (): void {
+        $this->withBrand();
+
+        [$competition, [$s1, $s2, $s3, $s4, $s5]] = competitionFieldWithRosters(5);
+        $stage = competitionGeneratedStage($competition);
+
+        // Five entrants, bracket size 8, S(8) = [1, 8, 4, 5, 2, 7, 3, 6]:
+        //   r1 p1: s1 v bye   r1 p2: s4 v s5   r1 p3: s2 v bye   r1 p4: s3 v bye
+        //   r2 p1 <- r1 p1 (slot 1), r1 p2 (slot 2); r2 p2 <- r1 p3, r1 p4
+        //   final (r3 p1) <- r2 p1 (slot 1), r2 p2 (slot 2)
+        expect(competitionSidesOf(competitionMatchAt($stage, 1, 1)))->toBe([1 => $s1->id])
+            ->and(competitionSidesOf(competitionMatchAt($stage, 1, 2)))->toBe([1 => $s4->id, 2 => $s5->id])
+            ->and(competitionSidesOf(competitionMatchAt($stage, 1, 3)))->toBe([1 => $s2->id])
+            ->and(competitionSidesOf(competitionMatchAt($stage, 1, 4)))->toBe([1 => $s3->id]);
+
+        // s4 beats s5 and waits in r2 p1 slot 2.
+        integrityTestWin(competitionMatchAt($stage, 1, 2), $s4->id);
+
+        // s4 is disqualified: r2 p1's slot 1 is fed by r1 p1, s1's unsettled
+        // bye, so s4 is emptied out — the awaited case. r2 p1 has no side.
+        app(DisqualifyEntrant::class)->handle($s4->refresh());
+
+        $semi = competitionMatchAt($stage, 2, 1);
+
+        expect(competitionSidesOf($semi))->toBe([])
+            ->and($semi->state)->toBe(MatchState::Pending);
+
+        // s1 is disqualified before its bye is settled: nobody is coming to
+        // r1 p1, so it finishes with no winner. Now r2 p1 has no side and
+        // both feeders are finished: closed with no winner. Before the fix it
+        // stayed pending, and the final's slot 1 waited on it for ever.
+        app(DisqualifyEntrant::class)->handle($s1->refresh());
+
+        expect($semi->fresh()->state)->toBe(MatchState::Finished)
+            ->and($semi->fresh()->winner_entrant_id)->toBeNull();
+
+        // The other half plays out: s2 and s3 take their byes, s2 beats s3
+        // and reaches the final's slot 2. Slot 1 sits behind r2 p1, finished
+        // with nobody: a bye, which the desk gives s2.
+        integrityTestWin(competitionMatchAt($stage, 1, 3), $s2->id);
+        integrityTestWin(competitionMatchAt($stage, 1, 4), $s3->id);
+        integrityTestWin(competitionMatchAt($stage, 2, 2), $s2->id);
+
+        $final = competitionMatchAt($stage, 3, 1);
+
+        expect(competitionSidesOf($final))->toBe([2 => $s2->id]);
+
+        integrityTestWin($final, $s2->id);
+
+        expect($final->fresh()->state)->toBe(MatchState::Finished)
+            ->and($final->fresh()->winner_entrant_id)->toBe($s2->id);
+    });
+
+    it('plays double elimination of five, whose two byes empty a losers\' match, to the grand final without any disqualification', function (): void {
+        $this->withBrand();
+
+        [$competition, [$s1, $s2, $s3, $s4, $s5]] = competitionFieldWithRosters(5);
+        $stage = competitionGeneratedStage($competition, 'double_elimination');
+
+        // Size 8, three winners' rounds, four losers' rounds
+        // (`DoubleEliminationGenerator`; losersRoundSize(8, r) = 2, 2, 1, 1):
+        //   WB r1: p1 s1 v bye, p2 s4 v s5, p3 s2 v bye, p4 s3 v bye
+        //   WB r2 p1 <- r1 p1, r1 p2;  WB r2 p2 <- r1 p3, r1 p4;  WB r3 p1 <- r2 p1, r2 p2
+        //   LB r1 p1 <- losers of WB r1 p1 (slot 1), p2 (slot 2)
+        //   LB r1 p2 <- losers of WB r1 p3 (slot 1), p4 (slot 2)
+        //   LB r2 p1 <- winner LB r1 p1 (slot 1), loser WB r2 p2 (slot 2, crossover)
+        //   LB r2 p2 <- winner LB r1 p2 (slot 1), loser WB r2 p1 (slot 2, crossover)
+        //   LB r3 p1 <- winners LB r2 p1 (slot 1), LB r2 p2 (slot 2)
+        //   LB r4 p1 <- winner LB r3 p1 (slot 1), loser WB r3 p1 (slot 2)
+        //   GF (round 4) <- winner WB r3 p1 (slot 1), winner LB r4 p1 (slot 2)
+        $wb = fn (int $round, int $position): CompetitionMatch => integrityTestMatchIn($stage, 'winners', $round, $position);
+        $lb = fn (int $round, int $position): CompetitionMatch => integrityTestMatchIn($stage, 'losers', $round, $position);
+
+        expect(competitionSidesOf($wb(1, 1)))->toBe([1 => $s1->id])
+            ->and(competitionSidesOf($wb(1, 2)))->toBe([1 => $s4->id, 2 => $s5->id])
+            ->and(competitionSidesOf($wb(1, 3)))->toBe([1 => $s2->id])
+            ->and(competitionSidesOf($wb(1, 4)))->toBe([1 => $s3->id]);
+
+        // The three byes. WB r1 p3 and p4 have no loser, so LB r1 p2 gets
+        // nobody from either: once both are settled it has no side behind
+        // finished feeders and is closed. Before the fix it stayed pending
+        // with no side, and LB r2 p2 waited on it for ever.
+        integrityTestWin($wb(1, 1), $s1->id);
+        integrityTestWin($wb(1, 3), $s2->id);
+
+        expect($lb(1, 2)->state)->toBe(MatchState::Pending);
+
+        integrityTestWin($wb(1, 4), $s3->id);
+
+        expect($lb(1, 2)->state)->toBe(MatchState::Finished)
+            ->and($lb(1, 2)->winner_entrant_id)->toBeNull()
+            // LB r1 p1 got s1's bye's nobody, but WB r1 p2 is still to play:
+            // it stays open.
+            ->and($lb(1, 1)->state)->toBe(MatchState::Pending);
+
+        // s4 beats s5: s5 drops to LB r1 p1 slot 2, a bye behind WB r1 p1.
+        integrityTestWin($wb(1, 2), $s4->id);
+        expect(competitionSidesOf($lb(1, 1)))->toBe([2 => $s5->id]);
+        integrityTestWin($lb(1, 1), $s5->id);
+
+        // WB r2 p1: s1 beats s4; s4 drops to LB r2 p2 slot 2, a bye behind
+        // LB r1 p2 (closed).
+        integrityTestWin($wb(2, 1), $s1->id);
+        expect(competitionSidesOf($lb(2, 2)))->toBe([2 => $s4->id]);
+        integrityTestWin($lb(2, 2), $s4->id);
+
+        // WB r2 p2: s2 beats s3; s3 drops to LB r2 p1 slot 2 against s5.
+        integrityTestWin($wb(2, 2), $s2->id);
+        expect(competitionSidesOf($lb(2, 1)))->toBe([1 => $s5->id, 2 => $s3->id]);
+        integrityTestWin($lb(2, 1), $s3->id);
+
+        // LB r3 p1: s3 (slot 1) beats s4 (slot 2).
+        expect(competitionSidesOf($lb(3, 1)))->toBe([1 => $s3->id, 2 => $s4->id]);
+        integrityTestWin($lb(3, 1), $s3->id);
+
+        // WB r3 p1: s1 beats s2; s2 drops to LB r4 p1 slot 2 against s3.
+        integrityTestWin($wb(3, 1), $s1->id);
+        expect(competitionSidesOf($lb(4, 1)))->toBe([1 => $s3->id, 2 => $s2->id]);
+        integrityTestWin($lb(4, 1), $s2->id);
+
+        expect(competitionSidesOf(integrityTestMatchIn($stage, 'grand_final', 4, 1)))->toBe([1 => $s1->id, 2 => $s2->id]);
+    });
+});

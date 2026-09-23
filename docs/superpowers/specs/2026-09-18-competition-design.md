@@ -1675,3 +1675,25 @@ A leaderboard stage saved without a unit now gets *Punkte*, not *pts*.
 Stages saved earlier keep the *pts* they stored. The public standings print
 the stage's `decimals` with a German decimal comma (`formatScore()`).
 
+
+### §7.1/§8.2, 2026-09-23 (fix wave A, round 2) — a match nobody can reach is closed
+
+An edge can deliver nobody: a bye has no loser, and a match that a
+disqualification finished has no winner. A match whose every feeder has
+finished without delivering anybody has no side, and nothing can ever give it
+one. The desk cannot record a match against nobody (`guardEverySideHasArrived`
+refuses an empty one), so it stayed open for ever, and the match it feeds
+waited on it for ever. Three shapes reached it: a disqualification in double
+elimination in front of an unsettled bye; two disqualifications on converging
+paths in single elimination; and **double elimination with five entrants and
+no disqualification at all**, where two winners'-bracket byes feed the same
+losers'-bracket round-1 match.
+
+`AdvanceBracket` now asks every match an advanced match feeds: open, no side,
+every feeder finished? Then it is finished with no winner, a `recorded`
+history row says why in German, and it advances in turn, so "nobody" travels
+on and the next match sees an empty slot behind a finished feeder — the bye
+rule. It runs after every settlement, so no generation-time step is needed:
+the desk settles the byes anyway, and the last one to settle closes the empty
+match behind them. No `MatchFinished` goes out for it: nothing was played and
+nothing was announced.
