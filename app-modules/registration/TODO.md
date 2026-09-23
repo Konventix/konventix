@@ -6,6 +6,13 @@
 
 ## Next
 
+- [x] The ticket type reaches Admission (#329, attendee list Task 2).
+      `RegistrationConfirmed` gains a trailing `registrationTypeName`, and
+      `RegistrationStandingAnnounced` trailing `registrationTypeId`,
+      `registrationTypeName` and `status`, all optional (ADR-0004,
+      additive). `registration:announce-standing` fills them, escaping
+      BrandScope on the `registrationType` relation.
+
 - [x] Entry conditions, end to end (round 4, Task 31, ADR-0066 slice B1;
       D-REG-19/20/21/22/23/24). The console (`/admin/entry-conditions`:
       index, editor with a character budget and a live preview of the

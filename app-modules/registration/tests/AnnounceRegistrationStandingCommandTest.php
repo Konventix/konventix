@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
 use Konventix\Compliance\Models\AuditLogEntry;
+use Konventix\Platform\Brands\BrandContext;
+use Konventix\Platform\Operators\OperatorContext;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationRejected;
 use Konventix\Registration\Events\RegistrationStandingAnnounced;
 use Konventix\Registration\Events\RegistrationSubmitted;
 use Konventix\Registration\Models\Registration;
+use Konventix\Registration\Models\RegistrationType;
 
 /**
  * `registration:announce-standing` re-emits the narrow
@@ -81,4 +84,33 @@ it('walks the table in chunks so a large operator does not load every registrati
     $this->artisan('registration:announce-standing', ['--chunk' => 2])->assertSuccessful();
 
     Event::assertDispatchedTimes(RegistrationStandingAnnounced::class, 3);
+});
+
+it('carries the type id, the type name and the status even though the command runs with no brand in context', function (): void {
+    $brand = $this->withBrand();
+    $type = RegistrationType::factory()->create(['name' => 'Weekend Pass']);
+    $cancelled = Registration::factory()->forType($type)->cancelled()->create();
+
+    // What an unattended run looks like at its worst: no brand, and an
+    // operator in context, which hardens BrandScope to `1 = 0`. Without the
+    // per-relation escape the type would read as null here.
+    app(BrandContext::class)->forget();
+    app(OperatorContext::class)->set($brand->operator);
+
+    Event::fake([RegistrationStandingAnnounced::class]);
+
+    $this->artisan('registration:announce-standing')->assertSuccessful();
+
+    // Expected values, by hand: the type was created with the name
+    // 'Weekend Pass'; the factory's cancelled() state sets the status to
+    // RegistrationStatus::Cancelled, whose value is 'cancelled', and a
+    // cancelled registration is not confirmed, so `confirmed` stays false.
+    Event::assertDispatched(
+        RegistrationStandingAnnounced::class,
+        fn (RegistrationStandingAnnounced $event): bool => $event->registrationId === $cancelled->id
+            && $event->registrationTypeId === $type->id
+            && $event->registrationTypeName === 'Weekend Pass'
+            && $event->status === 'cancelled'
+            && $event->confirmed === false,
+    );
 });

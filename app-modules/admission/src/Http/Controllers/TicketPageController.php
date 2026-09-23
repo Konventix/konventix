@@ -18,6 +18,7 @@ use Konventix\Admission\Models\AdmissionSeat;
 use Konventix\Admission\Models\CheckIn;
 use Konventix\Admission\Models\EventSummary;
 use Konventix\Admission\Models\Person;
+use Konventix\Admission\Support\TicketReference;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use Konventix\Platform\Slots\SlotRegistry;
@@ -79,7 +80,7 @@ final class TicketPageController
             isManager: $isManager,
             checkedIn: $checkedIn,
             qrSvg: $this->qr->svg($this->tokens->current($admission)),
-            doorCode: $this->doorCode($admission->id),
+            doorCode: TicketReference::of($admission->id),
             seat: $seat === null ? null : new TicketSeatData(
                 bookingId: $seat->booking_id,
                 placeRef: $seat->place_ref,
@@ -129,12 +130,5 @@ final class TicketPageController
         }
 
         return $this->dates->date($admission->valid_from).' – '.$this->dates->date($admission->valid_until);
-    }
-
-    private function doorCode(string $admissionId): string
-    {
-        $tail = strtoupper(substr($admissionId, -8));
-
-        return substr($tail, 0, 4).'-'.substr($tail, 4, 4);
     }
 }

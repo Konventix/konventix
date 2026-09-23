@@ -11,6 +11,7 @@ use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\AdmissionSeat;
 use Konventix\Admission\Models\EventSummary;
 use Konventix\Admission\Models\Person;
+use Konventix\Admission\Support\TicketReference;
 use Konventix\Platform\Documents\DocumentWatermark;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Brand;
@@ -214,7 +215,7 @@ final class TicketDocumentRenderer
             // (D-ADM-07); `BadgeDocumentRenderer` is untouched.
             'entryConditions' => $this->entryConditionLinesFor($admission),
             'banner' => $banner,
-            'doorCode' => $this->doorCode($admission->id),
+            'doorCode' => TicketReference::of($admission->id),
             'qr' => $this->qr->dataUri($this->issueAdmissionToken->current($admission)),
             'operatorLegalName' => $operatorLegalName,
             'brandName' => $brand?->name,
@@ -283,12 +284,5 @@ final class TicketDocumentRenderer
         }
 
         return $this->dates->date($admission->valid_from).' – '.$this->dates->date($admission->valid_until);
-    }
-
-    private function doorCode(string $admissionId): string
-    {
-        $tail = strtoupper(substr($admissionId, -8));
-
-        return substr($tail, 0, 4).'-'.substr($tail, 4, 4);
     }
 }

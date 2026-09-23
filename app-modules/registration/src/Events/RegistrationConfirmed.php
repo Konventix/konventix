@@ -31,6 +31,12 @@ namespace Konventix\Registration\Events;
  * Registration table to do it. Empty for every type that declares none,
  * which is every type that existed before this feature.
  *
+ * `registrationTypeName` is the type's name at the moment of confirmation,
+ * so Admission can label a ticket in the attendee list without reading a
+ * `RegistrationType` (attendee-list design §3, #329). Trailing and optional
+ * (ADR-0004, additive): every dispatcher written before it still compiles,
+ * and a consumer that reads it treats null as "not carried".
+ *
  * @phpstan-type GrantPayload array{kind: string, role: string, quantity: int, resource_type_id: string|null, resource_type_ids: list<string>|null, seating_mode: string|null}
  * @phpstan-type EntryConditionPayload array{key: string, label: string, verification: string, document_hint: string|null}
  */
@@ -49,5 +55,6 @@ final class RegistrationConfirmed
         public readonly string $confirmedAt,
         public readonly array $grants,
         public readonly array $entryConditionKeys = [],
+        public readonly ?string $registrationTypeName = null,
     ) {}
 }

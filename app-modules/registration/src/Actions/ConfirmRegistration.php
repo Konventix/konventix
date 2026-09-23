@@ -112,6 +112,9 @@ final class ConfirmRegistration
                 // — Admission stamps them and never reads a Registration
                 // table (ADR-0004).
                 entryConditionKeys: $this->entryConditionKeysOf($registrationType),
+                // #329: the attendee list's ticket type label. A scalar, so
+                // Admission never reads a RegistrationType (ADR-0004).
+                registrationTypeName: $registrationType->name,
             ));
 
             return $registration->refresh();

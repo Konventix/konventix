@@ -6,6 +6,7 @@ namespace Konventix\Registration\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Collection;
+use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Events\RegistrationStandingAnnounced;
 use Konventix\Registration\Models\Registration;
@@ -36,7 +37,12 @@ final class AnnounceRegistrationStandingCommand extends Command
         $chunk = max(1, (int) $this->option('chunk'));
         $announced = 0;
 
+        // The command runs with no brand in context, and `registrationType`
+        // re-applies BrandScope on the related model, so escaping the parent
+        // alone would read the type as null wherever the scope hardens
+        // (.ai/rules/app-modules-src.md, `LoadsRegistrationType`).
         Registration::withoutBrandScope()
+            ->with(['registrationType' => fn ($q) => $q->withoutGlobalScope(BrandScope::class)])
             ->orderBy('id')
             ->chunkById($chunk, function (Collection $registrations) use (&$announced): void {
                 /** @var Registration $registration */
@@ -47,6 +53,11 @@ final class AnnounceRegistrationStandingCommand extends Command
                         brandId: $registration->brand_id,
                         registrantUserId: $registration->registrant_user_id,
                         confirmed: $registration->status === RegistrationStatus::Confirmed,
+                        // #329: Admission's registration summary (the
+                        // attendee list's ticket type and status).
+                        registrationTypeId: $registration->registration_type_id,
+                        registrationTypeName: $registration->registrationType?->name,
+                        status: $registration->status->value,
                     ));
 
                     $announced++;

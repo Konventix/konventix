@@ -29,6 +29,14 @@ namespace Konventix\Registration\Events;
  * now. A cancelled or rejected registration announces `false`, so a
  * consumer that learned of a confirmation earlier unlearns it.
  *
+ * `registrationTypeId`, `registrationTypeName` and `status` were added for
+ * Admission's registration summary (attendee-list design §3, §4.4, #329):
+ * the ticket type label and the registration's status as the console shows
+ * them. All three are trailing and optional (ADR-0004, additive), so an
+ * emitter written before them still compiles; `status` is the
+ * `RegistrationStatus` value, and a consumer that finds it null falls back
+ * to `confirmed`.
+ *
  * Scalars only (ADR-0004).
  */
 final readonly class RegistrationStandingAnnounced
@@ -39,5 +47,8 @@ final readonly class RegistrationStandingAnnounced
         public string $brandId,
         public string $registrantUserId,
         public bool $confirmed,
+        public ?string $registrationTypeId = null,
+        public ?string $registrationTypeName = null,
+        public ?string $status = null,
     ) {}
 }

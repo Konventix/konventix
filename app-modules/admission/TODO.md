@@ -6,6 +6,17 @@
 
 ## Next (Phase 1 PoC — admissions produced by the one registration flow)
 
+- [x] Registration summary and one ticket reference for the attendee list
+      (#329, Task 2). `admission_registration_summaries`
+      (`Models\RegistrationSummary`, projected by
+      `ProjectRegistrationSummary`) carries the ticket type label and the
+      registration's status, off `RegistrationConfirmed`'s new trailing
+      `registrationTypeName`, `RegistrationCancelled` and the widened
+      `RegistrationStandingAnnounced`; `registration:announce-standing`
+      backfills it. `Support\TicketReference` replaces the two private
+      `doorCode()` copies in `TicketDocumentRenderer` and
+      `TicketPageController`, and gives the list its `searchFragment()`.
+
 - [x] A brand gets an entrance signing key when it is created (#287).
       Platform raises `BrandCreated`, `MintEntranceSigningKeyOnBrandCreated`
       mints through `Actions\EnsureEntranceSigningKey` — idempotent, so a

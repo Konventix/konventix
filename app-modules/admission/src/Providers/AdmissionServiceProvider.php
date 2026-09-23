@@ -42,6 +42,7 @@ use Konventix\Admission\Listeners\ProjectEventSummary;
 use Konventix\Admission\Listeners\ProjectPerson;
 use Konventix\Admission\Listeners\ProjectPresenceOnAdmissionCheckedIn;
 use Konventix\Admission\Listeners\ProjectReentryPolicyOnEventReentryPolicyChanged;
+use Konventix\Admission\Listeners\ProjectRegistrationSummary;
 use Konventix\Admission\Listeners\RevokeAdmissionsOnRegistrationCancelled;
 use Konventix\Admission\Listeners\RevokeUnitsOnRegistrationQuantityReduced;
 use Konventix\Admission\Metrics\AdmissionMetrics;
@@ -76,6 +77,7 @@ use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationOwnershipAnnounced;
 use Konventix\Registration\Events\RegistrationQuantityReduced;
+use Konventix\Registration\Events\RegistrationStandingAnnounced;
 use Konventix\Resources\Events\ResourceBookingConfirmed;
 use Konventix\Resources\Events\ResourceBookingReleased;
 use Konventix\Staffing\Events\AssignmentAccepted;
@@ -257,6 +259,13 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         Event::listen(VenueAssigned::class, [ProjectEventSummary::class, 'handleVenueAssigned']);
         Event::listen(VenueUpdated::class, [ProjectEventSummary::class, 'handleVenueUpdated']);
         Event::listen(VenueUnassigned::class, [ProjectEventSummary::class, 'handleVenueUnassigned']);
+
+        // The attendee list's ticket type and the registration's status
+        // (#329, attendee-list design §3, §4.4). The standing announcement is
+        // the backfill, and only a projection may listen to it.
+        Event::listen(RegistrationConfirmed::class, [ProjectRegistrationSummary::class, 'handleConfirmed']);
+        Event::listen(RegistrationCancelled::class, [ProjectRegistrationSummary::class, 'handleCancelled']);
+        Event::listen(RegistrationStandingAnnounced::class, [ProjectRegistrationSummary::class, 'handleStandingAnnounced']);
 
         // Which place each admission sits on (#292 §5), off Resources'
         // *confirmed* booking — a hold must never reach a ticket.

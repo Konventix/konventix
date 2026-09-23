@@ -123,6 +123,17 @@ reading either.
   Admission may not read Event's models directly (ADR-0004), so this exists
   even though Registration keeps a similarly-shaped copy for its own mail
   path — two read models, not two owners.
+- **`Models\RegistrationSummary`** (`admission_registration_summaries`) —
+  this module's own read model of a registration's type id, type name and
+  status, one row per registration (attendee-list design §3, §4.4, #329).
+  The attendee list labels each ticket with the type from here and the
+  ticket detail shows the registration's status; neither reads
+  Registration's tables (ADR-0004). Projected by
+  `Listeners\ProjectRegistrationSummary` from `RegistrationConfirmed`
+  (`confirmed`), `RegistrationCancelled` (flips an existing row to
+  `cancelled`, never creates one: the event carries no brand) and the
+  backfill `RegistrationStandingAnnounced` (`registration:announce-standing`).
+  A null type id or name in a payload never overwrites a stored one.
 - **`admissions.buyer_user_id`** — the registrant who paid for or submitted
   the registration this admission came from, threaded from
   `RegistrationConfirmed`/`RegistrationAmended` and backfilled for
@@ -272,6 +283,7 @@ maintains from them.
 | `RegistrationQuantityReduced` (D-REG-15) | Registration | The act got **smaller**, so exactly `removed_grants`' admission units end. `RevokeUnitsForRegistration` picks them cheapest-first — unassigned, unclaimed and unseated before unassigned-with-a-live-claim-link, whose link is revoked with the admission — and never an admission with a holder, a row in `admission_seats` or an accepted check-in. Fewer free than asked for is a **refusal**: `NotEnoughFreeAdmissionsException` naming how many there are, thrown from a synchronous listener inside Registration's own transaction, which rolls the whole reduction back and stops Commerce's queued refund from ever being pushed. Idempotent per `admissions.reduction_id`, the subtractive twin of `amendment_id`; reason `registration_quantity_reduced`, with N × `AdmissionRevoked` and N `KIND_REVOKED` delta rows |
 | `UserRegistered`, `UserProfileUpdated` | Identity | Maintain `Models\Person`, the holder-name read model the ticket and the badge fallback both read (ADR-0061). Backfilled by `identity:replay-profiles` |
 | `EventCreated`, `EventRescheduled`, `EventDetailsUpdated`, `VenueAssigned`, `VenueUpdated`, `VenueUnassigned` | Event | Maintain `Models\EventSummary` (`admission_event_summaries`): times and timezone from the first two, venue label from the venue events, name/slug patched (not replaced) from `EventDetailsUpdated`. Backfilled by `event:replay-details`, which since this feature also re-fires `VenueAssigned` for each event's primary venue |
+| `RegistrationConfirmed`, `RegistrationCancelled`, `RegistrationStandingAnnounced` | Registration | `ProjectRegistrationSummary` (#329): maintain `Models\RegistrationSummary` (`admission_registration_summaries`), the attendee list's ticket type and the registration's status, from `RegistrationConfirmed.registration_type_name` and the standing announcement's trailing `registration_type_id`, `registration_type_name` and `status`. Backfilled by `registration:announce-standing`; only a projection listens to that event |
 | `RegistrationOwnershipAnnounced` | Registration | Backfills `admissions.buyer_user_id` for rows that predate the column — the replay-safe counterpart to `RegistrationConfirmed`/`RegistrationAmended`, which already carry `registrantUserId` going forward |
 | `UserAnonymizationRequested` (proposed) | Compliance | Hand the request to this module's `src/Gdpr/` handler; check-in records are attendance data and need an explicit answer |
 | `ResourceBookingConfirmed`, `ResourceBookingReleased` | Resources | `ProjectAdmissionSeat` (#292 §5): maintain `Models\AdmissionSeat` (`admission_seats`) — the place bound to an admission, for the ticket page and the ticket PDF — from a *confirmed* booking that names an `admissionId`, deleted again when that booking is released. A hold never reaches a ticket; a booking naming no admission is nobody's seat here |

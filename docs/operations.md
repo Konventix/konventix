@@ -279,7 +279,10 @@ It joins the manual post-rollout backfills, which are now
 `identity:replay-profiles`, `event:replay-details`,
 `registration:announce-ownership`, `registration:announce-standing`
 (competition eligibility for registrations written without events, such as
-the hand-run Eventula import), `admission:announce-ownership` and
+the hand-run Eventula import, and since 0.9.1 Admission's
+`admission_registration_summaries`: the attendee list's ticket type and
+registration status; until it has run, a ticket issued before 0.9.1 shows no
+type in the list), `admission:announce-ownership` and
 `identity:announce-social-identities`. On the cluster:
 
     kubectl --context rancher -n konventix exec <web pod> -- php artisan identity:announce-social-identities
