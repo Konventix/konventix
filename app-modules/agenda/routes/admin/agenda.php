@@ -26,6 +26,9 @@ Route::get('/events/{event}/agenda', [AgendaAdminController::class, 'edit'])->na
 // Tracks and places, saved as whole sets by the page's one form.
 Route::put('/events/{event}/agenda', [AgendaAdminController::class, 'update'])->name('admin.events.agenda.update');
 
+// The competition selection (design §4.5, D-AGD-02), a whole set of its own.
+Route::put('/events/{event}/agenda/competitions', [AgendaAdminController::class, 'updateCompetitions'])->name('admin.events.agenda.competitions.update');
+
 // Items, one at a time — publishing and cancelling are separate acts with
 // separate announcements behind them (design §7), so they are separate
 // endpoints and not a `state` field on the form.

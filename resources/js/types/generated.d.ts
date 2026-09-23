@@ -219,6 +219,21 @@ declare namespace Konventix {
                 readonly startsAt: string | null;
                 readonly endsAt: string | null;
             };
+            export type CompetitionEntryData = {
+                readonly competitionId: string;
+                readonly trackId: string | null;
+                readonly position: number;
+            };
+            export type CompetitionSelectionRowData = {
+                readonly competitionId: string;
+                readonly name: string;
+                readonly startsAt: string | null;
+                readonly cancelled: boolean;
+                readonly withdrawn: boolean;
+                readonly selected: boolean;
+                readonly trackId: string | null;
+                readonly position: number;
+            };
             export type LocationData = {
                 readonly id: string | null;
                 readonly name: string;

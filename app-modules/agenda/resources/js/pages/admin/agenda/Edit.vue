@@ -24,6 +24,7 @@ import {
     store as storeItemRoute,
     update as updateItemRoute,
 } from '@/routes/admin/events/agenda/items';
+import CompetitionSelection from '../../../components/admin/CompetitionSelection.vue';
 
 /**
  * The programme editor (design §6): tracks, places and items for one
@@ -74,6 +75,7 @@ type Props = {
     locations: Konventix.Agenda.Data.LocationData[];
     items: ItemRow[];
     days: { day_id: string; date: string; label: string | null }[];
+    competitions: Konventix.Agenda.Data.CompetitionSelectionRowData[];
 };
 
 const props = defineProps<Props>();
@@ -507,6 +509,13 @@ const stateBadgeClass: Record<string, string> = {
                 </span>
             </div>
         </form>
+
+        <!-- The competition half (design §4.5, D-AGD-02): its own form. -->
+        <CompetitionSelection
+            :event-id="props.event.id"
+            :competitions="props.competitions"
+            :tracks="props.tracks"
+        />
 
         <Card class="border-border bg-surface">
             <CardHeader><CardTitle>Items</CardTitle></CardHeader>

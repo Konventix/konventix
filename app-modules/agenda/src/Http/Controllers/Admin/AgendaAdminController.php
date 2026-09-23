@@ -13,9 +13,12 @@ use Inertia\Response;
 use Konventix\Agenda\Actions\CancelAgendaItem;
 use Konventix\Agenda\Actions\PublishAgendaItem;
 use Konventix\Agenda\Actions\SaveAgendaItem;
+use Konventix\Agenda\Actions\SaveCompetitionSelection;
 use Konventix\Agenda\Actions\SaveLocations;
 use Konventix\Agenda\Actions\SaveTracks;
 use Konventix\Agenda\Data\AgendaItemData;
+use Konventix\Agenda\Data\CompetitionEntryData;
+use Konventix\Agenda\Data\CompetitionSelectionRowData;
 use Konventix\Agenda\Data\LocationData;
 use Konventix\Agenda\Data\TrackData;
 use Konventix\Agenda\Enums\Permission;
@@ -87,6 +90,13 @@ final class AgendaAdminController
                 'cancelledReason' => $item->cancelled_reason,
             ])->all(),
             'days' => $summary->programmeDays(),
+            // The event's competitions and the organizer's pick of them
+            // (design §4.5, D-AGD-02), withdrawn selections included — see
+            // `CompetitionSelectionRowData`.
+            'competitions' => array_map(
+                static fn (CompetitionSelectionRowData $row): array => $row->toArray(),
+                CompetitionSelectionRowData::ofEvent($summary->event_id, $summary->brand_id),
+            ),
         ]);
     }
 
@@ -131,6 +141,43 @@ final class AgendaAdminController
         ));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Programme saved.')]);
+
+        return to_route('admin.events.agenda.edit', $summary->event_id);
+    }
+
+    /**
+     * Which of the event's competitions the programme shows, under which
+     * track and in what order (design §4.5, D-AGD-02) — a whole set, like
+     * tracks and places, but its own form and endpoint: the selection is
+     * the half of the editor that reads Competition's announcements, and
+     * a refused competition must not cost the operator a track rename.
+     *
+     * The rules are `CompetitionEntryData`'s, lifted onto `competitions.*.`
+     * exactly as `update()` lifts `TrackData`'s. Whether the ids belong to
+     * *this* event is the Action's check, keyed the same way.
+     */
+    public function updateCompetitions(Request $request, string $event, SaveCompetitionSelection $saveCompetitionSelection): RedirectResponse
+    {
+        Gate::authorize(Permission::ManageAgenda->value);
+
+        $summary = $this->summary($event);
+
+        $rules = [
+            'competitions' => ['present', 'array'],
+        ];
+
+        foreach (CompetitionEntryData::rules() as $field => $rule) {
+            $rules["competitions.*.{$field}"] = $rule;
+        }
+
+        $validated = $request->validate($rules);
+
+        $saveCompetitionSelection->handle($summary->event_id, $summary->brand_id, array_map(
+            static fn (array $entry): CompetitionEntryData => CompetitionEntryData::from($entry),
+            array_values((array) ($validated['competitions'] ?? [])),
+        ));
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Competition selection saved.')]);
 
         return to_route('admin.events.agenda.edit', $summary->event_id);
     }
