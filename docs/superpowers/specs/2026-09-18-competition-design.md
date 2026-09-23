@@ -1561,3 +1561,19 @@ no history row: §8.6 has no kind for it, and the `reported` rows already on
 the timeline stay as the record of what was said. `ConfirmMatchResult` and
 `ReportMatchResult` also read only claims by an entrant who stands in the
 match now.
+
+### §13, 2026-09-23 (final review fix wave A) — erasing a captain hands the team on
+
+The §13 entry "erasure forgets the author, not the words" keeps team
+membership as public record, so an erased captain's membership row stays.
+Before this fix the **captain role** stayed with it, on an account nobody
+could sign in to any more. The team could then no longer check itself in,
+withdraw or get a new invite code for the rest of the event, because all
+three are captain-only.
+
+Controller ruling (final review, part 4, I3): erasure hands the captaincy to
+the longest-standing remaining member, which is `MaintainsTeamRoster`'s rule
+for a captain who leaves (`created_at`, then `id`). The erased person's row
+stays as a plain member. A team with nobody else on it keeps no captain, and
+the desk steps in. `CompetitionGdprHandler::delete()` does this for every
+team the person captains, whatever the state of its competitions.

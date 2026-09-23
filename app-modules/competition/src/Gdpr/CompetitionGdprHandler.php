@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Competition\Gdpr;
 
+use Konventix\Competition\Enums\TeamRole;
 use Konventix\Competition\Models\AdmissionPresence;
 use Konventix\Competition\Models\CompetitionInterest;
 use Konventix\Competition\Models\CompetitionTeamMember;
@@ -81,6 +82,14 @@ use Konventix\Compliance\Gdpr\SubjectRef;
  * bracket would falsify the tournament rather than protect them, and a
  * membership row is a pair of ULIDs whose name now renders from Identity's
  * tombstone through the projection above.
+ *
+ * **Captaincy is the one thing a membership loses.** The row stays, but an
+ * erased captain can no longer check the team in, withdraw it or renew its
+ * invite code, and those are captain-only. So erasure hands the captaincy to
+ * the longest-standing remaining member — `MaintainsTeamRoster`'s rule for a
+ * captain who leaves — and a team with nobody else is left without a captain,
+ * for the desk to step in (design §14, controller ruling on final review
+ * part 4, I3).
  */
 final class CompetitionGdprHandler implements GdprHandler
 {
@@ -187,6 +196,8 @@ final class CompetitionGdprHandler implements GdprHandler
         // for what is deliberately left standing.
         ParticipantProfile::query()->whereKey($subject->userId)->delete();
 
+        $this->handOverCaptaincy($subject->userId);
+
         CompetitionInterest::withoutBrandScope()
             ->where('user_id', $subject->userId)
             ->delete();
@@ -232,5 +243,33 @@ final class CompetitionGdprHandler implements GdprHandler
         MatchHistoryEntry::withoutBrandScope()
             ->where('actor_user_id', $subject->userId)
             ->update(['actor_user_id' => null]);
+    }
+
+    /**
+     * Every team the person captains passes to its longest-standing other
+     * member (`created_at`, then `id`, the order `rotateCaptaincy()` uses);
+     * with nobody else on it, the team keeps no captain. Idempotent: a second
+     * run finds the person captaining nothing.
+     */
+    private function handOverCaptaincy(string $userId): void
+    {
+        $captaincies = CompetitionTeamMember::withoutBrandScope()
+            ->where('user_id', $userId)
+            ->where('role', TeamRole::Captain->value)
+            ->get();
+
+        foreach ($captaincies as $captaincy) {
+            $captaincy->forceFill(['role' => TeamRole::Member])->save();
+
+            /** @var CompetitionTeamMember|null $successor */
+            $successor = CompetitionTeamMember::withoutBrandScope()
+                ->where('competition_team_id', $captaincy->competition_team_id)
+                ->where('user_id', '!=', $userId)
+                ->orderBy('created_at')
+                ->orderBy('id')
+                ->first();
+
+            $successor?->forceFill(['role' => TeamRole::Captain])->save();
+        }
     }
 }

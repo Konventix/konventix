@@ -6,9 +6,13 @@ use Illuminate\Support\Str;
 use Konventix\Competition\Actions\ReportMatchResult;
 use Konventix\Competition\Data\LeaderboardSettings;
 use Konventix\Competition\Data\MatchReportData;
+use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\ResultSubmissionMode;
+use Konventix\Competition\Enums\TeamRole;
 use Konventix\Competition\Gdpr\CompetitionGdprHandler;
 use Konventix\Competition\Models\Competition;
+use Konventix\Competition\Models\CompetitionTeam;
+use Konventix\Competition\Models\CompetitionTeamMember;
 use Konventix\Competition\Models\EligibleRegistration;
 use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\MatchHistoryEntry;
@@ -17,6 +21,8 @@ use Konventix\Competition\Models\ScoreEntry;
 use Konventix\Competition\Models\Stage;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\SubjectRef;
+use Konventix\Event\Events\EventCreated;
+use Konventix\Event\Events\EventPublished;
 
 /**
  * Design §13: `CompetitionGdprHandler` exports what a person did here —
@@ -142,4 +148,76 @@ it('forgets the person on every row that stays, eligibility included', function 
     expect($export['result_reports'])->toBe([])
         ->and($export['score_entries'])->toBe([])
         ->and($export['match_history'])->toBe([]);
+});
+
+it('hands an erased captain\'s team to its longest-standing member, leaves a team of one captainless, and the pages still render', function (): void {
+    // Controller ruling on final review part 4, I3 (design §14): erasure keeps
+    // the membership row but not the captaincy, which would otherwise sit on
+    // a forgotten account and lock the team out of check-in, withdrawal and
+    // a new invite code for the rest of the event.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+
+    $eventId = (string) Str::ulid();
+    event(new EventCreated(
+        eventId: $eventId,
+        brandId: (string) $brand->getKey(),
+        slug: 'sxlan-27',
+        name: 'SXLan 27',
+        startsAt: '2026-11-20 10:00:00',
+        endsAt: '2026-11-22 18:00:00',
+        timezone: 'Europe/Berlin',
+        predecessorEventId: null,
+    ));
+    event(new EventPublished(eventId: $eventId, brandId: (string) $brand->getKey(), publishedAt: '2026-10-01T10:00:00+00:00'));
+
+    [$competition, [$full, $alone], $members] = competitionFieldWithRosters(2, ['event_id' => $eventId, 'slug' => 'main-cup']);
+    $stage = competitionGeneratedStage($competition);
+    $competition->forceFill(['status' => CompetitionStatus::Running])->save();
+
+    $captain = $members[$full->id];
+    $loneCaptain = $members[$alone->id];
+
+    // Two more on the full team, joining a minute apart: the first of them
+    // has stood longest after the captain.
+    $joined = [];
+
+    foreach (['first', 'second'] as $which) {
+        $this->travel(1)->minutes();
+
+        $joined[$which] = (string) Str::ulid();
+        $member = new CompetitionTeamMember([
+            'competition_team_id' => $full->competition_team_id,
+            'user_id' => $joined[$which],
+            'role' => TeamRole::Member,
+        ]);
+        $member->forceFill(['brand_id' => $full->brand_id])->save();
+    }
+
+    $handler = new CompetitionGdprHandler;
+    $handler->delete(SubjectRef::forUser($captain), DeletionMode::Erase);
+    $handler->delete(SubjectRef::forUser($loneCaptain), DeletionMode::Erase);
+
+    /** @var CompetitionTeam $fullTeam */
+    $fullTeam = CompetitionTeam::query()->findOrFail($full->competition_team_id);
+    /** @var CompetitionTeam $loneTeam */
+    $loneTeam = CompetitionTeam::query()->findOrFail($alone->competition_team_id);
+
+    // The full team: the captain's row stays, as a member; the member who
+    // joined first captains now; the later one is still a member.
+    expect($fullTeam->captain()?->user_id)->toBe($joined['first'])
+        ->and($fullTeam->isCaptain($captain))->toBeFalse()
+        ->and(CompetitionTeamMember::query()->where('competition_team_id', $fullTeam->id)->where('user_id', $captain)->value('role'))->toBe(TeamRole::Member)
+        ->and(CompetitionTeamMember::query()->where('competition_team_id', $fullTeam->id)->count())->toBe(3)
+        // The lone captain's team has nobody to hand to: no captain, the desk
+        // steps in. The row stays.
+        ->and($loneTeam->captain())->toBeNull()
+        ->and(CompetitionTeamMember::query()->where('competition_team_id', $loneTeam->id)->count())->toBe(1);
+
+    // And the public pages of the team and its match still render.
+    $match = competitionMatchAt($stage, 1, 1);
+
+    $this->get('/events/sxlan-27/tournaments/main-cup/teams/'.$full->competition_team_id)->assertOk();
+    $this->app->forgetScopedInstances();
+    $this->get('/events/sxlan-27/tournaments/main-cup/matches/'.$match->id)->assertOk();
 });
