@@ -64,17 +64,25 @@ final class StartCompetition
         });
     }
 
+    /**
+     * The **first** stage decides, because `Running` means the first stage
+     * is drawn and started (§4). A leaderboard counts as ready undrawn; a
+     * later leaderboard stage behind an undrawn bracket does not (review
+     * fix round, M1).
+     */
     private function guardGeneratedStage(Competition $competition): void
     {
-        $generated = Stage::withoutBrandScope()
+        /** @var Stage|null $first */
+        $first = Stage::withoutBrandScope()
             ->where('brand_id', $competition->brand_id)
             ->where('competition_id', $competition->id)
-            ->where(fn ($query) => $query
-                ->whereNotNull('generated_at')
-                ->orWhere('format', StageFormat::Leaderboard->value))
-            ->exists();
+            ->orderBy('sequence')
+            ->orderBy('id')
+            ->first();
 
-        if (! $generated) {
+        $ready = $first !== null && ($first->generated_at !== null || $first->format === StageFormat::Leaderboard->value);
+
+        if (! $ready) {
             throw IllegalCompetitionStateTransitionException::forPrecondition(
                 $competition->id,
                 'no stage has been generated yet — draw the bracket first.',

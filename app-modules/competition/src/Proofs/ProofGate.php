@@ -71,21 +71,35 @@ final class ProofGate
      * proof that is missing, a proof sent to a competition that takes none,
      * or an id that is not one of `$brandId`'s media items.
      *
+     * **The desk is exempt from the demand** (design §14, fix round). A
+     * `required` policy is what participants owe; the desk has no upload
+     * control (#322) and the participant pages tell people the desk collects
+     * the proof, so an organizer entering a result without one is the
+     * designed path, not a gap. A proof the desk does send is still checked
+     * like any other. The refusals speak the caller's language (ADR-0001):
+     * English to the desk, German to a participant.
+     *
      * @param  string  $brandId  the brand the submission belongs to, from its parent row (ADR-0010)
      * @param  string  $field  the form field a refusal is attributed to
+     * @param  bool  $asOrganizer  the desk's path: no proof is demanded, and refusals are English
      *
      * @throws ValidationException when a required proof is missing, an
      *                             unsolicited one is refused, or the id names
      *                             media the brand does not own
      */
-    public function resolve(?Competition $competition, string $brandId, ?string $proofMediaId, string $field = 'proofMediaId'): ?string
-    {
+    public function resolve(
+        ?Competition $competition,
+        string $brandId,
+        ?string $proofMediaId,
+        string $field = 'proofMediaId',
+        bool $asOrganizer = false,
+    ): ?string {
         // A competition that cannot be resolved is not a reason to refuse a
         // result: `Optional` is the reading that neither demands nor drops.
         $policy = $competition->proof_policy ?? ProofPolicy::Optional;
 
         if ($proofMediaId === null) {
-            if ($policy->demandsProof()) {
+            if ($policy->demandsProof() && ! $asOrganizer) {
                 throw ValidationException::withMessages([
                     $field => __('Dieses Turnier braucht zu jedem Ergebnis ein Beweisbild.'),
                 ]);
@@ -96,7 +110,9 @@ final class ProofGate
 
         if (! $policy->acceptsProof()) {
             throw ValidationException::withMessages([
-                $field => __('Dieses Turnier nimmt keine Beweisbilder an.'),
+                $field => $asOrganizer
+                    ? __('This competition does not take proof images.')
+                    : __('Dieses Turnier nimmt keine Beweisbilder an.'),
             ]);
         }
 
@@ -104,7 +120,9 @@ final class ProofGate
         // answer whether a ULID names another brand's media.
         if (! $this->media->belongsToBrand($proofMediaId, $brandId)) {
             throw ValidationException::withMessages([
-                $field => __('Dieses Beweisbild ist unbekannt. Lade es bitte erneut hoch.'),
+                $field => $asOrganizer
+                    ? __('That proof image is not one of this brand\'s media items.')
+                    : __('Dieses Beweisbild ist unbekannt. Lade es bitte erneut hoch.'),
             ]);
         }
 
