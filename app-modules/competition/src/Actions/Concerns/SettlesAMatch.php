@@ -18,11 +18,12 @@ use Konventix\Competition\Models\MatchSlot;
  * standings are recomputed.
  *
  * Shared by `ReportMatchResult` (when the second side's report agrees with
- * the first), `ConfirmMatchResult` and `ResolveDispute`, because all three
- * end in the same place by different routes and a copy each would be three
- * chances to forget the recompute. `DisqualifyEntrant` already does the first
- * two by hand for a forfeit and is left alone: it settles a whole field of
- * matches in one pass.
+ * the first), `ConfirmMatchResult`, `RecordResultAtDesk` and `ResolveDispute`,
+ * because all four end in the same place by different routes and a copy each
+ * would be four chances to forget the recompute. `DisqualifyEntrant` records
+ * and advances each forfeit by hand, because a forfeit against an opponent
+ * who is not there yet is not a settle at all, and recomputes every stage
+ * once at the end of its pass.
  *
  * It also holds the **position ↔ entrant** translation. A report is keyed by
  * slot position (§8.2) because a correction can re-route who stands in a slot
@@ -164,18 +165,27 @@ trait SettlesAMatch
      */
     protected function guardEverySideHasArrived(CompetitionMatch $match, array $sides): void
     {
-        $awaited = $sides === [] || MatchConnection::withoutBrandScope()
+        if ($sides === [] || $this->awaitsASide($match, $sides)) {
+            throw ResultSubmissionException::sideStillToCome($match->id);
+        }
+    }
+
+    /**
+     * Whether an empty slot of this match is fed by a match that is not
+     * finished yet — somebody is still on the way into it.
+     *
+     * @param  array<int, string>  $sides  position => entrant ULID, filled slots only
+     */
+    protected function awaitsASide(CompetitionMatch $match, array $sides): bool
+    {
+        return MatchConnection::withoutBrandScope()
             ->where('brand_id', $match->brand_id)
             ->where('target_match_id', $match->id)
-            ->whereNotIn('target_slot', array_keys($sides))
+            ->whereNotIn('target_slot', $sides === [] ? [0] : array_keys($sides))
             ->whereIn('source_match_id', CompetitionMatch::withoutBrandScope()
                 ->select('id')
                 ->where('brand_id', $match->brand_id)
                 ->where('state', '!=', MatchState::Finished->value))
             ->exists();
-
-        if ($awaited) {
-            throw ResultSubmissionException::sideStillToCome($match->id);
-        }
     }
 }

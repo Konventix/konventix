@@ -5,10 +5,12 @@ declare(strict_types=1);
 use Illuminate\Support\Str;
 use Konventix\Competition\Actions\ConfirmMatchResult;
 use Konventix\Competition\Actions\CorrectMatchResult;
+use Konventix\Competition\Actions\DisqualifyEntrant;
 use Konventix\Competition\Actions\RecordResultAtDesk;
 use Konventix\Competition\Actions\ReportMatchResult;
 use Konventix\Competition\Actions\ResolveDispute;
 use Konventix\Competition\Data\MatchReportData;
+use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Enums\ResultSubmissionMode;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
@@ -16,6 +18,9 @@ use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\Discipline;
 use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\MatchResultReport;
+use Konventix\Competition\Models\MatchSlot;
+use Konventix\Competition\Models\Stage;
+use Konventix\Competition\Models\Standing;
 
 /**
  * Bracket and result correctness: the defects the Competition final review
@@ -63,6 +68,51 @@ function integrityTestStoredClaim(CompetitionMatch $match, string $entrantId, ar
     $report->forceFill(['brand_id' => $match->brand_id])->save();
 
     $match->forceFill(['reported_at' => now()])->save();
+}
+
+/**
+ * One match of a double-elimination stage. `competitionMatchAt()` cannot
+ * tell them apart: the winners' and the losers' bracket both have a round 1
+ * position 1.
+ */
+function integrityTestMatchIn(Stage $stage, string $bracket, int $round, int $position): CompetitionMatch
+{
+    /** @var CompetitionMatch $match */
+    $match = CompetitionMatch::query()
+        ->where('stage_id', $stage->getKey())
+        ->where('bracket', $bracket)
+        ->where('round', $round)
+        ->where('position', $position)
+        ->firstOrFail();
+
+    return $match;
+}
+
+/**
+ * The match of a stage in which the two entrants meet.
+ */
+function integrityTestMatchBetween(Stage $stage, string $one, string $other): CompetitionMatch
+{
+    foreach (CompetitionMatch::query()->where('stage_id', $stage->getKey())->get() as $match) {
+        $sides = competitionSidesOf($match);
+
+        if (in_array($one, $sides, true) && in_array($other, $sides, true)) {
+            return $match;
+        }
+    }
+
+    throw new RuntimeException('The two entrants never meet in this stage.');
+}
+
+/**
+ * How many open (pending, scheduled, live) matches still hold the entrant.
+ */
+function integrityTestOpenMatchesOf(string $entrantId): int
+{
+    return CompetitionMatch::query()
+        ->whereIn('id', MatchSlot::query()->select('competition_match_id')->where('entrant_id', $entrantId))
+        ->whereIn('state', [MatchState::Pending->value, MatchState::Scheduled->value, MatchState::Live->value])
+        ->count();
 }
 
 /*
@@ -204,5 +254,138 @@ describe('the winner on every settle path (part 1, I1)', function (): void {
         // Nothing stamped: the dispute is still the desk's to decide.
         expect($first->fresh()->isDisputed())->toBeTrue()
             ->and($first->fresh()->state)->toBe(MatchState::Pending);
+    });
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * I2 — a disqualification never dead-ends the bracket (final review, part 1)
+ * ---------------------------------------------------------------------------
+ */
+
+describe('disqualification (part 1, I2)', function (): void {
+    it('empties the slot in front of an opponent still to come, who then takes the match as a bye', function (): void {
+        $this->withBrand();
+
+        [$competition] = competitionFieldWithRosters(4);
+        $stage = competitionGeneratedStage($competition);
+        $first = competitionMatchAt($stage, 1, 1);
+        $second = competitionMatchAt($stage, 1, 2);
+        [$a] = array_values(competitionSidesOf($first));
+        [$c] = array_values(competitionSidesOf($second));
+
+        $desk = (string) Str::ulid();
+
+        // A wins match 1 and waits in the final's slot 1; match 2 (C v D) is
+        // still being played.
+        app(RecordResultAtDesk::class)->handle($first, [1 => 2, 2 => 0], $a, $desk);
+
+        $forfeited = app(DisqualifyEntrant::class)->handle(integrityTestEntrant($a));
+
+        $final = competitionMatchAt($stage, 2, 1);
+
+        // The final's slot 2 is fed by match 2, which is pending: the
+        // opponent is still to come, so nothing is forfeited — A's slot is
+        // emptied and the final stays open. Before the fix the final was
+        // finished with no winner here, and C, arriving later, was put into
+        // a match that was already over and never advanced.
+        expect($forfeited)->toBe([])
+            ->and($final->state)->toBe(MatchState::Pending)
+            ->and($final->winner_entrant_id)->toBeNull()
+            ->and(competitionSidesOf($final))->toBe([]);
+
+        // C beats D and arrives in slot 2. Slot 1 is empty behind a finished
+        // feeder (match 1): a bye, which the desk settles for C.
+        app(RecordResultAtDesk::class)->handle($second->fresh(), [1 => 2, 2 => 0], $c, $desk);
+
+        expect(competitionSidesOf($final->fresh()))->toBe([2 => $c]);
+
+        app(RecordResultAtDesk::class)->handle($final->fresh(), [2 => 1], $c, $desk);
+
+        expect($final->fresh()->state)->toBe(MatchState::Finished)
+            ->and($final->fresh()->winner_entrant_id)->toBe($c);
+    });
+
+    it('never leaves a disqualified team in the losers\' bracket', function (): void {
+        $this->withBrand();
+
+        [$competition] = competitionFieldWithRosters(4);
+        $stage = competitionGeneratedStage($competition, 'double_elimination');
+
+        // Four entrants, bracket size 4, two winners' rounds
+        // (`DoubleEliminationGenerator`):
+        //   WB r1 p1: seed 1 v seed 4        WB r1 p2: seed 2 v seed 3
+        //   LB r1 p1: slot 1 <- loser of WB r1 p1, slot 2 <- loser of WB r1 p2
+        //   LB r2 p1: slot 1 <- winner of LB r1 p1, slot 2 <- loser of WB r2 p1
+        $wb1 = integrityTestMatchIn($stage, 'winners', 1, 1);
+        $wb2 = integrityTestMatchIn($stage, 'winners', 1, 2);
+        $lb1 = integrityTestMatchIn($stage, 'losers', 1, 1);
+        $lb2 = integrityTestMatchIn($stage, 'losers', 2, 1);
+        [$a, $d] = array_values(competitionSidesOf($wb1));
+        [$b, $c] = array_values(competitionSidesOf($wb2));
+
+        $forfeited = app(DisqualifyEntrant::class)->handle(integrityTestEntrant($a));
+
+        // Pass 1: WB r1 p1, D present — forfeited 1:0 to D. The forfeit makes
+        // A its loser, and the loser edge drops A into LB r1 p1 slot 1.
+        // Pass 2: LB r1 p1 holds A, and its slot 2 waits on WB r1 p2, which
+        // is pending — A's slot is emptied. Pass 3: nothing holds A.
+        // Before the fix the list was taken once, before the first forfeit,
+        // so A stayed in the losers' bracket.
+        expect($forfeited)->toBe([$wb1->id])
+            ->and($wb1->fresh()->winner_entrant_id)->toBe($d)
+            ->and(competitionSidesOf($lb1->fresh()))->toBe([])
+            ->and(integrityTestOpenMatchesOf($a))->toBe(0);
+
+        // B beats C: C drops into LB r1 p1 slot 2 and meets nobody — slot 1
+        // sits behind WB r1 p1, finished — so the desk gives C the bye and C
+        // moves on to LB r2 p1 slot 1.
+        $desk = (string) Str::ulid();
+
+        app(RecordResultAtDesk::class)->handle($wb2->fresh(), [1 => 2, 2 => 0], $b, $desk);
+
+        expect(competitionSidesOf($lb1->fresh()))->toBe([2 => $c]);
+
+        app(RecordResultAtDesk::class)->handle($lb1->fresh(), [2 => 1], $c, $desk);
+
+        expect(competitionSidesOf($lb2->fresh()))->toBe([1 => $c]);
+    });
+
+    it('recomputes the standings, and the disqualified entrant leaves them', function (): void {
+        $this->withBrand();
+
+        [$competition] = competitionFieldWithRosters(3);
+        $stage = competitionGeneratedStage($competition, 'round_robin');
+
+        // Three entrants play three matches (the circle method adds a virtual
+        // fourth, whose pairing each round is a bye).
+        $field = Entrant::query()->where('competition_id', $competition->getKey())->orderBy('seed')->pluck('id')->all();
+        [$a, $b, $c] = array_map(strval(...), $field);
+
+        $ab = integrityTestMatchBetween($stage, $a, $b);
+        $abSides = competitionSidesOf($ab);
+        $aPosition = (int) array_search($a, $abSides, true);
+
+        // A beats B at the desk; the settle recomputes: B is in the table.
+        app(RecordResultAtDesk::class)->handle($ab, [$aPosition => 2, 3 - $aPosition => 0], $a, (string) Str::ulid());
+
+        expect(Standing::query()->where('stage_id', $stage->getKey())->pluck('entrant_id')->all())->toContain($b);
+
+        app(DisqualifyEntrant::class)->handle(integrityTestEntrant($b));
+
+        // B v C is forfeited 1:0 to C. The recompute ranks the field, which no
+        // longer holds B, and `PointsStandingsCalculator` skips every match
+        // with a side outside the field — so A's win over B and C's forfeit
+        // win over B both drop out. A and C have no counted match left:
+        // 0 points and 0 difference each, which is a tie for 1st.
+        // Before the fix nothing recomputed, and B stayed at its old place.
+        $table = Standing::query()->where('stage_id', $stage->getKey())->get()->keyBy('entrant_id');
+
+        expect(integrityTestEntrant($b)->state)->toBe(EntrantState::Disqualified)
+            ->and($table->keys()->sort()->values()->all())->toBe(collect([$a, $c])->sort()->values()->all())
+            ->and($table[$a]->placement)->toBe(1)
+            ->and($table[$c]->placement)->toBe(1)
+            ->and($table[$a]->points)->toBe(0)
+            ->and($table[$c]->points)->toBe(0);
     });
 });

@@ -1433,3 +1433,38 @@ refusals are English on the desk and German to a participant (ADR-0001).
 `StartCompetition` now reads the **first** stage: it has to be drawn or be a
 leaderboard. A later leaderboard stage behind an undrawn bracket no longer
 lets a competition start ("A leaderboard needs no draw to start").
+
+### §5.5, 2026-09-23 (final review fix wave A) — a disqualification in front of an opponent still to come
+
+§5.5 says a disqualification forfeits the entrant's pending matches, "each
+recorded as a forfeit result through `RecordMatchResult`, so the bracket
+advances the normal way". It is silent on a pending match whose other side
+has not arrived yet, which is the common case: a team that won round 1 is
+disqualified while its round-2 opponent is still playing. The first build
+finished that match with no winner. The opponent, once it arrived, landed in
+a match that was already over and never advanced, and the next opponent
+downstream was handed a walkover by the bye rule.
+
+`DisqualifyEntrant` now tells three shapes apart:
+
+- **The opponent is there.** A 1–0 forfeit, as §5.5 says.
+- **The opponent is still to come.** Nothing is recorded. The disqualified
+  entrant's slot is emptied, and the match stays open. Its feeder is
+  finished, so when the opponent arrives the empty slot reads as a **bye**,
+  and the desk settles it the way it settles every bye: by giving the lone
+  side the match. This is the conservative reading. Settling the bye
+  automatically when the opponent arrives would change what `AdvanceBracket`
+  does for every bye, and nothing else in the module finishes a match
+  without somebody deciding it.
+- **Nobody is coming** (the other slot is a bye). The match is finished with
+  no winner, so the slot it feeds becomes a bye for whoever arrives there.
+
+The pass loops until no pending, scheduled or live match still holds the
+entrant, because in double elimination a forfeit routes the disqualified
+entrant on as the loser, into the losers' bracket, where the next pass takes
+it out again. Afterwards every drawn stage (and a leaderboard) is
+recomputed once: the forfeits move wins and points, and the disqualified
+entrant leaves the table.
+
+Emptying the slot writes no history row. §8.6 has no kind for it, and the
+disqualification itself is on the entrant.
