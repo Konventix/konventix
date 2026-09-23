@@ -730,6 +730,9 @@ membership in a side, captaincy, and the §5.1 gate.
 
 ## 12. Events
 
+*(Reconciled against the code in Task 8: §14, "§12 reconciled against the
+code", is the list as emitted, with the real payloads. `SPEC.md` carries it.)*
+
 Added to the public contract (all ULIDs and scalars):
 
 | Event | Payload |
@@ -1182,7 +1185,7 @@ lists what is emitted, with its real payload.
 | `EntrantCheckedIn` | `…` | Adds `event_id`, `brand_id`, `checked_in_at`, `via_self_service` | Code is right. There is no undo event (see §6's entry above). |
 | `MatchResultReported`, `MatchDisputed` | `match_id`, `competition_id`, `entrant_id`, `user_id`, `at` | Adds `brand_id` | Code is right. |
 | `MatchDisputeResolved` | As above | Adds `brand_id`; `entrant_id` is the side the decision went to, and null for a draw | Code is right. The resolution note is left off the payload deliberately (`SPEC.md`). |
-| `MatchRescheduled`, `MatchCancelled` | "As proposed in the SPEC" | Neither is emitted | They stay proposed. A reschedule already emits `MatchScheduled` again with the new time, which is the upsert a consumer needs. No Action cancels a single match. GameOps' consumer (#115, 0.10) decides whether either is still needed. |
+| `MatchRescheduled`, `MatchCancelled` | "As proposed in the SPEC" | Neither is emitted | They stay proposed. A reschedule already emits `MatchScheduled` again with the new time, which is the upsert a consumer needs. *(Corrected in the fix round: an earlier version said no Action cancels a single match. Three paths retract an announced match without an event; see "`MatchScheduled` has no retraction yet" below.)* GameOps' consumer (#179, 0.10) adds `MatchCancelled`. |
 | `MatchScheduled` | Gains `member_user_ids` per side | It had, but it was emitted for a match with an empty slot | **§12 and ADR-0012 are right, and the code was changed.** The event means "this match is on, at this time, between these sides". GameOps configures a server with the rosters, so a match with a side still to come has nothing to provision. `ScheduleMatch` now emits it only when every slot holds a side. `AdvanceBracket` emits it when it fills the last slot of a match the desk has already timed, which is the common case: the desk times round two before round one is decided. `CorrectMatchResult` emits it again when a voided match that keeps its time is on again between new sides. A bye is never announced. Consumers treat the event as an upsert keyed on `match_id`. |
 | `MatchFinished`, `MatchResultCorrected` | Not in §12 (ADR-0012, D-CMP-12) | Add `brand_id` | Unchanged. |
 
@@ -1203,9 +1206,8 @@ the first is covered by its own screen and the new
 `KonventixCompetitionDisputeWaiting` alert (§8.4's entry above). At the event,
 the sides see the dispute on the match page and as *Streitfall offen* on the
 *Nächste Spiele* card (§10a), and a check-in shows on the *Meine
-Competitions* card. The two notices are owed in `TODO.md` rather than built
-here, because they add mail without adding anything the hall cannot already
-see.
+Competitions* card. *(Superseded in the fix round: both notices are built;
+see "The two §12 notices" below.)*
 
 **Naming.** §7.3's `SignupSeedSource` does not exist under that name. Its
 job is split in two. `SignupField` decides who is in the field and in which
@@ -1370,3 +1372,64 @@ gives for every other join refusal. The proof gate's refusals, the upload's
 image check, the dispute and verified-score refusals and the reason a
 counter-report writes into the match history are German as well. The desk's
 own heat refusal stays English.
+
+### §12, 2026-09-23 (Task 8 fix round) — `MatchScheduled` has no retraction yet
+
+`MatchScheduled` is an upsert keyed on `match_id` (see "§12 reconciled").
+There is no event that takes an announcement back, and three paths need one.
+GameOps 0.10 must add it before it provisions on `MatchScheduled`:
+
+1. **A redraw deletes announced matches silently.** `RegenerateBracket` is
+   allowed in `Running` until the first result, and `ResetStage` in
+   `SignupClosed`. Both refuse after a *result*, not after a *schedule*, so
+   timed and announced matches disappear without an event.
+2. **A correction can empty a slot of an announced, unplayed match.**
+   `CorrectMatchResult::reroute()` clears a downstream slot whose feeder no
+   longer has a winner. The match keeps its time, and its last announcement
+   still names the side that is gone.
+3. **A voided match is announced again and finishes without a second
+   `MatchFinished`.** `CorrectMatchResult::void()` re-announces a timed
+   voided match with its new sides. When it is played again,
+   `finished_event_emitted_at` keeps D-CMP-12 true, so GameOps never hears the
+   replay end and gets no teardown for a second deployment.
+
+The controller ruled on 2026-09-23 that 0.9.0 documents this and does not
+build `MatchCancelled`. Nothing consumes `MatchScheduled` before GameOps 0.10,
+and the 0.10 brainstorm already decided to add `MatchCancelled` (#179), so
+the contract's shape belongs there. Whatever it takes, it must cover the three
+paths above. For (3) it must also say how a replay's deployment ends: either
+`MatchCancelled` before the re-announcement, or `MatchResultCorrected` plus
+the later result as the end.
+
+### §12, 2026-09-23 (Task 8 fix round) — the two §12 notices
+
+The two notices the reconciliation deferred are built, one template and one
+call each, and both are sent after the commit. They are skipped for a brand
+that has `competition` off, and a failed send never fails the Action:
+
+- `competition.match-disputed` goes from `DisputeMatchResult`, on a direct
+  dispute and on a contradicting counter-report alike. It goes to every
+  roster member of the other side, whose claim or result was contested.
+  §12 names the desk as the reader of "the desk is notified", but Competition
+  keeps no list of who is on the desk (§8.4's entry above). So the desk keeps
+  its screen and the alert, and the notice goes to the side that did not
+  raise the dispute.
+- `competition.checked-in` goes from `CheckInEntrant` to the roster. When the
+  captain checked the team in themselves, it goes to everybody except the
+  captain. When the desk did it, it goes to everybody. A second click, which
+  is a no-op, sends nothing.
+
+### §8.3, 2026-09-23 (Task 8 fix round) — the desk owes no proof
+
+A `required` proof policy is what participants owe. The desk has no upload
+control (#322), and the participant pages already say the desk collects the
+result and the proof (§10's entry above). Before this fix, the desk could not
+enter a score for a `required` competition at all: `SubmitScoreEntry` asked
+`ProofGate` on the desk path too. The organizer path is now exempt from the
+demand. A proof the desk does send is still checked, and the gate's
+refusals are English on the desk and German to a participant (ADR-0001).
+`RecordResultAtDesk` and `ResolveDispute` never asked for a proof.
+
+`StartCompetition` now reads the **first** stage: it has to be drawn or be a
+leaderboard. A later leaderboard stage behind an undrawn bracket no longer
+lets a competition start ("A leaderboard needs no draw to start").

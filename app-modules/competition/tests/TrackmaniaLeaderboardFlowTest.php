@@ -44,8 +44,10 @@ use Konventix\Platform\Models\MediaItem;
  *
  * Times by hand, lower is better, one best time each: Sabine 41.900 s,
  * Tom 41.950 s, and Mia 43.000 s rejected and then 42.500 s. The ranking is
- * Sabine 1st, Tom 2nd, Mia 3rd. All three are exact in binary floating point
- * to the column's three decimals, so `toBe()` is safe.
+ * Sabine 1st, Tom 2nd, Mia 3rd. 41.9, 41.95 and 42.5 are not all exact in
+ * binary floating point (only 42.5 is), so the values are compared with
+ * `toEqual()` after the column's decimal string is cast, and the ranking by
+ * placement, which no rounding can move.
  *
  * Helper names prefixed: Pest helpers are process-global
  * (`.ai/rules/tests.md`).

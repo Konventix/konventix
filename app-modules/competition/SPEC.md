@@ -372,8 +372,13 @@ design's §12 and why.
 **Proposed, not emitted.** `MatchRescheduled` (`match_id`, `competition_id`,
 `previous_scheduled_at`, `scheduled_at`) and `MatchCancelled` (`match_id`,
 `competition_id`, `cancelled_at`, `reason`): a reschedule already re-emits
-`MatchScheduled`, and no Action cancels a single match. GameOps' consumer
-(#115) decides whether either is still needed. `CompetitionUnpublished`
+`MatchScheduled`. **`MatchScheduled` has no retraction in 0.9.0**, and three
+paths need one before GameOps consumes it: a redraw (`RegenerateBracket`,
+`ResetStage`) deletes announced matches without an event; a correction can
+empty a slot of an announced, unplayed match; and a correction re-announces a
+voided match that finishes again with no second `MatchFinished`. GameOps
+0.10 (#179) owns that contract and has decided to add `MatchCancelled` (design
+§14, "`MatchScheduled` has no retraction yet"). `CompetitionUnpublished`
 (`competition_id`, `event_id`, `brand_id`, `unpublished_at`) is owed before
 Agenda's competition half ships (design §14).
 

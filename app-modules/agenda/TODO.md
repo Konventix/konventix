@@ -14,14 +14,13 @@ halves; the first is done and the second is below.
       — the programme editor's selection of which of the event's competitions
       appear — and `agenda_competitions`, the read model projected from
       Competition's `CompetitionPublished` / `CompetitionRescheduled` /
-      `CompetitionCancelled`. **Blocked on #296**, which gives Competition a
-      `starts_at` and those lifecycle events; Agenda may not query
-      Competition's tables (ADR-0004), so there is nothing to build until
-      then. Competition owns the start time and Agenda never writes it
+      `CompetitionCancelled`. #296 gave Competition a `starts_at` and those
+      lifecycle events; Agenda may not query Competition's tables
+      (ADR-0004), so they are the only way in. Competition owns the start
+      time and Agenda never writes it
       (D-AGD-03); a selected competition renders as an open-ended block until
       #117's duration estimator can answer an end (D-AGD-02).
-      #296 has landed, so this is no longer blocked on it. **One
-      precondition remains, on Competition's side:** `UnpublishCompetition`
+      **One precondition remains, on Competition's side:** `UnpublishCompetition`
       emits no event, so a competition unpublished after it was selected
       would stay in the public programme. Competition must add
       `CompetitionUnpublished(competitionId, eventId, brandId,

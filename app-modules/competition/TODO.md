@@ -164,9 +164,12 @@ Found on the way and not built. Each one is still true as of #302.
       it.
 - [ ] **`CompetitionUnpublished`** before Agenda's competition half ships
       (design §14; Agenda's `TODO.md` names it as its precondition).
-- [ ] **Two notices §12 names**: "a match was disputed" to the side that
-      reported, and "checked in" to the roster. The hub cards and the match
-      page show both today (design §14, "§12 reconciled").
+- [x] **Two notices §12 names** (fix round): `competition.match-disputed`
+      to the other side of a dispute, `competition.checked-in` to the roster.
+- [ ] **A retraction for `MatchScheduled`** before GameOps consumes it:
+      redraws, a correction that empties a slot and a re-announced void all
+      go unannounced today. GameOps 0.10 (#179) adds `MatchCancelled`
+      (design §14, "`MatchScheduled` has no retraction yet").
 - [ ] **A contact view** behind `ViewEntrantContacts`, once a read model
       carries contact data (design §14).
 - [ ] **The admin navigation's module gate**: the console entries stay
