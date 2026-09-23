@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useHttp } from '@inertiajs/vue3';
 import { ImageOff, Upload, X } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref, useId, watch } from 'vue';
 import MediaAdminController from '@/actions/Konventix/Platform/Http/Controllers/Admin/MediaAdminController';
 import InputError from '@/components/InputError.vue';
@@ -133,16 +134,19 @@ function submitUpload(): void {
         onError: (errors) => {
             const first = Object.values(errors as Record<string, string>)[0];
 
-            uploadError.value = first ?? 'The upload was refused.';
+            uploadError.value = first ?? trans('The upload was refused.');
         },
         onNetworkError: () => {
-            uploadError.value =
-                'The upload did not reach the server. Try again.';
+            uploadError.value = trans(
+                'The upload did not reach the server. Try again.',
+            );
 
             return false;
         },
         onHttpException: () => {
-            uploadError.value = 'The upload failed on the server. Try again.';
+            uploadError.value = trans(
+                'The upload failed on the server. Try again.',
+            );
 
             return false;
         },
@@ -167,7 +171,7 @@ function submitUpload(): void {
             </span>
             <div class="flex flex-col items-start gap-1">
                 <p class="text-sm text-text-muted">
-                    {{ selected?.originalFilename ?? 'Bundled default' }}
+                    {{ selected?.originalFilename ?? $t('Bundled default') }}
                 </p>
                 <div class="flex gap-2">
                     <Button
@@ -177,7 +181,7 @@ function submitUpload(): void {
                         :aria-describedby="describedBy"
                         @click="open = true"
                     >
-                        Choose
+                        {{ $t('Choose') }}
                     </Button>
                     <Button
                         v-if="modelValue"
@@ -187,7 +191,7 @@ function submitUpload(): void {
                         @click="emit('update:modelValue', null)"
                     >
                         <X class="size-4" />
-                        Clear
+                        {{ $t('Clear') }}
                     </Button>
                 </div>
             </div>
@@ -200,8 +204,12 @@ function submitUpload(): void {
                     <DialogDescription>
                         {{
                             uploadOffered
-                                ? "Images in this brand's media library, or a new one from your disk."
-                                : "Images uploaded to this brand's media library. Upload new files under Media."
+                                ? $t(
+                                      "Images in this brand's media library, or a new one from your disk.",
+                                  )
+                                : $t(
+                                      "Images uploaded to this brand's media library. Upload new files under Media.",
+                                  )
                         }}
                     </DialogDescription>
                 </DialogHeader>
@@ -209,12 +217,14 @@ function submitUpload(): void {
                 <form
                     v-if="uploadOffered"
                     class="flex flex-col gap-2 rounded-md border border-border bg-surface-muted p-3"
-                    aria-label="Upload a new image"
+                    :aria-label="$t('Upload a new image')"
                     @submit.prevent="submitUpload"
                 >
                     <div class="flex flex-wrap items-end gap-3">
                         <div class="grid min-w-0 flex-1 gap-1">
-                            <Label :for="fileInputId">New image</Label>
+                            <Label :for="fileInputId">{{
+                                $t('New image')
+                            }}</Label>
                             <input
                                 :id="fileInputId"
                                 type="file"
@@ -231,7 +241,7 @@ function submitUpload(): void {
                         </div>
                         <div class="grid min-w-0 flex-1 gap-1">
                             <Label :for="`${fileInputId}-alt`">
-                                Alt text (optional)
+                                {{ $t('Alt text (optional)') }}
                             </Label>
                             <Input
                                 :id="`${fileInputId}-alt`"
@@ -244,7 +254,7 @@ function submitUpload(): void {
                             :disabled="uploadFile === null || upload.processing"
                         >
                             <Upload class="size-4" />
-                            Upload and use
+                            {{ $t('Upload and use') }}
                         </Button>
                     </div>
                     <div :id="`${fileInputId}-error`">
@@ -255,15 +265,15 @@ function submitUpload(): void {
                 <Input
                     v-model="search"
                     type="search"
-                    placeholder="Filter by filename"
-                    :aria-label="`Filter ${label} candidates`"
+                    :placeholder="$t('Filter by filename')"
+                    :aria-label="$t('Filter :label candidates', { label })"
                 />
 
                 <p
                     v-if="matches.length === 0"
                     class="py-8 text-center text-sm text-text-muted"
                 >
-                    Nothing to choose from yet.
+                    {{ $t('Nothing to choose from yet.') }}
                 </p>
                 <ul
                     v-else

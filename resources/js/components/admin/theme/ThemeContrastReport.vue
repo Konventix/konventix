@@ -37,7 +37,7 @@ const rows = computed(() =>
         <div
             class="text-xs font-semibold tracking-wide text-text-muted uppercase"
         >
-            Contrast (BFSG, ADR-0008)
+            {{ $t('Contrast (BFSG, ADR-0008)') }}
         </div>
         <ul class="space-y-1.5">
             <li
@@ -46,22 +46,24 @@ const rows = computed(() =>
                 class="flex items-center justify-between gap-2 text-xs"
             >
                 <span class="text-text-muted">
-                    <code>--{{ row.text }}</code> on
+                    <code>--{{ row.text }}</code> {{ $t('on') }}
                     <code>--{{ row.surface }}</code>
                 </span>
                 <Badge :variant="row.passes ? 'secondary' : 'destructive'">
                     {{
                         row.ratio === null
-                            ? 'invalid color'
+                            ? $t('invalid color')
                             : `${row.ratio.toFixed(2)}:1`
                     }}
                 </Badge>
             </li>
         </ul>
         <p class="text-[11px] text-text-muted">
-            Estimate only — the server re-checks every pair the save touches on
-            submit and refuses a non-compliant save rather than warning about
-            it.
+            {{
+                $t(
+                    'Estimate only — the server re-checks every pair the save touches on submit and refuses a non-compliant save rather than warning about it.',
+                )
+            }}
         </p>
     </div>
 </template>

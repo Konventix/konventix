@@ -25,7 +25,12 @@ const environment = computed(() => page.props.environment ?? null);
     <aside
         v-if="environment"
         class="pointer-events-none fixed top-0 right-0 z-50 h-32 w-32 overflow-hidden print:hidden"
-        :aria-label="`${environment.label} instance, release ${environment.release}`"
+        :aria-label="
+            $t(':environment instance, release :release', {
+                environment: environment.label,
+                release: environment.release,
+            })
+        "
         :title="`${environment.label} · ${environment.release}`"
         data-environment-ribbon
     >

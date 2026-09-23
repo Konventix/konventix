@@ -1,3 +1,5 @@
+import { trans } from 'laravel-vue-i18n';
+
 export type LivePill = {
     label: string;
     href: string;
@@ -30,7 +32,7 @@ export function livePillFor(
     }
 
     return {
-        label: activeEvent.eventName ?? 'Live',
+        label: activeEvent.eventName ?? trans('Live'),
         href: '/live',
         onSite: activeEvent.onSite,
         hubReplacesHome: activeEvent.hubReplacesHome,

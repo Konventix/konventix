@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
 import type { SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -12,7 +13,7 @@ import type {
 } from '@/composables/useDataTable';
 import { seedSelectionFilter, useDataTable } from '@/composables/useDataTable';
 import { edit as editUser, index as usersIndex } from '@/routes/admin/users';
-import { columns } from './columns';
+import { userColumns } from './columns';
 import type { UserRow } from './columns';
 
 interface PaginatedUsers {
@@ -52,7 +53,7 @@ const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
 const filterDefs = computed<DataTableFilterDef[]>(() => [
     {
         name: 'brand',
-        label: 'Brands',
+        label: trans('Brands'),
         value: props.filters.brand,
         options: props.brands.map((brand) => ({
             value: brand.id,
@@ -61,6 +62,8 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
         clearValue: 'all',
     },
 ]);
+
+const columns = userColumns();
 
 const sorting = computed<SortingState>(() =>
     filters.sort ? [{ id: filters.sort, desc: filters.dir === 'desc' }] : [],
@@ -82,19 +85,19 @@ const pagination = computed(() => ({
 </script>
 
 <template>
-    <Head title="Users" />
+    <Head :title="$t('Users')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Users"
-            description="Every account across the operator's brands"
+            :title="$t('Users')"
+            :description="$t('Every account across the operator\'s brands')"
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
             :filters="filterDefs"
-            search-placeholder="Search users…"
+            :search-placeholder="$t('Search users…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
             @update:filter="setFilter"
@@ -108,8 +111,8 @@ const pagination = computed(() => ({
             :row-count="users.total"
             :pagination="pagination"
             :get-row-id="(row: UserRow) => row.id"
-            items-label="users"
-            empty-message="No users found."
+            :items-label="$t('users')"
+            :empty-message="$t('No users found.')"
             row-clickable
             @row-click="(row: UserRow) => router.visit(editUser(row.id))"
             @update:sorting="onSortingChange"

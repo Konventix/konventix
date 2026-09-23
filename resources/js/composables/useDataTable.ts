@@ -34,7 +34,7 @@ export interface DataTableFilterOption {
 export interface DataTableFilterDef {
     /** query-param name */
     name: string;
-    /** accessible label, also the "all" option's text: `All ${label.toLowerCase()}` */
+    /** accessible label, also the "all" option's text: `$t('All :label', { label })` — pass it translated and as a plural noun */
     label: string;
     /** current value; null = not filtering */
     value: string | null;

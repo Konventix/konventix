@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link, router, usePage } from '@inertiajs/vue3';
 import { Menu, X } from '@lucide/vue';
+import { transChoice } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import BrandMenuDesktop from '@/components/BrandMenuDesktop.vue';
@@ -75,9 +76,10 @@ function navItemAriaLabel(item: BrandNavItem): string | undefined {
         return undefined;
     }
 
-    return cartCount.value === 1
-        ? 'Cart, 1 item'
-        : `Cart, ${cartCount.value} items`;
+    return transChoice(
+        '{1} Cart, :count item|[2,*] Cart, :count items',
+        cartCount.value,
+    );
 }
 
 const { isCurrentUrl } = useCurrentUrl();
@@ -120,7 +122,9 @@ function handleLogout(): void {
                             type="button"
                             class="inline-flex size-9 items-center justify-center rounded-full border border-border bg-surface text-text-muted transition hover:bg-surface-muted hover:text-text"
                             :aria-label="
-                                mobileMenuOpen ? 'Close menu' : 'Open menu'
+                                mobileMenuOpen
+                                    ? $t('Close menu')
+                                    : $t('Open menu')
                             "
                         >
                             <Menu v-if="!mobileMenuOpen" class="size-4" />
@@ -133,7 +137,7 @@ function handleLogout(): void {
             <CollapsibleContent class="border-t border-border">
                 <nav
                     class="mx-auto flex max-w-7xl flex-col gap-1 px-4 py-4 sm:px-6"
-                    aria-label="Main"
+                    :aria-label="$t('Main')"
                 >
                     <Link
                         v-if="livePill"
@@ -187,13 +191,13 @@ function handleLogout(): void {
                             :href="login()"
                             class="rounded-lg px-3 py-2 text-sm text-text-muted transition hover:bg-surface-muted hover:text-text"
                         >
-                            Log in
+                            {{ $t('Log in') }}
                         </Link>
                         <Link
                             :href="register()"
                             class="rounded-lg bg-accent px-4 py-2.5 text-center text-sm font-medium text-on-accent hover:bg-accent/90"
                         >
-                            Sign up
+                            {{ $t('Sign up') }}
                         </Link>
                     </template>
                 </nav>
@@ -210,7 +214,7 @@ function handleLogout(): void {
                 >
                     <AppLogo />
                 </Link>
-                <nav class="flex items-center gap-1" aria-label="Main">
+                <nav class="flex items-center gap-1" :aria-label="$t('Main')">
                     <component
                         :is="item.external ? 'a' : Link"
                         v-for="item in navItems"
@@ -281,13 +285,13 @@ function handleLogout(): void {
                         :href="login()"
                         class="rounded-md px-3 py-2 text-sm whitespace-nowrap text-text-muted hover:text-text"
                     >
-                        Log in
+                        {{ $t('Log in') }}
                     </Link>
                     <Link
                         :href="register()"
                         class="rounded-md bg-accent px-4 py-2 text-sm font-medium whitespace-nowrap text-on-accent hover:bg-accent/90"
                     >
-                        Sign up
+                        {{ $t('Sign up') }}
                     </Link>
                 </template>
             </div>

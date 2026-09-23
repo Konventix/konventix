@@ -86,7 +86,7 @@ function dialogComponent(key: string | null) {
             <nav
                 v-if="links.length > 0"
                 class="flex flex-wrap items-center gap-x-4 gap-y-2"
-                aria-label="Legal and policies"
+                :aria-label="$t('Legal and policies')"
             >
                 <template v-for="link in links" :key="link.label">
                     <a
@@ -117,9 +117,11 @@ function dialogComponent(key: string | null) {
             </nav>
 
             <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <span v-if="version">Version {{ version }}</span>
+                <span v-if="version">{{
+                    $t('Version :version', { version })
+                }}</span>
                 <span>
-                    Built on
+                    {{ $t('Built on') }}
                     <a
                         href="https://github.com/konventix/konventix"
                         target="_blank"

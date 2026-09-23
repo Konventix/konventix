@@ -31,6 +31,10 @@ export type SettingsSection = {
  * registered, matching how the sub-navigation has always worked. If a third
  * consumer or a gateable module ever needs a say, this becomes a registry
  * like NavigationRegistry; today that would be machinery for one list.
+ *
+ * `title` and `description` are catalog keys (ADR-0068), not text: this is
+ * a module-level constant, evaluated before the catalog is installed, so
+ * every consumer renders them through `$t()`.
  */
 export const settingsSections: SettingsSection[] = [
     {

@@ -102,15 +102,18 @@ function editorFor(block: Block) {
 <template>
     <div class="flex flex-col gap-4">
         <p :id="reorderHintId" class="sr-only">
-            Drag a block to reorder it, or focus its reorder handle and press
-            the up or down arrow key.
+            {{
+                $t(
+                    'Drag a block to reorder it, or focus its reorder handle and press the up or down arrow key.',
+                )
+            }}
         </p>
 
         <p
             v-if="props.modelValue.length === 0"
             class="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-text-muted"
         >
-            No blocks yet — add one below.
+            {{ $t('No blocks yet — add one below.') }}
         </p>
 
         <Card
@@ -133,10 +136,14 @@ function editorFor(block: Block) {
                 >
                     <GripVertical class="size-4" />
                     <span class="sr-only">
-                        Reorder
-                        {{ typesByKey[block.type]?.label ?? block.type }},
-                        position {{ index + 1 }} of
-                        {{ props.modelValue.length }}
+                        {{
+                            $t('Reorder :label, position :position of :total', {
+                                label:
+                                    typesByKey[block.type]?.label ?? block.type,
+                                position: String(index + 1),
+                                total: String(props.modelValue.length),
+                            })
+                        }}
                     </span>
                 </button>
                 <CardTitle class="flex-1 text-base">
@@ -146,7 +153,11 @@ function editorFor(block: Block) {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    :aria-label="`Remove block ${index + 1}`"
+                    :aria-label="
+                        $t('Remove block :number', {
+                            number: String(index + 1),
+                        })
+                    "
                     @click="remove(index)"
                 >
                     <Trash2 class="size-4" />
@@ -171,8 +182,11 @@ function editorFor(block: Block) {
                     "
                 />
                 <p v-else class="text-sm text-text-muted">
-                    This block's editor is not available — its module may be
-                    switched off for this brand.
+                    {{
+                        $t(
+                            "This block's editor is not available — its module may be switched off for this brand.",
+                        )
+                    }}
                 </p>
             </CardContent>
         </Card>
@@ -186,7 +200,7 @@ function editorFor(block: Block) {
                     class="self-start"
                 >
                     <Plus class="size-4" />
-                    Add block
+                    {{ $t('Add block') }}
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">

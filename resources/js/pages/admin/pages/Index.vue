@@ -2,6 +2,7 @@
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { Plus } from '@lucide/vue';
 import type { SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -28,7 +29,7 @@ import {
     index as pagesIndex,
     store as createPage,
 } from '@/routes/admin/pages';
-import { columns } from './columns';
+import { pageColumns } from './columns';
 import type { PageRow } from './columns';
 
 interface PaginatedPages {
@@ -63,7 +64,7 @@ const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
 const filterDefs = computed<DataTableFilterDef[]>(() => [
     {
         name: 'brand',
-        label: 'Brand',
+        label: trans('Brand'),
         value: props.filters.brand,
         options: props.brands.map((brand) => ({
             value: brand.id,
@@ -72,6 +73,8 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
         clearValue: 'all',
     },
 ]);
+
+const columns = pageColumns();
 
 const sorting = computed<SortingState>(() =>
     filters.sort ? [{ id: filters.sort, desc: filters.dir === 'desc' }] : [],
@@ -107,22 +110,30 @@ function submit(): void {
         },
     });
 }
+
+// In script, not the template: the `<slug>` in the sentence would read as a
+// tag inside the template's interpolation.
+const slugHint = computed(() =>
+    trans(
+        "`home` is the brand's landing page; anything else answers at /pages/<slug>.",
+    ),
+);
 </script>
 
 <template>
-    <Head title="Pages" />
+    <Head :title="$t('Pages')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Pages"
-            description="A brand's static pages, composed of blocks"
+            :title="$t('Pages')"
+            :description="$t('A brand\'s static pages, composed of blocks')"
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
             :filters="filterDefs"
-            search-placeholder="Search title or slug…"
+            :search-placeholder="$t('Search title or slug…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
             @update:filter="setFilter"
@@ -132,19 +143,21 @@ function submit(): void {
                     <DialogTrigger as-child>
                         <Button>
                             <Plus class="size-4" />
-                            New page
+                            {{ $t('New page') }}
                         </Button>
                     </DialogTrigger>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Create page</DialogTitle>
+                            <DialogTitle>{{ $t('Create page') }}</DialogTitle>
                         </DialogHeader>
                         <form
                             class="flex flex-col gap-4"
                             @submit.prevent="submit"
                         >
                             <div v-if="!selection?.brandId" class="grid gap-2">
-                                <Label for="page-brand">Brand</Label>
+                                <Label for="page-brand">{{
+                                    $t('Brand')
+                                }}</Label>
                                 <select
                                     id="page-brand"
                                     class="rounded-md border border-border bg-surface px-3 py-2 text-sm"
@@ -156,7 +169,7 @@ function submit(): void {
                                     "
                                 >
                                     <option value="" disabled>
-                                        Choose a brand
+                                        {{ $t('Choose a brand') }}
                                     </option>
                                     <option
                                         v-for="brand in props.brands"
@@ -169,21 +182,22 @@ function submit(): void {
                                 <InputError :message="form.errors.brandId" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="page-title">Title</Label>
+                                <Label for="page-title">{{
+                                    $t('Title')
+                                }}</Label>
                                 <Input id="page-title" v-model="form.title" />
                                 <InputError :message="form.errors.title" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="page-slug">Slug</Label>
+                                <Label for="page-slug">{{ $t('Slug') }}</Label>
                                 <Input id="page-slug" v-model="form.slug" />
                                 <p class="text-xs text-text-muted">
-                                    `home` is the brand's landing page; anything
-                                    else answers at /pages/&lt;slug&gt;.
+                                    {{ slugHint }}
                                 </p>
                                 <InputError :message="form.errors.slug" />
                             </div>
                             <Button type="submit" :disabled="form.processing">
-                                Create
+                                {{ $t('Create') }}
                             </Button>
                         </form>
                     </DialogContent>
@@ -199,8 +213,8 @@ function submit(): void {
             :row-count="pages.total"
             :pagination="pagination"
             :get-row-id="(row: PageRow) => row.id"
-            items-label="pages"
-            empty-message="No pages found."
+            :items-label="$t('pages')"
+            :empty-message="$t('No pages found.')"
             row-clickable
             @row-click="(row: PageRow) => router.visit(editPage(row.id))"
             @update:sorting="onSortingChange"

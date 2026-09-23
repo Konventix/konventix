@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
 import { CircleUser, LogOut, Settings } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import {
     DropdownMenuGroup,
@@ -51,8 +52,8 @@ const entries = computed(() => [
         href: item.url,
         icon: iconFor(item.icon),
     })),
-    { label: 'Account', href: editProfile(), icon: CircleUser },
-    { label: 'Settings', href: settingsIndex(), icon: Settings },
+    { label: trans('Account'), href: editProfile(), icon: CircleUser },
+    { label: trans('Settings'), href: settingsIndex(), icon: Settings },
 ]);
 </script>
 
@@ -90,7 +91,7 @@ const entries = computed(() => [
                 @click="emit('logout')"
             >
                 <LogOut class="mr-2 h-4 w-4" />
-                Log out
+                {{ $t('Log out') }}
             </Link>
         </DropdownMenuItem>
     </template>
@@ -113,7 +114,7 @@ const entries = computed(() => [
             @click="emit('logout')"
         >
             <LogOut class="size-4" />
-            Log out
+            {{ $t('Log out') }}
         </Link>
     </template>
 </template>

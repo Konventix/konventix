@@ -49,9 +49,9 @@ const props = withDefaults(
         sorting: () => [],
         rowCount: undefined,
         getRowId: undefined,
-        emptyMessage: 'No results found.',
+        emptyMessage: undefined,
         pagination: undefined,
-        itemsLabel: 'results',
+        itemsLabel: undefined,
         rowClickable: false,
     },
 );
@@ -205,7 +205,7 @@ function ariaSort(
                             :colspan="columns.length"
                             class="p-6 text-center text-text-muted"
                         >
-                            {{ emptyMessage }}
+                            {{ emptyMessage ?? $t('No results found.') }}
                         </td>
                     </tr>
                 </tbody>
@@ -218,11 +218,22 @@ function ariaSort(
         >
             <span class="text-xs text-text-muted">
                 <template v-if="pagination.from && pagination.to">
-                    Showing {{ pagination.from }}–{{ pagination.to }} of
-                    {{ pagination.total }} {{ itemsLabel }}
+                    {{
+                        $t('Showing :first–:last of :total :items', {
+                            first: String(pagination.from),
+                            last: String(pagination.to),
+                            total: String(pagination.total),
+                            items: itemsLabel ?? $t('results'),
+                        })
+                    }}
                 </template>
                 <template v-else>
-                    {{ pagination.total }} {{ itemsLabel }}
+                    {{
+                        $t(':total :items', {
+                            total: String(pagination.total),
+                            items: itemsLabel ?? $t('results'),
+                        })
+                    }}
                 </template>
             </span>
             <div class="flex items-center gap-1">
@@ -233,7 +244,7 @@ function ariaSort(
                     @click="emit('update:page', pagination.currentPage - 1)"
                 >
                     <ChevronLeft class="size-4" />
-                    <span class="sr-only">Previous page</span>
+                    <span class="sr-only">{{ $t('Previous page') }}</span>
                 </Button>
                 <span class="px-2 text-xs text-text-muted">
                     {{ pagination.currentPage }} / {{ pagination.lastPage }}
@@ -245,7 +256,7 @@ function ariaSort(
                     @click="emit('update:page', pagination.currentPage + 1)"
                 >
                     <ChevronRight class="size-4" />
-                    <span class="sr-only">Next page</span>
+                    <span class="sr-only">{{ $t('Next page') }}</span>
                 </Button>
             </div>
         </div>

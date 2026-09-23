@@ -28,19 +28,22 @@ const tabs = [
                 ]"
             >
                 <component :is="Icon" class="-ml-1 h-4 w-4" />
-                <span class="ml-1.5 text-sm">{{ label }}</span>
+                <span class="ml-1.5 text-sm">{{ $t(label) }}</span>
             </button>
         </div>
 
         <p class="mt-2 text-xs text-text-muted">
-            Your choice is kept in a cookie for a year so it survives closing
-            the browser — you can turn that off under
+            {{
+                $t(
+                    'Your choice is kept in a cookie for a year so it survives closing the browser — you can turn that off under',
+                )
+            }}
             <button
                 type="button"
                 class="underline underline-offset-4 hover:text-text"
                 @click="open()"
             >
-                Cookie settings
+                {{ $t('Cookie settings') }}
             </button>
             .
         </p>

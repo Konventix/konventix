@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ExternalLink, Trash2 } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
+import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import BlockComposer from '@/components/admin/BlockComposer.vue';
 import InputError from '@/components/InputError.vue';
@@ -30,20 +32,28 @@ type Block = Konventix.Platform.Data.Blocks.BlockData;
 type TypeOption = Konventix.Platform.Data.Blocks.BlockTypeOptionData;
 type Visibility = Konventix.Platform.Enums.PageVisibility;
 
-const visibilityOptions: { value: Visibility; label: string; hint: string }[] =
-    [
-        { value: 'public', label: 'Everyone', hint: 'Anyone with the link.' },
-        {
-            value: 'members',
-            label: 'Members only',
-            hint: 'Signed-in accounts; everyone else gets a 404.',
-        },
-        {
-            value: 'registrants',
-            label: 'Registrants only',
-            hint: "Accounts holding a confirmed registration for one of this brand's events; everyone else gets a 404.",
-        },
-    ];
+// Computed, not a module constant: the labels are catalog lookups (ADR-0068).
+const visibilityOptions = computed<
+    { value: Visibility; label: string; hint: string }[]
+>(() => [
+    {
+        value: 'public',
+        label: trans('Everyone'),
+        hint: trans('Anyone with the link.'),
+    },
+    {
+        value: 'members',
+        label: trans('Members only'),
+        hint: trans('Signed-in accounts; everyone else gets a 404.'),
+    },
+    {
+        value: 'registrants',
+        label: trans('Registrants only'),
+        hint: trans(
+            "Accounts holding a confirmed registration for one of this brand's events; everyone else gets a 404.",
+        ),
+    },
+]);
 
 const props = defineProps<{
     page: Page;
@@ -78,10 +88,24 @@ function submit(): void {
 }
 
 function remove(): void {
-    if (confirm(`Delete "${props.page.title}"? This cannot be undone.`)) {
+    if (
+        confirm(
+            trans('Delete “:name”? This cannot be undone.', {
+                name: props.page.title,
+            }),
+        )
+    ) {
         router.delete(destroyPage(props.page.id).url);
     }
 }
+
+// In script, not the template: the `<slug>` in the sentence would read as a
+// tag inside the template's interpolation.
+const slugHint = computed(() =>
+    trans(
+        "`home` is the brand's landing page; anything else answers at /pages/<slug>.",
+    ),
+);
 </script>
 
 <template>
@@ -90,7 +114,7 @@ function remove(): void {
     <div class="flex flex-col gap-6">
         <AdminPageHeader
             :title="props.page.title"
-            :description="`Page of ${props.page.brandName}`"
+            :description="$t('Page of :brand', { brand: props.page.brandName })"
         >
             <Button v-if="props.page.publicUrl" as-child variant="secondary">
                 <a
@@ -99,35 +123,38 @@ function remove(): void {
                     rel="noopener noreferrer"
                 >
                     <ExternalLink class="size-4" />
-                    View page
+                    {{ $t('View page') }}
                 </a>
             </Button>
             <Button variant="ghost" @click="remove">
                 <Trash2 class="size-4 text-danger" />
-                Delete
+                {{ $t('Delete') }}
             </Button>
         </AdminPageHeader>
 
         <form class="flex flex-col gap-6" @submit.prevent="submit">
             <Card>
-                <CardHeader><CardTitle>Page</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{ $t('Page') }}</CardTitle></CardHeader
+                >
                 <CardContent class="grid gap-4 sm:grid-cols-2">
                     <div class="grid gap-2">
-                        <Label for="page-title">Title</Label>
+                        <Label for="page-title">{{ $t('Title') }}</Label>
                         <Input id="page-title" v-model="form.title" />
                         <InputError :message="form.errors.title" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="page-slug">Slug</Label>
+                        <Label for="page-slug">{{ $t('Slug') }}</Label>
                         <Input id="page-slug" v-model="form.slug" />
                         <p class="text-xs text-text-muted">
-                            `home` is the brand's landing page; anything else
-                            answers at /pages/&lt;slug&gt;.
+                            {{ slugHint }}
                         </p>
                         <InputError :message="form.errors.slug" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="page-visibility">Who may read it</Label>
+                        <Label for="page-visibility">{{
+                            $t('Who may read it')
+                        }}</Label>
                         <Select
                             :model-value="form.visibility"
                             @update:model-value="
@@ -155,8 +182,11 @@ function remove(): void {
                                         option.value === form.visibility,
                                 )?.hint
                             }}
-                            A menu entry for this page is shown to the same
-                            people.
+                            {{
+                                $t(
+                                    'A menu entry for this page is shown to the same people.',
+                                )
+                            }}
                         </p>
                         <InputError :message="form.errors.visibility" />
                     </div>
@@ -170,9 +200,9 @@ function remove(): void {
                                         (form.published = value === true)
                                 "
                             />
-                            <Label for="page-published" class="font-normal"
-                                >Published</Label
-                            >
+                            <Label for="page-published" class="font-normal">{{
+                                $t('Published')
+                            }}</Label>
                         </div>
                         <div class="flex items-center gap-2">
                             <Checkbox
@@ -184,13 +214,13 @@ function remove(): void {
                                 "
                             />
                             <Label for="page-in-menu" class="font-normal">
-                                Show in menu
+                                {{ $t('Show in menu') }}
                             </Label>
                             <Link
                                 :href="menuIndex().url"
                                 class="text-xs text-text-muted hover:text-text"
                             >
-                                Arrange the menu
+                                {{ $t('Arrange the menu') }}
                             </Link>
                         </div>
                     </div>
@@ -198,7 +228,9 @@ function remove(): void {
             </Card>
 
             <Card>
-                <CardHeader><CardTitle>Blocks</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{ $t('Blocks') }}</CardTitle></CardHeader
+                >
                 <CardContent>
                     <BlockComposer
                         v-model="form.blocks"
@@ -211,19 +243,19 @@ function remove(): void {
             </Card>
 
             <div class="flex items-center gap-3">
-                <Button type="submit" :disabled="form.processing"
-                    >Save page</Button
-                >
+                <Button type="submit" :disabled="form.processing">{{
+                    $t('Save page')
+                }}</Button>
                 <span
                     v-if="form.isDirty"
                     role="status"
                     class="text-sm text-warning"
-                    >Unsaved changes</span
+                    >{{ $t('Unsaved changes') }}</span
                 >
                 <Link
                     :href="pagesIndex().url"
                     class="text-sm text-text-muted hover:text-text"
-                    >Back to pages</Link
+                    >{{ $t('Back to pages') }}</Link
                 >
             </div>
         </form>

@@ -20,6 +20,7 @@ import {
     unlock as unlockUser,
     update as updateUser,
 } from '@/routes/admin/users';
+import { accountStateLabel } from './columns';
 
 /**
  * One account, operator-wide (ADR-0016): profile fields, account state
@@ -108,7 +109,11 @@ function submitMerge(): void {
     <div class="flex flex-col gap-6">
         <AdminPageHeader
             :title="user.name"
-            :description="`Account since ${user.createdAt ?? 'unknown'}`"
+            :description="
+                $t('Account since :date', {
+                    date: user.createdAt ?? $t('unknown'),
+                })
+            "
         >
             <Badge
                 :variant="
@@ -117,40 +122,47 @@ function submitMerge(): void {
                         : 'secondary'
                 "
             >
-                {{ user.state }}
+                {{ accountStateLabel(user.state) }}
             </Badge>
-            <Badge v-if="user.verified" variant="secondary">Verified</Badge>
+            <Badge v-if="user.verified" variant="secondary">{{
+                $t('Email verified')
+            }}</Badge>
             <Badge v-if="user.twoFactor" variant="secondary">2FA</Badge>
         </AdminPageHeader>
 
         <div class="grid gap-6 xl:grid-cols-2">
             <Card>
                 <CardHeader>
-                    <CardTitle>Profile</CardTitle>
+                    <CardTitle>{{ $t('Profile') }}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <form class="flex flex-col gap-4" @submit.prevent="submit">
                         <div class="grid gap-2">
-                            <Label for="user-name">Name</Label>
+                            <Label for="user-name">{{ $t('Name') }}</Label>
                             <Input id="user-name" v-model="form.name" />
                             <InputError :message="form.errors.name" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="user-email">Email</Label>
+                            <Label for="user-email">{{ $t('Email') }}</Label>
                             <Input
                                 id="user-email"
                                 v-model="form.email"
                                 type="email"
                             />
                             <p class="text-xs text-text-muted">
-                                Changing the address un-verifies it — the person
-                                confirms the new one on next login.
+                                {{
+                                    $t(
+                                        'Changing the address un-verifies it — the person confirms the new one on next login.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.email" />
                         </div>
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div class="grid gap-2">
-                                <Label for="user-locale">Locale</Label>
+                                <Label for="user-locale">{{
+                                    $t('Locale')
+                                }}</Label>
                                 <Input
                                     id="user-locale"
                                     v-model="form.locale"
@@ -159,7 +171,9 @@ function submitMerge(): void {
                                 <InputError :message="form.errors.locale" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="user-timezone">Timezone</Label>
+                                <Label for="user-timezone">{{
+                                    $t('Timezone')
+                                }}</Label>
                                 <Input
                                     id="user-timezone"
                                     v-model="form.timezone"
@@ -170,8 +184,11 @@ function submitMerge(): void {
                                     id="user-timezone-hint"
                                     class="text-xs text-text-muted"
                                 >
-                                    Leave empty to show this account every
-                                    timestamp on its own browser's clock.
+                                    {{
+                                        $t(
+                                            "Leave empty to show this account every timestamp on its own browser's clock.",
+                                        )
+                                    }}
                                 </p>
                                 <InputError
                                     id="user-timezone-error"
@@ -181,14 +198,14 @@ function submitMerge(): void {
                         </div>
                         <div class="flex items-center gap-3">
                             <Button type="submit" :disabled="form.processing">
-                                Save account
+                                {{ $t('Save account') }}
                             </Button>
                             <span
                                 v-if="form.isDirty"
                                 role="status"
                                 class="text-sm text-warning"
                             >
-                                Unsaved changes
+                                {{ $t('Unsaved changes') }}
                             </span>
                         </div>
                     </form>
@@ -198,13 +215,16 @@ function submitMerge(): void {
             <div class="flex flex-col gap-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Account state</CardTitle>
+                        <CardTitle>{{ $t('Account state') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <template v-if="user.state === 'merged'">
                             <p class="text-sm text-text-muted">
-                                This account was merged into another one —
-                                signing in with it no longer works.
+                                {{
+                                    $t(
+                                        'This account was merged into another one — signing in with it no longer works.',
+                                    )
+                                }}
                             </p>
                             <Button
                                 v-if="user.mergedInto"
@@ -213,25 +233,38 @@ function submitMerge(): void {
                                 class="self-start"
                             >
                                 <a :href="editUser(user.mergedInto.id).url">
-                                    Go to {{ user.mergedInto.email }}
+                                    {{
+                                        $t('Go to :email', {
+                                            email: user.mergedInto.email,
+                                        })
+                                    }}
                                 </a>
                             </Button>
                         </template>
                         <template v-else-if="user.state !== 'locked'">
                             <p class="text-sm text-text-muted">
-                                Locking refuses the next login attempt. Existing
-                                sessions are not revoked here.
+                                {{
+                                    $t(
+                                        'Locking refuses the next login attempt. Existing sessions are not revoked here.',
+                                    )
+                                }}
                             </p>
                             <form
                                 class="flex flex-col gap-3"
                                 @submit.prevent="submitLock"
                             >
                                 <div class="grid gap-2">
-                                    <Label for="lock-reason">Reason</Label>
+                                    <Label for="lock-reason">{{
+                                        $t('Reason')
+                                    }}</Label>
                                     <Input
                                         id="lock-reason"
                                         v-model="lockForm.reason"
-                                        placeholder="Why this account is being locked"
+                                        :placeholder="
+                                            $t(
+                                                'Why this account is being locked',
+                                            )
+                                        "
                                     />
                                     <InputError
                                         :message="lockForm.errors.reason"
@@ -244,13 +277,17 @@ function submitMerge(): void {
                                     :disabled="lockForm.processing"
                                 >
                                     <Lock class="size-4" />
-                                    Lock account
+                                    {{ $t('Lock account') }}
                                 </Button>
                             </form>
                         </template>
                         <template v-else>
                             <p class="text-sm text-text-muted">
-                                This account is locked — logins are refused.
+                                {{
+                                    $t(
+                                        'This account is locked — logins are refused.',
+                                    )
+                                }}
                             </p>
                             <Button
                                 variant="outline"
@@ -259,7 +296,7 @@ function submitMerge(): void {
                                 @click="submitUnlock"
                             >
                                 <LockOpen class="size-4" />
-                                Unlock account
+                                {{ $t('Unlock account') }}
                             </Button>
                         </template>
                     </CardContent>
@@ -267,23 +304,22 @@ function submitMerge(): void {
 
                 <Card v-if="user.state !== 'merged'">
                     <CardHeader>
-                        <CardTitle>Merge accounts</CardTitle>
+                        <CardTitle>{{ $t('Merge accounts') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <p class="text-sm text-text-muted">
-                            Combines a duplicate account's Steam or password
-                            sign-in into this one — the shape most migrated
-                            accounts hit if they sign in with Steam before being
-                            recognised. This account is kept; the other one
-                            closes and can no longer sign in.
+                            {{
+                                $t(
+                                    "Combines a duplicate account's Steam or password sign-in into this one — the shape most migrated accounts hit if they sign in with Steam before being recognised. This account is kept; the other one closes and can no longer sign in.",
+                                )
+                            }}
                         </p>
                         <p class="text-sm text-text-muted">
-                            Only sign-in methods move. Brand memberships and
-                            roles are not moved either. Only run this after the
-                            person has asked for it, you have confirmed they
-                            control both addresses, and you are sure which
-                            account should survive — this cannot be undone from
-                            here.
+                            {{
+                                $t(
+                                    'Only sign-in methods move. Brand memberships and roles are not moved either. Only run this after the person has asked for it, you have confirmed they control both addresses, and you are sure which account should survive — this cannot be undone from here.',
+                                )
+                            }}
                         </p>
                         <form
                             class="flex flex-col gap-3"
@@ -291,7 +327,7 @@ function submitMerge(): void {
                         >
                             <div class="grid gap-2">
                                 <Label for="merge-email">
-                                    Other account's email
+                                    {{ $t("Other account's email") }}
                                 </Label>
                                 <Input
                                     id="merge-email"
@@ -307,8 +343,11 @@ function submitMerge(): void {
                                     rel="noopener"
                                     class="text-xs text-accent underline underline-offset-2"
                                 >
-                                    Check this address's registrations before
-                                    merging
+                                    {{
+                                        $t(
+                                            "Check this address's registrations before merging",
+                                        )
+                                    }}
                                 </a>
                             </div>
                             <div class="flex items-start gap-2">
@@ -329,10 +368,11 @@ function submitMerge(): void {
                                     for="merge-acknowledge"
                                     class="text-sm font-normal"
                                 >
-                                    I understand the closed account's
-                                    registrations, orders, admissions and
-                                    consent records will not move — they'll stay
-                                    behind and become unreachable.
+                                    {{
+                                        $t(
+                                            "I understand the closed account's registrations, orders, admissions and consent records will not move — they'll stay behind and become unreachable.",
+                                        )
+                                    }}
                                 </Label>
                             </div>
                             <InputError
@@ -351,7 +391,7 @@ function submitMerge(): void {
                                     !mergeForm.acknowledgedClosedAccountHistoryStaysBehind
                                 "
                             >
-                                Merge into this account
+                                {{ $t('Merge into this account') }}
                             </Button>
                         </form>
                     </CardContent>
@@ -359,7 +399,9 @@ function submitMerge(): void {
 
                 <Card v-if="mergedAccounts.length > 0">
                     <CardHeader>
-                        <CardTitle>Accounts merged into this one</CardTitle>
+                        <CardTitle>{{
+                            $t('Accounts merged into this one')
+                        }}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <ul class="flex flex-col gap-1 text-sm">
@@ -382,18 +424,18 @@ function submitMerge(): void {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Brands & roles</CardTitle>
+                        <CardTitle>{{ $t('Brands & roles') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <div>
-                            <span class="text-xs font-medium text-text-muted"
-                                >Member of</span
-                            >
+                            <span class="text-xs font-medium text-text-muted">{{
+                                $t('Member of')
+                            }}</span>
                             <p
                                 v-if="memberships.length === 0"
                                 class="text-sm text-text-muted"
                             >
-                                No brand memberships recorded yet.
+                                {{ $t('No brand memberships recorded yet.') }}
                             </p>
                             <ul v-else class="mt-1 flex flex-col gap-1 text-sm">
                                 <li
@@ -403,25 +445,30 @@ function submitMerge(): void {
                                 >
                                     <span>{{ membership.brand }}</span>
                                     <span class="text-text-muted">
-                                        since
                                         {{
-                                            formatCalendarDate(
-                                                membership.firstSeenAt,
-                                            )
+                                            $t('since :date', {
+                                                date: formatCalendarDate(
+                                                    membership.firstSeenAt,
+                                                ),
+                                            })
                                         }}
                                     </span>
                                 </li>
                             </ul>
                         </div>
                         <div>
-                            <span class="text-xs font-medium text-text-muted"
-                                >Roles</span
-                            >
+                            <span class="text-xs font-medium text-text-muted">{{
+                                $t('Roles')
+                            }}</span>
                             <p
                                 v-if="roles.length === 0"
                                 class="text-sm text-text-muted"
                             >
-                                No roles — assign them on the Roles page.
+                                {{
+                                    $t(
+                                        'No roles — assign them on the Roles page.',
+                                    )
+                                }}
                             </p>
                             <div v-else class="mt-1 flex flex-wrap gap-2">
                                 <Badge

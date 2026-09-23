@@ -28,12 +28,14 @@ const props = withDefaults(
     },
 );
 
+// English keys, like the page's own: `Breadcrumbs` translates every title.
 const trail = computed<BreadcrumbItem[]>(() => [
     { title: 'Settings', href: settingsIndex() },
     ...props.breadcrumbs,
 ]);
 
-// The same list the hub page at /settings renders (lib/settingsSections.ts).
+// The same list the hub page at /settings renders (lib/settingsSections.ts);
+// its titles are catalog keys, translated where they render.
 const sidebarNavItems = settingsSections;
 
 const { isCurrentOrParentUrl } = useCurrentUrl();
@@ -44,15 +46,15 @@ const { isCurrentOrParentUrl } = useCurrentUrl();
         <Breadcrumbs :breadcrumbs="trail" class="mb-4" />
 
         <Heading
-            title="Settings"
-            description="Manage your profile and account settings"
+            :title="$t('Settings')"
+            :description="$t('Manage your profile and account settings')"
         />
 
         <div class="flex flex-col lg:flex-row lg:space-x-12">
             <aside class="w-full max-w-xl lg:w-48">
                 <nav
                     class="flex flex-col space-y-1 space-x-0"
-                    aria-label="Settings"
+                    :aria-label="$t('Settings')"
                 >
                     <Button
                         v-for="item in sidebarNavItems"
@@ -66,7 +68,7 @@ const { isCurrentOrParentUrl } = useCurrentUrl();
                     >
                         <Link :href="item.href">
                             <component :is="item.icon" class="h-4 w-4" />
-                            {{ item.title }}
+                            {{ $t(item.title) }}
                         </Link>
                     </Button>
                 </nav>

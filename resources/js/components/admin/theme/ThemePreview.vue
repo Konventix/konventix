@@ -34,7 +34,7 @@ const cssVars = computed<Record<string, string>>(() =>
         <div
             class="text-xs font-semibold tracking-wide text-text-muted uppercase"
         >
-            Preview
+            {{ $t('Preview') }}
         </div>
         <div
             class="overflow-hidden rounded-xl border border-border"
@@ -46,70 +46,86 @@ const cssVars = computed<Record<string, string>>(() =>
                         type="button"
                         class="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-on-accent"
                     >
-                        Primary action
+                        {{ $t('Primary action') }}
                     </button>
                     <button
                         type="button"
                         class="rounded-md border border-input bg-surface px-3 py-1.5 text-xs font-medium text-text"
                     >
-                        Secondary
+                        {{ $t('Secondary') }}
                     </button>
                 </div>
 
                 <div
                     class="rounded-lg bg-surface-inverted p-3 text-xs font-medium text-text-inverted"
                 >
-                    Inverted banner — inverted text on the inverted surface
-                    token.
+                    {{
+                        $t(
+                            'Inverted banner — inverted text on the inverted surface token.',
+                        )
+                    }}
                 </div>
 
                 <div
                     class="rounded-lg border border-border bg-surface-raised p-4 shadow-xs"
                 >
-                    <div class="mb-1 text-sm font-semibold">Card heading</div>
+                    <div class="mb-1 text-sm font-semibold">
+                        {{ $t('Card heading') }}
+                    </div>
                     <div class="text-xs text-text-muted">
-                        Supporting copy uses the muted text token, on the raised
-                        surface token.
+                        {{
+                            $t(
+                                'Supporting copy uses the muted text token, on the raised surface token.',
+                            )
+                        }}
                     </div>
                 </div>
 
                 <div
                     class="rounded-lg bg-surface-muted p-3 text-xs text-text-muted"
                 >
-                    Muted panel — muted text on the muted surface token.
+                    {{
+                        $t(
+                            'Muted panel — muted text on the muted surface token.',
+                        )
+                    }}
                 </div>
 
                 <div
                     class="rounded-lg border border-danger/20 bg-danger-surface p-3 text-xs text-danger"
                 >
-                    Danger notice — danger text on the danger surface token.
+                    {{
+                        $t(
+                            'Danger notice — danger text on the danger surface token.',
+                        )
+                    }}
                 </div>
 
                 <div class="flex flex-wrap gap-2">
                     <span
                         class="rounded-full bg-danger px-2 py-0.5 text-[10px] font-medium text-danger-contrast"
                     >
-                        Danger
+                        {{ $t('Danger') }}
                     </span>
                     <span
                         class="rounded-full bg-success px-2 py-0.5 text-[10px] font-medium text-success-contrast"
                     >
-                        Success
+                        {{ $t('Success') }}
                     </span>
                     <span
                         class="rounded-full bg-warning px-2 py-0.5 text-[10px] font-medium text-warning-contrast"
                     >
-                        Warning
+                        {{ $t('Warning') }}
                     </span>
                 </div>
 
                 <div class="text-[10px] text-text-muted">
-                    Focus ring:
+                    {{ $t('Focus ring:') }}
                     <button
                         type="button"
                         class="ml-1 inline-block rounded-md border border-input bg-surface px-2 py-0.5 text-[10px] text-text outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                        Tab to focus
+                        {{ $t('Tab to focus') }}
                     </button>
                 </div>
             </div>

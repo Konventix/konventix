@@ -19,9 +19,11 @@ defineProps<{
 <template>
     <div class="space-y-4">
         <p class="text-sm text-muted-foreground">
-            Sessions on this brand. Signing in from another brand's domain
-            creates a separate session there, so this list does not necessarily
-            cover every brand you have an account with.
+            {{
+                $t(
+                    "Sessions on this brand. Signing in from another brand's domain creates a separate session there, so this list does not necessarily cover every brand you have an account with.",
+                )
+            }}
         </p>
 
         <ul class="divide-y rounded-lg border">
@@ -42,16 +44,24 @@ defineProps<{
                             v-if="session.isCurrentDevice"
                             variant="secondary"
                         >
-                            This device
+                            {{ $t('This device') }}
                         </Badge>
                     </div>
                     <p class="text-sm text-muted-foreground">
                         <span v-if="session.ipAddress">
-                            IP address {{ session.ipAddress }}
+                            {{
+                                $t('IP address :address', {
+                                    address: session.ipAddress,
+                                })
+                            }}
                         </span>
-                        <span v-else>IP address unknown</span>
-                        · Last active
-                        {{ formatDateTime(session.lastActiveAt) }}
+                        <span v-else>{{ $t('IP address unknown') }}</span>
+                        ·
+                        {{
+                            $t('Last active :time', {
+                                time: formatDateTime(session.lastActiveAt),
+                            })
+                        }}
                     </p>
                 </div>
 
@@ -61,7 +71,7 @@ defineProps<{
                     :options="{ preserveScroll: true }"
                 >
                     <Button type="submit" variant="outline" size="sm">
-                        Revoke
+                        {{ $t('Revoke') }}
                     </Button>
                 </Form>
             </li>
@@ -76,7 +86,7 @@ defineProps<{
                 variant="secondary"
                 data-test="revoke-other-sessions-button"
             >
-                Log out other sessions
+                {{ $t('Log out other sessions') }}
             </Button>
         </Form>
     </div>

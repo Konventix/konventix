@@ -75,9 +75,9 @@ const isActive = computed(() => isCurrentUrl(props.url));
                     aria-hidden="true"
                     >{{ badge }}</span
                 >
-                <span v-if="badge !== null && badge > 0" class="sr-only"
-                    >{{ badge }} open</span
-                >
+                <span v-if="badge !== null && badge > 0" class="sr-only">{{
+                    $t(':count open', { count: String(badge) })
+                }}</span>
             </component>
         </SidebarMenuButton>
         <SidebarMenuAction
@@ -86,9 +86,11 @@ const isActive = computed(() => isCurrentUrl(props.url));
         >
             <PinOff v-if="pinned" class="size-4" />
             <Pin v-else class="size-4" />
-            <span class="sr-only"
-                >{{ pinned ? 'Unpin' : 'Pin' }} {{ label }}</span
-            >
+            <span class="sr-only">{{
+                pinned
+                    ? $t('Unpin :label', { label })
+                    : $t('Pin :label', { label })
+            }}</span>
         </SidebarMenuAction>
     </SidebarMenuItem>
 </template>

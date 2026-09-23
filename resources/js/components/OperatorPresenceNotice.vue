@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { usePage } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import {
     accountIntro,
@@ -122,8 +123,8 @@ const sharedAccount = computed(() =>
  */
 const sharedAccountLinkLabel = computed(() =>
     page.component === 'auth/CompleteSocialSignup'
-        ? 'Go to sign-in'
-        : 'Sign in',
+        ? trans('Go to sign-in')
+        : trans('Sign in'),
 );
 
 const controller = computed(() =>
@@ -137,7 +138,7 @@ const controller = computed(() =>
     <section
         v-if="presence"
         class="text-center text-xs text-text-muted"
-        aria-label="About this account"
+        :aria-label="$t('About this account')"
     >
         <p>
             {{ intro }}
@@ -169,9 +170,9 @@ const controller = computed(() =>
         <p v-if="creatingAccount" class="mt-1">
             {{ controller
             }}<template v-if="presence.privacyPolicyUrl">
-                — see the
+                {{ $t('— see the') }}
                 <TextLink :href="presence.privacyPolicyUrl">
-                    privacy policy
+                    {{ $t('privacy policy') }}
                 </TextLink></template
             >.
         </p>

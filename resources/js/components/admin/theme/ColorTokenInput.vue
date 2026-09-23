@@ -68,7 +68,7 @@ function reset(): void {
             class="shrink-0 text-xs text-text-muted hover:text-text"
             @click="reset"
         >
-            Reset
+            {{ $t('Reset') }}
         </button>
     </div>
 </template>

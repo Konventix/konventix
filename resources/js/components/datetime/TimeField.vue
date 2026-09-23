@@ -75,7 +75,11 @@ const echo = computed(() => formatTime(model.value));
         >
             <template v-if="echo">= {{ echo }}. </template>
             <template v-if="zoned"
-                >Times in your timezone ({{ viewerTimezone() }}).
+                >{{
+                    $t('Times in your timezone (:zone).', {
+                        zone: viewerTimezone(),
+                    })
+                }}
             </template>
             <template v-if="hint">{{ hint }}</template>
         </p>

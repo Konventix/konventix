@@ -28,7 +28,7 @@ withDefaults(
         search: '',
         perPage: 15,
         perPageOptions: () => [10, 15, 25, 50, 100],
-        searchPlaceholder: 'Search…',
+        searchPlaceholder: undefined,
         filters: () => [],
     },
 );
@@ -51,7 +51,7 @@ const ALL = '__all__';
             />
             <Input
                 :model-value="search"
-                :placeholder="searchPlaceholder"
+                :placeholder="searchPlaceholder ?? $t('Search…')"
                 class="pl-8"
                 @update:model-value="
                     (value) => emit('update:search', String(value))
@@ -88,8 +88,12 @@ const ALL = '__all__';
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                    <!--
+                        The label as the page gave it, never lowercased: a
+                        German noun keeps its capital ("Alle Bestellungen").
+                    -->
                     <SelectItem :value="ALL">
-                        All {{ filter.label.toLowerCase() }}
+                        {{ $t('All :label', { label: filter.label }) }}
                     </SelectItem>
                     <SelectItem
                         v-for="option in filter.options"
@@ -102,7 +106,7 @@ const ALL = '__all__';
             </Select>
         </div>
 
-        <label for="per-page" class="sr-only">Rows per page</label>
+        <label for="per-page" class="sr-only">{{ $t('Rows per page') }}</label>
         <Select
             :model-value="String(perPage)"
             @update:model-value="
@@ -118,7 +122,7 @@ const ALL = '__all__';
                     :key="n"
                     :value="String(n)"
                 >
-                    {{ n }} / page
+                    {{ $t(':count / page', { count: String(n) }) }}
                 </SelectItem>
             </SelectContent>
         </Select>

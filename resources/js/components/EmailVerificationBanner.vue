@@ -27,7 +27,9 @@ const showBanner = computed(() => page.props.emailVerified === false);
         role="status"
         class="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 bg-warning px-4 py-2 text-center text-sm text-warning-contrast print:hidden"
     >
-        <span>Please confirm your email address to unlock every feature.</span>
+        <span>{{
+            $t('Please confirm your email address to unlock every feature.')
+        }}</span>
         <Form
             v-bind="verification.send.form()"
             v-slot="{ processing, wasSuccessful }"
@@ -38,7 +40,9 @@ const showBanner = computed(() => page.props.emailVerified === false);
                 variant="outline"
                 :disabled="processing || wasSuccessful"
             >
-                {{ wasSuccessful ? 'Sent' : 'Resend verification email' }}
+                {{
+                    wasSuccessful ? $t('Sent') : $t('Resend verification email')
+                }}
             </Button>
         </Form>
     </div>

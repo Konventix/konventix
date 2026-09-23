@@ -11,6 +11,7 @@
  * with an unreadable dark mode.
  */
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import ThemeContrastReport from '@/components/admin/theme/ThemeContrastReport.vue';
@@ -36,6 +37,10 @@ const props = defineProps<{
 type Scheme = 'light' | 'dark';
 
 const scheme = ref<Scheme>('light');
+
+function schemeLabel(option: Scheme): string {
+    return option === 'dark' ? trans('Dark') : trans('Light');
+}
 
 // Only overridden tokens are keys in `form.tokens`; everything else falls
 // back to the platform default shown as each input's placeholder. The form
@@ -134,7 +139,9 @@ function submitImport(): void {
     if (
         form.isDirty &&
         !confirm(
-            'You have unsaved changes. Importing a theme replaces them. Continue?',
+            trans(
+                'You have unsaved changes. Importing a theme replaces them. Continue?',
+            ),
         )
     ) {
         return;
@@ -161,7 +168,7 @@ function submitImport(): void {
 </script>
 
 <template>
-    <Head :title="`${brand.name} — Theme`" />
+    <Head :title="$t(':brand — Theme', { brand: brand.name })" />
 
     <div class="flex flex-col gap-6">
         <div>
@@ -169,16 +176,20 @@ function submitImport(): void {
                 href="/admin/brands"
                 class="text-sm text-text-muted hover:text-text"
             >
-                ← Back to brands
+                ← {{ $t('Back to brands') }}
             </Link>
             <div class="mt-2">
-                <AdminPageHeader :title="`${brand.name} — Theme`" />
+                <AdminPageHeader
+                    :title="$t(':brand — Theme', { brand: brand.name })"
+                />
             </div>
             <p class="mt-2 max-w-2xl text-sm text-text-muted">
-                Overrides apply for every visitor on {{ brand.name }}'s domains
-                (ADR-0008). The light map lands on <code>:root</code> and the
-                dark map on <code>.dark</code>; a token you leave alone keeps
-                the platform default for that scheme.
+                {{
+                    $t(
+                        "Overrides apply for every visitor on :brand's domains (ADR-0008). The light map lands on :root and the dark map on .dark; a token you leave alone keeps the platform default for that scheme.",
+                        { brand: brand.name },
+                    )
+                }}
             </p>
         </div>
 
@@ -189,7 +200,7 @@ function submitImport(): void {
             <div class="space-y-6">
                 <div
                     role="tablist"
-                    aria-label="Colour scheme"
+                    :aria-label="$t('Colour scheme')"
                     class="inline-flex rounded-lg border border-border p-1"
                 >
                     <button
@@ -199,14 +210,14 @@ function submitImport(): void {
                         role="tab"
                         :aria-selected="scheme === option"
                         :class="[
-                            'rounded-md px-3 py-1 text-sm capitalize transition',
+                            'rounded-md px-3 py-1 text-sm transition',
                             scheme === option
                                 ? 'bg-accent text-on-accent'
                                 : 'text-text-muted hover:text-text',
                         ]"
                         @click="scheme = option"
                     >
-                        {{ option }}
+                        {{ schemeLabel(option) }}
                     </button>
                 </div>
 
@@ -220,14 +231,16 @@ function submitImport(): void {
 
                 <div class="flex items-center gap-3">
                     <Button type="submit" :disabled="form.processing">
-                        {{ form.processing ? 'Saving…' : 'Save changes' }}
+                        {{
+                            form.processing ? $t('Saving…') : $t('Save changes')
+                        }}
                     </Button>
                     <span
                         v-if="form.isDirty"
                         role="status"
                         class="text-sm text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
 
@@ -236,27 +249,27 @@ function submitImport(): void {
                     class="space-y-3 rounded-lg border border-border p-4"
                 >
                     <h2 id="theme-transfer-heading" class="text-sm font-medium">
-                        Export and import
+                        {{ $t('Export and import') }}
                     </h2>
                     <p class="text-xs text-text-muted">
-                        The export is a
-                        <code>konventix.brand-theme/v2</code> file: every token
-                        at its effective value in both schemes, which of them
-                        this brand overrides, and a reference block naming each
-                        token and the contrast rules — enough to hand to a
-                        designer or a coding agent as the starting point for a
-                        new theme. An import replaces both maps, is checked like
-                        a save, and still accepts a <code>v1</code> file.
+                        {{
+                            $t(
+                                'The export is a :format file: every token at its effective value in both schemes, which of them this brand overrides, and a reference block naming each token and the contrast rules — enough to hand to a designer or a coding agent as the starting point for a new theme. An import replaces both maps, is checked like a save, and still accepts a v1 file.',
+                                { format: 'konventix.brand-theme/v2' },
+                            )
+                        }}
                     </p>
                     <a
                         :href="exportTheme(brand.id).url"
                         download
                         class="inline-flex h-8 items-center rounded-md border border-border px-3 text-sm hover:bg-subtle"
                     >
-                        Export
+                        {{ $t('Export') }}
                     </a>
                     <div class="grid gap-2">
-                        <Label for="theme-import-file">Theme file (JSON)</Label>
+                        <Label for="theme-import-file">{{
+                            $t('Theme file (JSON)')
+                        }}</Label>
                         <input
                             id="theme-import-file"
                             ref="fileInput"
@@ -273,7 +286,11 @@ function submitImport(): void {
                         :disabled="importForm.processing || !importForm.file"
                         @click="submitImport"
                     >
-                        {{ importForm.processing ? 'Importing…' : 'Import' }}
+                        {{
+                            importForm.processing
+                                ? $t('Importing…')
+                                : $t('Import')
+                        }}
                     </Button>
                 </section>
             </div>

@@ -92,10 +92,11 @@ async function addPasskey(): Promise<void> {
 <template>
     <div class="space-y-4">
         <p class="text-sm text-text-muted">
-            A passkey signs you in with your device's screen lock or a security
-            key instead of a password. It is tied to this site's address: a
-            passkey created here does not sign you in on another of the
-            operator's sites.
+            {{
+                $t(
+                    "A passkey signs you in with your device's screen lock or a security key instead of a password. It is tied to this site's address: a passkey created here does not sign you in on another of the operator's sites.",
+                )
+            }}
         </p>
 
         <ul
@@ -119,12 +120,20 @@ async function addPasskey(): Promise<void> {
                         </span>
                     </p>
                     <p class="text-sm text-text-muted">
-                        Added {{ formatDateTime(passkey.createdAt) }}
+                        {{
+                            $t('Added :time', {
+                                time: formatDateTime(passkey.createdAt),
+                            })
+                        }}
                         <template v-if="passkey.lastUsedAt">
-                            · Last used
-                            {{ formatDateTime(passkey.lastUsedAt) }}
+                            ·
+                            {{
+                                $t('Last used :time', {
+                                    time: formatDateTime(passkey.lastUsedAt),
+                                })
+                            }}
                         </template>
-                        <template v-else>· Never used</template>
+                        <template v-else>· {{ $t('Never used') }}</template>
                     </p>
                 </div>
 
@@ -136,15 +145,17 @@ async function addPasskey(): Promise<void> {
                         type="submit"
                         variant="outline"
                         size="sm"
-                        :aria-label="`Remove passkey ${passkey.name}`"
+                        :aria-label="
+                            $t('Remove passkey :name', { name: passkey.name })
+                        "
                     >
-                        Remove
+                        {{ $t('Remove') }}
                     </Button>
                 </Form>
             </li>
         </ul>
         <p v-else class="text-sm text-text-muted" role="status">
-            No passkeys yet.
+            {{ $t('No passkeys yet.') }}
         </p>
 
         <form
@@ -152,14 +163,16 @@ async function addPasskey(): Promise<void> {
             data-test="add-passkey-form"
             @submit.prevent="addPasskey"
         >
-            <Label for="passkey_name">Name for the new passkey</Label>
+            <Label for="passkey_name">{{
+                $t('Name for the new passkey')
+            }}</Label>
             <div class="flex flex-wrap items-start gap-2">
                 <Input
                     id="passkey_name"
                     v-model="name"
                     name="name"
                     class="max-w-xs"
-                    placeholder="e.g. Work laptop"
+                    :placeholder="$t('e.g. Work laptop')"
                     autocomplete="off"
                     required
                     maxlength="255"
@@ -174,7 +187,7 @@ async function addPasskey(): Promise<void> {
                     data-test="add-passkey-button"
                 >
                     <Spinner v-if="busy" />
-                    Add passkey
+                    {{ $t('Add passkey') }}
                 </Button>
             </div>
             <InputError id="passkey_name_error" :message="serverError" />
@@ -191,7 +204,7 @@ async function addPasskey(): Promise<void> {
                 class="text-sm text-text-muted"
                 role="status"
             >
-                This browser does not support passkeys.
+                {{ $t('This browser does not support passkeys.') }}
             </p>
         </form>
     </div>

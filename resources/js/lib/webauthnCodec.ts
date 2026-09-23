@@ -15,6 +15,8 @@
  * path for the browsers that do not.
  */
 
+import { trans } from 'laravel-vue-i18n';
+
 /**
  * What `getClientExtensionResults()` yields once it is on the wire. Not
  * lib.dom's `AuthenticationExtensionsClientOutputs`: that is a closed
@@ -267,18 +269,25 @@ export function classifyCeremonyError(error: unknown): CeremonyFailure {
     return 'failed';
 }
 
-/** The sentence the page shows for a failure that is not the server's. */
+/**
+ * The sentence the page shows for a failure that is not the server's — a
+ * catalog key (ADR-0068), resolved when it is asked for.
+ */
 export function ceremonyFailureMessage(failure: CeremonyFailure): string {
     switch (failure) {
         case 'unsupported':
-            return 'This browser does not support passkeys.';
+            return trans('This browser does not support passkeys.');
         case 'password-confirmation-required':
-            return 'Confirm your password to continue.';
+            return trans('Confirm your password to continue.');
         case 'cancelled':
-            return 'The passkey prompt was dismissed. Nothing was changed.';
+            return trans(
+                'The passkey prompt was dismissed. Nothing was changed.',
+            );
         case 'already-registered':
-            return 'This device already holds a passkey for your account.';
+            return trans(
+                'This device already holds a passkey for your account.',
+            );
         case 'failed':
-            return 'The passkey could not be used. Please try again.';
+            return trans('The passkey could not be used. Please try again.');
     }
 }

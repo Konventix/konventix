@@ -43,7 +43,7 @@ function pickEvent(value: unknown): void {
 
 <template>
     <div v-if="selection" class="flex items-center gap-2">
-        <label for="console-brand" class="sr-only">Brand</label>
+        <label for="console-brand" class="sr-only">{{ $t('Brand') }}</label>
         <Select
             :model-value="selection.brandId ?? ALL"
             @update:model-value="pickBrand"
@@ -52,7 +52,7 @@ function pickEvent(value: unknown): void {
                 <SelectValue />
             </SelectTrigger>
             <SelectContent>
-                <SelectItem :value="ALL">All brands</SelectItem>
+                <SelectItem :value="ALL">{{ $t('All brands') }}</SelectItem>
                 <SelectItem
                     v-for="brand in selection.brands"
                     :key="brand.id"
@@ -64,7 +64,7 @@ function pickEvent(value: unknown): void {
         </Select>
 
         <template v-if="selection.eventsAvailable">
-            <label for="console-event" class="sr-only">Event</label>
+            <label for="console-event" class="sr-only">{{ $t('Event') }}</label>
             <Select
                 :model-value="selection.eventId ?? ALL"
                 @update:model-value="pickEvent"
@@ -73,7 +73,7 @@ function pickEvent(value: unknown): void {
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                    <SelectItem :value="ALL">All events</SelectItem>
+                    <SelectItem :value="ALL">{{ $t('All events') }}</SelectItem>
                     <SelectItem
                         v-for="event in selection.events"
                         :key="event.id"

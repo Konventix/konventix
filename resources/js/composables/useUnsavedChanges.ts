@@ -1,4 +1,5 @@
 import { router } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { onBeforeUnmount, onMounted } from 'vue';
 
 /**
@@ -136,7 +137,9 @@ export function useUnsavedChanges(isDirty: () => boolean): {
                 return (
                     !isDirty() ||
                     confirm(
-                        'You have unsaved changes. Leave this page without saving?',
+                        trans(
+                            'You have unsaved changes. Leave this page without saving?',
+                        ),
                     )
                 );
             }),

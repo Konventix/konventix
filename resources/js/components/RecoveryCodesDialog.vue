@@ -48,11 +48,13 @@ function onDone(): void {
             @interact-outside.prevent
         >
             <DialogHeader class="space-y-3">
-                <DialogTitle>Save your recovery codes</DialogTitle>
+                <DialogTitle>{{ $t('Save your recovery codes') }}</DialogTitle>
                 <DialogDescription>
-                    These codes are shown once. Store them somewhere safe — each
-                    can be used one time to sign in if you lose access to your
-                    authenticator app.
+                    {{
+                        $t(
+                            'These codes are shown once. Store them somewhere safe — each can be used one time to sign in if you lose access to your authenticator app.',
+                        )
+                    }}
                 </DialogDescription>
             </DialogHeader>
 
@@ -75,7 +77,7 @@ function onDone(): void {
                     data-test="recovery-codes-saved"
                     @update:model-value="onAcknowledge"
                 />
-                <span>I saved my recovery codes</span>
+                <span>{{ $t('I saved my recovery codes') }}</span>
             </Label>
 
             <DialogFooter>
@@ -85,7 +87,7 @@ function onDone(): void {
                     data-test="recovery-codes-done"
                     @click="onDone"
                 >
-                    Done
+                    {{ $t('Done') }}
                 </Button>
             </DialogFooter>
         </DialogContent>

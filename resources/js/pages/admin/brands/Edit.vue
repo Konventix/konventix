@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { Palette, Trash2 } from '@lucide/vue';
+import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import MediaPicker from '@/components/admin/MediaPicker.vue';
 import InputError from '@/components/InputError.vue';
@@ -96,6 +97,11 @@ function moduleLabel(module: string): string {
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(' ');
 }
+
+/** The always-on modules as one list, for the "cannot be switched off" line. */
+const alwaysOnModuleNames = computed(() =>
+    props.alwaysOn.map(moduleLabel).join(', '),
+);
 </script>
 
 <template>
@@ -104,12 +110,14 @@ function moduleLabel(module: string): string {
     <div class="flex flex-col gap-6">
         <AdminPageHeader
             :title="brand.name"
-            description="Identity, hosts and module activation for this brand"
+            :description="
+                $t('Identity, hosts and module activation for this brand')
+            "
         >
             <Button as-child variant="outline">
                 <Link :href="editTheme(brand.id)">
                     <Palette class="size-4" />
-                    Theme editor
+                    {{ $t('Theme editor') }}
                 </Link>
             </Button>
         </AdminPageHeader>
@@ -117,7 +125,7 @@ function moduleLabel(module: string): string {
         <div class="grid gap-6 xl:grid-cols-2">
             <Card>
                 <CardHeader>
-                    <CardTitle>Details</CardTitle>
+                    <CardTitle>{{ $t('Details') }}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <form
@@ -125,18 +133,20 @@ function moduleLabel(module: string): string {
                         @submit.prevent="submitDetails"
                     >
                         <div class="grid gap-2">
-                            <Label for="brand-name">Name</Label>
+                            <Label for="brand-name">{{ $t('Name') }}</Label>
                             <Input id="brand-name" v-model="form.name" />
                             <InputError :message="form.errors.name" />
                         </div>
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div class="grid gap-2">
-                                <Label for="brand-slug">Slug</Label>
+                                <Label for="brand-slug">{{ $t('Slug') }}</Label>
                                 <Input id="brand-slug" v-model="form.slug" />
                                 <InputError :message="form.errors.slug" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="brand-currency">Currency</Label>
+                                <Label for="brand-currency">{{
+                                    $t('Currency')
+                                }}</Label>
                                 <Input
                                     id="brand-currency"
                                     v-model="form.currency"
@@ -147,10 +157,13 @@ function moduleLabel(module: string): string {
                             </div>
                         </div>
                         <div class="grid gap-2">
-                            <Label>Hosts</Label>
+                            <Label>{{ $t('Hosts') }}</Label>
                             <p class="text-xs text-text-muted">
-                                The first host is the primary. Removing a host
-                                stops serving the brand there immediately.
+                                {{
+                                    $t(
+                                        'The first host is the primary. Removing a host stops serving the brand there immediately.',
+                                    )
+                                }}
                             </p>
                             <div
                                 v-for="(_, index) in form.hosts"
@@ -166,7 +179,7 @@ function moduleLabel(module: string): string {
                                     variant="ghost"
                                     size="icon"
                                     :disabled="form.hosts.length <= 1"
-                                    aria-label="Remove host"
+                                    :aria-label="$t('Remove host')"
                                     @click="form.hosts.splice(index, 1)"
                                 >
                                     <Trash2 class="size-4" />
@@ -179,20 +192,20 @@ function moduleLabel(module: string): string {
                                 class="self-start"
                                 @click="form.hosts.push('')"
                             >
-                                Add host
+                                {{ $t('Add host') }}
                             </Button>
                             <InputError :message="form.errors.hosts" />
                         </div>
                         <div class="flex items-center gap-3">
                             <Button type="submit" :disabled="form.processing">
-                                Save details
+                                {{ $t('Save details') }}
                             </Button>
                             <span
                                 v-if="form.isDirty"
                                 role="status"
                                 class="text-sm text-warning"
                             >
-                                Unsaved changes
+                                {{ $t('Unsaved changes') }}
                             </span>
                         </div>
                     </form>
@@ -201,7 +214,7 @@ function moduleLabel(module: string): string {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Appearance</CardTitle>
+                    <CardTitle>{{ $t('Appearance') }}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <form
@@ -209,17 +222,18 @@ function moduleLabel(module: string): string {
                         @submit.prevent="submitDetails"
                     >
                         <p class="text-sm text-text-muted">
-                            The mark in this brand's topbar and the icon in the
-                            browser tab. Anything left unset falls back to the
-                            bundled Konventix artwork. Files come from this
-                            brand's media library.
+                            {{
+                                $t(
+                                    "The mark in this brand's topbar and the icon in the browser tab. Anything left unset falls back to the bundled Konventix artwork. Files come from this brand's media library.",
+                                )
+                            }}
                         </p>
 
                         <MediaPicker
                             :brand-id="props.brand.id"
                             :can-upload="canManageMedia"
                             v-model="form.logoMediaId"
-                            label="Logo (light mode)"
+                            :label="$t('Logo (light mode)')"
                             :media="media"
                         />
                         <InputError :message="form.errors.logoMediaId" />
@@ -228,7 +242,7 @@ function moduleLabel(module: string): string {
                             :brand-id="props.brand.id"
                             :can-upload="canManageMedia"
                             v-model="form.logoDarkMediaId"
-                            label="Logo (dark mode)"
+                            :label="$t('Logo (dark mode)')"
                             :media="media"
                             described-by="logo-dark-hint"
                         />
@@ -236,8 +250,11 @@ function moduleLabel(module: string): string {
                             id="logo-dark-hint"
                             class="-mt-4 text-xs text-text-muted"
                         >
-                            Optional. Without one, the light mark is used in
-                            both themes.
+                            {{
+                                $t(
+                                    'Optional. Without one, the light mark is used in both themes.',
+                                )
+                            }}
                         </p>
                         <InputError :message="form.errors.logoDarkMediaId" />
 
@@ -245,7 +262,7 @@ function moduleLabel(module: string): string {
                             :brand-id="props.brand.id"
                             :can-upload="canManageMedia"
                             v-model="form.faviconMediaId"
-                            label="Favicon"
+                            :label="$t('Favicon')"
                             :media="media"
                             described-by="favicon-hint"
                         />
@@ -253,20 +270,20 @@ function moduleLabel(module: string): string {
                             id="favicon-hint"
                             class="-mt-4 text-xs text-text-muted"
                         >
-                            A square PNG or SVG.
+                            {{ $t('A square PNG or SVG.') }}
                         </p>
                         <InputError :message="form.errors.faviconMediaId" />
 
                         <div class="flex items-center gap-3">
                             <Button type="submit" :disabled="form.processing">
-                                Save appearance
+                                {{ $t('Save appearance') }}
                             </Button>
                             <span
                                 v-if="form.isDirty"
                                 role="status"
                                 class="text-sm text-warning"
                             >
-                                Unsaved changes
+                                {{ $t('Unsaved changes') }}
                             </span>
                         </div>
                     </form>
@@ -275,7 +292,7 @@ function moduleLabel(module: string): string {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Modules</CardTitle>
+                    <CardTitle>{{ $t('Modules') }}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <form
@@ -283,9 +300,11 @@ function moduleLabel(module: string): string {
                         @submit.prevent="submitModules"
                     >
                         <p class="text-sm text-text-muted">
-                            What this brand offers. Switching a module off hides
-                            its routes, navigation and UI contributions for this
-                            brand only — the data stays.
+                            {{
+                                $t(
+                                    'What this brand offers. Switching a module off hides its routes, navigation and UI contributions for this brand only — the data stays.',
+                                )
+                            }}
                         </p>
 
                         <div class="flex flex-col gap-3">
@@ -312,14 +331,17 @@ function moduleLabel(module: string): string {
                             </div>
                         </div>
 
-                        <!-- datetime-raw: alwaysOn.map(moduleLabel).join(', ') — module names, not a timestamp -->
                         <div v-if="alwaysOn.length" class="flex flex-col gap-1">
                             <span class="text-xs font-medium text-text-muted">
-                                Always on
+                                {{ $t('Always on') }}
                             </span>
                             <p class="text-xs text-text-muted">
-                                {{ alwaysOn.map(moduleLabel).join(', ') }} —
-                                kernel and core modules cannot be switched off.
+                                {{
+                                    $t(
+                                        ':modules — kernel and core modules cannot be switched off.',
+                                        { modules: alwaysOnModuleNames },
+                                    )
+                                }}
                             </p>
                         </div>
 
@@ -329,14 +351,14 @@ function moduleLabel(module: string): string {
                                 variant="outline"
                                 :disabled="modulesForm.processing"
                             >
-                                Save modules
+                                {{ $t('Save modules') }}
                             </Button>
                             <span
                                 v-if="modulesForm.isDirty"
                                 role="status"
                                 class="text-sm text-warning"
                             >
-                                Unsaved changes
+                                {{ $t('Unsaved changes') }}
                             </span>
                         </div>
                     </form>
@@ -345,7 +367,7 @@ function moduleLabel(module: string): string {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Features</CardTitle>
+                    <CardTitle>{{ $t('Features') }}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <form
@@ -353,10 +375,11 @@ function moduleLabel(module: string): string {
                         @submit.prevent="submitFeatures"
                     >
                         <p class="text-sm text-text-muted">
-                            Per-brand features with no module behind them
-                            (ADR-0047) — switching one off hides its routes,
-                            navigation and UI contributions for this brand only,
-                            the data stays.
+                            {{
+                                $t(
+                                    'Per-brand features with no module behind them (ADR-0047) — switching one off hides its routes, navigation and UI contributions for this brand only, the data stays.',
+                                )
+                            }}
                         </p>
 
                         <div class="flex flex-col gap-3">
@@ -394,14 +417,14 @@ function moduleLabel(module: string): string {
                                 variant="outline"
                                 :disabled="featuresForm.processing"
                             >
-                                Save features
+                                {{ $t('Save features') }}
                             </Button>
                             <span
                                 v-if="featuresForm.isDirty"
                                 role="status"
                                 class="text-sm text-warning"
                             >
-                                Unsaved changes
+                                {{ $t('Unsaved changes') }}
                             </span>
                         </div>
                     </form>

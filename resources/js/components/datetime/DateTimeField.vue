@@ -82,10 +82,19 @@ const echo = computed(() => {
             :aria-describedby="describedBy"
         />
         <p :id="hintId" class="text-xs text-text-muted">
-            Times in your timezone ({{ viewerTimezone() }}).
+            {{
+                $t('Times in your timezone (:zone).', {
+                    zone: viewerTimezone(),
+                })
+            }}
             <template v-if="echo">
-                = {{ echo }} — a time that does not exist on that date moves to
-                the next one.
+                =
+                {{
+                    $t(
+                        ':moment — a time that does not exist on that date moves to the next one.',
+                        { moment: echo },
+                    )
+                }}
             </template>
             <template v-if="hint"> {{ hint }}</template>
         </p>

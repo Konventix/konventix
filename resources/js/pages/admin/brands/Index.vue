@@ -24,7 +24,7 @@ import {
     index as brandsIndex,
     store as createBrand,
 } from '@/routes/admin/brands';
-import { columns } from './columns';
+import { brandColumns } from './columns';
 import type { BrandRow } from './columns';
 
 interface PaginatedBrands {
@@ -46,6 +46,8 @@ const { filters, setSearch, toggleSort, setPerPage, setPage } = useDataTable(
     () => brandsIndex().url,
     props.filters,
 );
+
+const columns = brandColumns();
 
 const sorting = computed<SortingState>(() =>
     filters.sort ? [{ id: filters.sort, desc: filters.dir === 'desc' }] : [],
@@ -87,18 +89,20 @@ function submit(): void {
 </script>
 
 <template>
-    <Head title="Brands" />
+    <Head :title="$t('Brands')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Brands"
-            description="The operator's brands, their hosts and features"
+            :title="$t('Brands')"
+            :description="
+                $t('The operator\'s brands, their hosts and features')
+            "
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
-            search-placeholder="Search brands…"
+            :search-placeholder="$t('Search brands…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
         >
@@ -107,29 +111,29 @@ function submit(): void {
                     <DialogTrigger as-child>
                         <Button>
                             <Plus class="size-4" />
-                            New brand
+                            {{ $t('New brand') }}
                         </Button>
                     </DialogTrigger>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Create brand</DialogTitle>
+                            <DialogTitle>{{ $t('Create brand') }}</DialogTitle>
                         </DialogHeader>
                         <form
                             class="flex flex-col gap-4"
                             @submit.prevent="submit"
                         >
                             <div class="grid gap-2">
-                                <Label for="brand-name">Name</Label>
+                                <Label for="brand-name">{{ $t('Name') }}</Label>
                                 <Input id="brand-name" v-model="form.name" />
                                 <InputError :message="form.errors.name" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="brand-slug">Slug</Label>
+                                <Label for="brand-slug">{{ $t('Slug') }}</Label>
                                 <Input id="brand-slug" v-model="form.slug" />
                                 <InputError :message="form.errors.slug" />
                             </div>
                             <div class="grid gap-2">
-                                <Label>Hosts</Label>
+                                <Label>{{ $t('Hosts') }}</Label>
                                 <div
                                     v-for="(_, index) in form.hosts"
                                     :key="index"
@@ -147,12 +151,12 @@ function submit(): void {
                                     class="self-start"
                                     @click="form.hosts.push('')"
                                 >
-                                    Add host
+                                    {{ $t('Add host') }}
                                 </Button>
                                 <InputError :message="form.errors.hosts" />
                             </div>
                             <Button type="submit" :disabled="form.processing">
-                                Create
+                                {{ $t('Create') }}
                             </Button>
                         </form>
                     </DialogContent>
@@ -168,8 +172,8 @@ function submit(): void {
             :row-count="brands.total"
             :pagination="pagination"
             :get-row-id="(row: BrandRow) => row.id"
-            items-label="brands"
-            empty-message="No brands found."
+            :items-label="$t('brands')"
+            :empty-message="$t('No brands found.')"
             row-clickable
             @row-click="(row: BrandRow) => router.visit(editBrand(row.id))"
             @update:sorting="onSortingChange"

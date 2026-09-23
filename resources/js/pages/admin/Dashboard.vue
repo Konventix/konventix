@@ -24,23 +24,23 @@ defineProps<{
 </script>
 
 <template>
-    <Head title="Admin" />
+    <Head :title="$t('Admin')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            :title="operator.name ?? 'Operator console'"
-            description="Everything the operator runs, across all brands"
+            :title="operator.name ?? $t('Operator console')"
+            :description="$t('Everything the operator runs, across all brands')"
         />
 
         <div class="grid gap-4 sm:grid-cols-2 lg:max-w-xl">
             <div class="rounded-xl border border-border p-4">
                 <div class="text-3xl font-semibold">{{ counts.brands }}</div>
-                <div class="text-sm text-text-muted">Brands</div>
+                <div class="text-sm text-text-muted">{{ $t('Brands') }}</div>
             </div>
             <div class="rounded-xl border border-border p-4">
                 <div class="text-3xl font-semibold">{{ counts.pages }}</div>
                 <div class="text-sm text-text-muted">
-                    Static pages (all brands)
+                    {{ $t('Static pages (all brands)') }}
                 </div>
             </div>
         </div>

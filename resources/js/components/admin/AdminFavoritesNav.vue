@@ -81,10 +81,13 @@ const {
 
 <template>
     <SidebarGroup v-if="items.length > 0" class="px-2 py-0">
-        <SidebarGroupLabel>Favorites</SidebarGroupLabel>
+        <SidebarGroupLabel>{{ $t('Favorites') }}</SidebarGroupLabel>
         <p id="admin-favorites-reorder-hint" class="sr-only">
-            Drag a favorite to reorder it, or focus its reorder handle and press
-            the up or down arrow key.
+            {{
+                $t(
+                    'Drag a favorite to reorder it, or focus its reorder handle and press the up or down arrow key.',
+                )
+            }}
         </p>
         <SidebarMenu>
             <SidebarMenuItem
@@ -101,14 +104,14 @@ const {
                 <SidebarMenuButton
                     as-child
                     :is-active="isCurrentUrl(favorite.url)"
-                    :tooltip="favorite.label"
+                    :tooltip="$t(favorite.label)"
                 >
                     <component
                         :is="externalUrls.has(favorite.url) ? 'a' : Link"
                         :href="favorite.url"
                         draggable="false"
                     >
-                        <span>{{ favorite.label }}</span>
+                        <span>{{ $t(favorite.label) }}</span>
                     </component>
                 </SidebarMenuButton>
                 <SidebarMenuAction
@@ -119,8 +122,13 @@ const {
                 >
                     <GripVertical class="size-4" />
                     <span class="sr-only">
-                        Reorder {{ favorite.label }}, position
-                        {{ index + 1 }} of {{ items.length }}
+                        {{
+                            $t('Reorder :label, position :position of :total', {
+                                label: $t(favorite.label),
+                                position: String(index + 1),
+                                total: String(items.length),
+                            })
+                        }}
                     </span>
                 </SidebarMenuAction>
                 <SidebarMenuAction
@@ -128,7 +136,9 @@ const {
                     @click.stop.prevent="emit('unpin', favorite)"
                 >
                     <PinOff class="size-4" />
-                    <span class="sr-only">Unpin {{ favorite.label }}</span>
+                    <span class="sr-only">{{
+                        $t('Unpin :label', { label: $t(favorite.label) })
+                    }}</span>
                 </SidebarMenuAction>
             </SidebarMenuItem>
         </SidebarMenu>

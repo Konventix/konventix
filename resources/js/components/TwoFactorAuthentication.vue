@@ -84,11 +84,14 @@ watch(
     <div class="space-y-4">
         <div class="flex items-center gap-3">
             <Badge :variant="enabled ? 'default' : 'secondary'">
-                {{ enabled ? 'Enabled' : 'Disabled' }}
+                {{ enabled ? $t('Enabled') : $t('Disabled') }}
             </Badge>
             <p class="text-sm text-text-muted">
-                Use an authenticator app to require a code in addition to your
-                password when logging in.
+                {{
+                    $t(
+                        'Use an authenticator app to require a code in addition to your password when logging in.',
+                    )
+                }}
             </p>
         </div>
 
@@ -98,7 +101,7 @@ watch(
             :options="{ preserveScroll: true }"
         >
             <Button type="submit" data-test="enable-two-factor-button">
-                Enable two-factor authentication
+                {{ $t('Enable two-factor authentication') }}
             </Button>
         </Form>
 
@@ -108,7 +111,9 @@ watch(
                 class="w-fit rounded-lg border border-border p-4"
                 v-html="qrCodeSvg"
             />
-            <p v-else class="text-sm text-text-muted">Loading QR code…</p>
+            <p v-else class="text-sm text-text-muted">
+                {{ $t('Loading QR code…') }}
+            </p>
 
             <Form
                 v-bind="twoFactor.confirm.form()"
@@ -116,14 +121,16 @@ watch(
                 v-slot="{ errors, processing }"
                 class="flex flex-col gap-2"
             >
-                <Label for="two_factor_code">Confirmation code</Label>
+                <Label for="two_factor_code">{{
+                    $t('Confirmation code')
+                }}</Label>
                 <Input
                     id="two_factor_code"
                     name="code"
                     inputmode="numeric"
                     autocomplete="one-time-code"
                     class="max-w-40"
-                    placeholder="Code"
+                    :placeholder="$t('Code')"
                 />
                 <InputError :message="errors.code" />
                 <Button
@@ -133,18 +140,20 @@ watch(
                     data-test="confirm-two-factor-button"
                 >
                     <Spinner v-if="processing" />
-                    Confirm
+                    {{ $t('Confirm') }}
                 </Button>
             </Form>
         </div>
 
         <div v-else class="space-y-4">
             <div class="space-y-2">
-                <p class="text-sm font-medium">Recovery codes</p>
+                <p class="text-sm font-medium">{{ $t('Recovery codes') }}</p>
                 <p class="text-sm text-text-muted">
-                    Your recovery codes were shown once when you enabled
-                    two-factor authentication. If you no longer have them,
-                    generate a new set — the old codes stop working.
+                    {{
+                        $t(
+                            'Your recovery codes were shown once when you enabled two-factor authentication. If you no longer have them, generate a new set — the old codes stop working.',
+                        )
+                    }}
                 </p>
                 <Form
                     v-bind="twoFactor.regenerateRecoveryCodes.form()"
@@ -157,7 +166,7 @@ watch(
                         size="sm"
                         data-test="regenerate-recovery-codes-button"
                     >
-                        Regenerate recovery codes
+                        {{ $t('Regenerate recovery codes') }}
                     </Button>
                 </Form>
             </div>
@@ -171,7 +180,7 @@ watch(
                     variant="destructive"
                     data-test="disable-two-factor-button"
                 >
-                    Disable two-factor authentication
+                    {{ $t('Disable two-factor authentication') }}
                 </Button>
             </Form>
         </div>

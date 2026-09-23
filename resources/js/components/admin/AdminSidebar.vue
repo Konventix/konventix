@@ -38,7 +38,10 @@ type AdminNavItem = {
     badge: number | null;
 };
 
-/** 'game-ops' -> 'Game Ops' — group label from the module's kebab-case name. */
+/**
+ * 'game-ops' -> 'Game Ops' — group label from the module's kebab-case name.
+ * The result is a catalog key: the template translates it where it renders.
+ */
 function humanizeModule(module: string): string {
     return module
         .split('-')
@@ -128,12 +131,12 @@ const groups = computed(() => {
                                 class="grid flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden"
                             >
                                 <span class="truncate text-sm font-semibold">
-                                    {{ admin?.operatorName ?? 'Operator' }}
+                                    {{ admin?.operatorName ?? $t('Operator') }}
                                 </span>
                                 <span
                                     class="truncate text-xs text-sidebar-foreground/60"
                                 >
-                                    Admin console
+                                    {{ $t('Admin console') }}
                                 </span>
                             </div>
                         </Link>
@@ -154,7 +157,7 @@ const groups = computed(() => {
             <AdminNavGroup
                 v-for="group in groups"
                 :key="group.module"
-                :label="group.label"
+                :label="$t(group.label)"
                 :search-active="searchActive"
             >
                 <SidebarMenu>
@@ -181,7 +184,7 @@ const groups = computed(() => {
                 class="justify-start text-text-muted"
                 @click="openCookieSettings()"
             >
-                Cookie settings
+                {{ $t('Cookie settings') }}
             </Button>
             <NavUser />
         </SidebarFooter>

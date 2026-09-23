@@ -8,9 +8,14 @@
  * pinning — one of these sentences discharges an Art. 13 DSGVO duty and
  * another one must not become an account-enumeration oracle.
  *
- * The auth surfaces are hard English today, like the purchase path (#132
- * owns making them translatable).
+ * The English sentences are catalog keys (ADR-0068, #132); the German sits
+ * in the root catalog. No catalog is loaded under vitest, so `trans()` answers
+ * the English with its placeholders filled — which is what the tests pin.
+ * Functions, never module-level constants: `trans()` at import time would run
+ * before the catalog is installed.
  */
+
+import { trans } from 'laravel-vue-i18n';
 
 /** One of the operator's brands, as the presence prop carries it. */
 export type PresenceBrand = {
@@ -34,8 +39,14 @@ export function accountIntro(
     creatingAccount: boolean,
 ): string {
     return creatingAccount
-        ? `You are creating an account on ${brandName}, a site of ${operatorName}.`
-        : `Sign in on ${brandName} with your ${operatorName} account.`;
+        ? trans('You are creating an account on :brand, a site of :operator.', {
+              brand: brandName,
+              operator: operatorName,
+          })
+        : trans('Sign in on :brand with your :operator account.', {
+              brand: brandName,
+              operator: operatorName,
+          });
 }
 
 /**
@@ -53,8 +64,10 @@ export function brandListIntro(
     }
 
     return creatingAccount
-        ? `The same account works on every site of ${operatorName}:`
-        : 'It also applies on:';
+        ? trans('The same account works on every site of :operator:', {
+              operator: operatorName,
+          })
+        : trans('It also applies on:');
 }
 
 /**
@@ -110,10 +123,16 @@ export function sharedAccountNoticeFor(
     }
 
     if (pageComponent === 'auth/CompleteSocialSignup') {
-        return `Already have an account from another ${operatorName} site? Sign in with that account rather than creating a second one — it already works here — and connect this sign-in method afterwards from your security settings.`;
+        return trans(
+            'Already have an account from another :operator site? Sign in with that account rather than creating a second one — it already works here — and connect this sign-in method afterwards from your security settings.',
+            { operator: operatorName },
+        );
     }
 
-    return `Already have an account from another ${operatorName} site? Sign in instead — the same email address and password work here, and you keep everything you already have there.`;
+    return trans(
+        'Already have an account from another :operator site? Sign in instead — the same email address and password work here, and you keep everything you already have there.',
+        { operator: operatorName },
+    );
 }
 
 /**
@@ -124,5 +143,7 @@ export function sharedAccountNoticeFor(
  * existing, and a dead link from that very sentence is worse than none.
  */
 export function controllerSentence(legalName: string): string {
-    return `${legalName} is responsible for processing your data`;
+    return trans(':controller is responsible for processing your data', {
+        controller: legalName,
+    });
 }
