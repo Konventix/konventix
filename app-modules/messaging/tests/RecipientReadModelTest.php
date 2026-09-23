@@ -19,7 +19,7 @@ final class RecipientTestPayload extends Data
     public function __construct(public readonly string $displayName) {}
 }
 
-function registeredEventFor(string $userId, string $brandId, string $email = 'ada@example.test'): UserRegistered
+function registeredEventFor(string $userId, string $brandId, string $email = 'ada@example.test', ?string $locale = 'de'): UserRegistered
 {
     return new UserRegistered(
         userId: $userId,
@@ -27,7 +27,7 @@ function registeredEventFor(string $userId, string $brandId, string $email = 'ad
         email: $email,
         displayName: 'Ada Lovelace',
         username: 'ada-lovelace',
-        locale: 'de',
+        locale: $locale,
         registeredAt: now()->toIso8601String(),
     );
 }
@@ -95,9 +95,10 @@ it('resolves the email from the read model and the locale from the account when 
     Queue::fake();
 
     // ADR-0068 §5: the locale is the person's effective one, resolved at
-    // send time from the account — the read model's copy is not consulted.
+    // send time from the account — the read model's copy ('en' here) is
+    // not consulted.
     $userId = User::factory()->create(['locale' => 'de'])->id;
-    event(registeredEventFor($userId, $brand->getKey(), 'resolved@example.test'));
+    event(registeredEventFor($userId, $brand->getKey(), 'resolved@example.test', 'en'));
 
     [$message] = app(SendMessage::class)->handle(new SendMessageRequest(
         recipientId: $userId,
@@ -109,6 +110,23 @@ it('resolves the email from the read model and the locale from the account when 
         ->and($message->recipientLocale)->toBe('de');
 
     Queue::assertPushed(SendQueuedMessage::class);
+});
+
+it('lets the brand decide when the account has no locale, whatever the read model says', function (): void {
+    $brand = $this->withBrand();
+    $brand->forceFill(['locale' => 'en'])->save();
+    Queue::fake();
+
+    $userId = User::factory()->create(['locale' => null])->id;
+    event(registeredEventFor($userId, $brand->getKey(), 'resolved@example.test', 'de'));
+
+    [$message] = app(SendMessage::class)->handle(new SendMessageRequest(
+        recipientId: $userId,
+        templateKey: 'test.read-model',
+        payload: new RecipientTestPayload('Ada'),
+    ));
+
+    expect($message->recipientLocale)->toBe('en');
 });
 
 it('refuses a send that resolves to no address at all', function (): void {

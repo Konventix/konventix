@@ -7,6 +7,7 @@ use Konventix\Platform\Locales\LocaleResolver;
 use Konventix\Platform\Locales\Locales;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
+use Konventix\Platform\Operators\OperatorContext;
 
 /**
  * ADR-0068 §4: operator → brand → user, each level optional below the
@@ -61,6 +62,15 @@ it('resolves a user by id across brands for queued work', function (): void {
     $user = User::factory()->create(['locale' => null]);
 
     expect(app(LocaleResolver::class)->forUserId($user->id, $brand->id))->toBe('de');
+});
+
+it('resolves operator → user by id without a brand', function (): void {
+    // ADR-0068 §4 on the admin host: no brand, so the operator in context
+    // is the level below the person.
+    app(OperatorContext::class)->set(Operator::factory()->create(['locale' => 'de']));
+    $user = User::factory()->create(['locale' => null]);
+
+    expect(app(LocaleResolver::class)->forUserId($user->id, null))->toBe('de');
 });
 
 it('builds the fallback chain through a variant', function (): void {

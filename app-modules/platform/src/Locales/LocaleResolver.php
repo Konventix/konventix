@@ -59,14 +59,19 @@ final class LocaleResolver
     }
 
     /**
-     * For queued work that has ids, not models (ADR-0068 §5).
+     * For queued work that has ids, not models (ADR-0068 §5). Without a
+     * brand id (the admin host) the operator in context is the level below
+     * the person — resolved at call time, never captured.
      */
     public function forUserId(string $userId, ?string $brandId): string
     {
         $user = User::query()->find($userId);
-        $brand = $brandId === null ? null : Brand::query()->withoutGlobalScopes()->find($brandId);
 
-        return $this->forUser($user, $brand);
+        if ($brandId === null) {
+            return $this->forUser($user, null, app(OperatorContext::class)->current());
+        }
+
+        return $this->forUser($user, Brand::query()->withoutGlobalScopes()->find($brandId));
     }
 
     /** @param list<string|null> $candidates */
