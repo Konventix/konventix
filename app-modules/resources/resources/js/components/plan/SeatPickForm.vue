@@ -15,9 +15,13 @@ import { firstPlaceIdsError } from './eligibility';
  * place swap the selection freely (`selectWithSwap`). Split out of
  * `Pick.vue` in the 2026-09-21 bugfix round for size only.
  *
- * A save answers with a redirect back onto the picker (#317); the form
- * keeps the page mounted and its scroll position, and `Pick.vue` takes
- * the fresh selection and availability over from the new props.
+ * A save answers with a redirect back onto the picker (#317). The page
+ * stays mounted because Inertia preserves state on a non-GET visit by
+ * default, and it stays scrolled because of `:options="{ preserveScroll:
+ * true }"`: Inertia 3's `<Form>` has no `preserve-scroll` prop, so the
+ * attribute form `<Link>` accepts is a silent no-op here and the page
+ * jumped to the top. `Pick.vue` takes the fresh selection and
+ * availability over from the new props.
  */
 defineProps<{
     registrationId: string;
@@ -35,7 +39,7 @@ defineProps<{
                 : SeatPickController.store.form(registrationId)
         "
         #default="{ errors, processing }"
-        preserve-scroll
+        :options="{ preserveScroll: true }"
         class="flex flex-col gap-4"
     >
         <input
