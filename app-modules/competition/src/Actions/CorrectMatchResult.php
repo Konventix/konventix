@@ -294,6 +294,13 @@ final class CorrectMatchResult
         );
 
         $match->refresh();
+
+        // A voided match that keeps its time is on again, between the sides
+        // the correction put there. `reroute()` filled its slot while it was
+        // still `finished`, which announces nothing, so it is announced here,
+        // once its state says it will be played (design §14, "§12
+        // reconciled"). With a side still to come it waits, as any match does.
+        app(ScheduleMatch::class)->announce($match);
     }
 
     /**
