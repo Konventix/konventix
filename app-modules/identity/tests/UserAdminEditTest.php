@@ -157,3 +157,31 @@ it('requires manage-users for the update endpoint', function (): void {
         ])
         ->assertForbidden();
 });
+
+it('resets a locale to default', function (): void {
+    // ADR-0068 §4: null is "follows the brand", and the console has to be
+    // able to hand a person back to it — before, the rule was `required`
+    // and an account that had never chosen could not be saved at all.
+    $admin = userAdminOperator();
+    $user = User::factory()->create(['locale' => 'de']);
+
+    $this->actingAs($admin)
+        ->put("http://admin.useredit.test/admin/users/{$user->id}", [
+            'name' => $user->name, 'email' => $user->email, 'locale' => '', 'timezone' => '',
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect($user->fresh()->locale)->toBeNull();
+});
+
+it('rejects a locale the instance does not ship', function (): void {
+    $admin = userAdminOperator();
+    $user = User::factory()->create();
+
+    $this->actingAs($admin)
+        ->put("http://admin.useredit.test/admin/users/{$user->id}", [
+            'name' => $user->name, 'email' => $user->email, 'locale' => 'fr', 'timezone' => '',
+        ])
+        ->assertSessionHasErrors('locale');
+});

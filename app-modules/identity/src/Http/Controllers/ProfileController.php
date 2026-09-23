@@ -45,6 +45,9 @@ class ProfileController
                 // select offers as "Browser (…)" and the helper answers with
                 // the reader's own browser zone.
                 'timezone' => $user->timezone,
+                // ADR-0068 §4: null follows the brand's language — the
+                // select's "Default (…)" option.
+                'locale' => $user->locale,
             ],
             'membershipImages' => $this->membershipImages($user, $media),
             'steamAvatarUrl' => $this->steamAvatarUrl($user),
@@ -102,6 +105,7 @@ class ProfileController
             'profile_visibility' => ProfileVisibility::from($data->visibility),
             'listed_in_attendees' => $data->listedInAttendees,
             'timezone' => $data->timezone === '' ? null : $data->timezone,
+            'locale' => $data->locale === '' ? null : $data->locale,
         ]);
 
         if ($request->user()->isDirty('email')) {

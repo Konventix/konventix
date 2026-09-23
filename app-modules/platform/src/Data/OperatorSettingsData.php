@@ -7,6 +7,7 @@ namespace Konventix\Platform\Data;
 use Illuminate\Validation\Rule;
 use Konventix\Platform\Enums\DateFormat;
 use Konventix\Platform\Enums\TimeFormat;
+use Konventix\Platform\Locales\Locales;
 use Konventix\Platform\Models\Operator;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
@@ -41,6 +42,7 @@ final class OperatorSettingsData extends Data
         public readonly bool $signupsOpen,
         public readonly DateFormat $dateFormat,
         public readonly TimeFormat $timeFormat,
+        public readonly string $locale,
     ) {}
 
     public static function ofModel(Operator $operator): self
@@ -59,6 +61,7 @@ final class OperatorSettingsData extends Data
             signupsOpen: $operator->signups_open,
             dateFormat: DateFormat::tryFrom($operator->date_format) ?? DateFormat::DayMonthYear,
             timeFormat: TimeFormat::tryFrom($operator->time_format) ?? TimeFormat::TwentyFourHour,
+            locale: $operator->locale,
         );
     }
 
@@ -93,6 +96,10 @@ final class OperatorSettingsData extends Data
             // behind one legal sender may not disagree about it.
             'dateFormat' => ['required', Rule::enum(DateFormat::class)],
             'timeFormat' => ['required', Rule::enum(TimeFormat::class)],
+            // The bottom of the locale chain (ADR-0068 §4): every brand
+            // without its own choice and every guest on it lands here, so
+            // it may not be empty, and only a locale the instance ships.
+            'locale' => ['required', Rule::in(app(Locales::class)->supported())],
         ];
     }
 }

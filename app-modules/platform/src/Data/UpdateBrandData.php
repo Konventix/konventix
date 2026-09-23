@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Data;
 
+use Illuminate\Validation\Rule;
+use Konventix\Platform\Locales\Locales;
 use Spatie\LaravelData\Attributes\Validation\Regex;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
@@ -30,10 +32,12 @@ class UpdateBrandData extends Data
         public ?string $logoMediaId = null,
         public ?string $logoDarkMediaId = null,
         public ?string $faviconMediaId = null,
+        /** ADR-0068 §4: null means "speak the operator's default". */
+        public ?string $locale = null,
     ) {}
 
     /**
-     * @return array<string, array<int, string>>
+     * @return array<string, array<int, mixed>>
      */
     public static function rules(): array
     {
@@ -49,6 +53,7 @@ class UpdateBrandData extends Data
             'logoMediaId' => ['nullable', 'ulid', 'exists:media_items,id'],
             'logoDarkMediaId' => ['nullable', 'ulid', 'exists:media_items,id'],
             'faviconMediaId' => ['nullable', 'ulid', 'exists:media_items,id'],
+            'locale' => ['nullable', Rule::in(app(Locales::class)->supported())],
         ];
     }
 }

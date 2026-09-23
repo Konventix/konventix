@@ -1444,7 +1444,7 @@ declare namespace Konventix {
             export type AdminUpdateUserData = {
                 name: string;
                 email: string;
-                locale: string;
+                locale: string | null;
                 timezone: string | null;
             };
             export type CompleteSocialSignupData = {
@@ -1490,6 +1490,7 @@ declare namespace Konventix {
                 readonly visibility: string;
                 readonly timezone: string | null;
                 readonly listedInAttendees: boolean;
+                readonly locale: string | null;
             };
             export type RegisterData = {
                 readonly name: string;
@@ -1884,6 +1885,7 @@ declare namespace Konventix {
                 readonly signupsOpen: boolean;
                 readonly dateFormat: Konventix.Platform.Enums.DateFormat;
                 readonly timeFormat: Konventix.Platform.Enums.TimeFormat;
+                readonly locale: string;
             };
             export type StaticPageData = {
                 readonly id: string;
@@ -1958,6 +1960,7 @@ declare namespace Konventix {
                 logoMediaId: string | null;
                 logoDarkMediaId: string | null;
                 faviconMediaId: string | null;
+                locale: string | null;
             };
             export type UpdateStaticPageData = {
                 readonly title: string;

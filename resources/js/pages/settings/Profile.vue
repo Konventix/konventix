@@ -35,6 +35,8 @@ const { profile, membershipImages, steamAvatarUrl } = defineProps<{
         /** ADR-0064: opt-in to be named on event attendee lists. */
         listedInAttendees: boolean;
         timezone: string | null;
+        /** ADR-0068 §4: null follows the site's language. */
+        locale: string | null;
     };
     membershipImages: {
         avatarUrl: string | null;
@@ -87,6 +89,17 @@ const browserZone = computed(() => browserTimezone());
 const avatarForm = useForm<{ file: File | null }>({ file: null });
 const bannerForm = useForm<{ file: File | null }>({ file: null });
 const page = usePage();
+
+// The empty string is "Default": no language of my own, speak whatever this
+// site speaks — stored as null (ADR-0068 §4). The option names that language
+// in itself, so a reader who cannot read the current one still finds theirs.
+const locale = ref(profile.locale ?? '');
+const siteLanguage = computed(
+    () =>
+        page.props.locales.find(
+            (option) => option.code === page.props.contentLocale,
+        )?.name ?? page.props.contentLocale,
+);
 
 function submitAvatar(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -342,6 +355,39 @@ function submitBanner(event: Event): void {
                     id="timezone-error"
                     class="mt-2"
                     :message="errors.timezone"
+                />
+            </div>
+
+            <div class="grid gap-2">
+                <Label for="locale">{{ $t('Language') }}</Label>
+                <select
+                    id="locale"
+                    v-model="locale"
+                    name="locale"
+                    class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
+                    :aria-invalid="errors.locale ? true : undefined"
+                    aria-describedby="locale-hint locale-error"
+                >
+                    <option value="">
+                        {{ $t('Default (:name)', { name: siteLanguage }) }}
+                    </option>
+                    <option
+                        v-for="option in page.props.locales"
+                        :key="option.code"
+                        :value="option.code"
+                    >
+                        {{ option.name }}
+                    </option>
+                </select>
+                <p id="locale-hint" class="text-sm text-text-muted">
+                    {{
+                        $t('Leave it on Default to follow the site’s language.')
+                    }}
+                </p>
+                <InputError
+                    id="locale-error"
+                    class="mt-2"
+                    :message="errors.locale"
                 />
             </div>
 

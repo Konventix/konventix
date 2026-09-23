@@ -23,7 +23,9 @@ final class UpdateUserAccount
             $user->fill([
                 'name' => $data->name,
                 'email' => $data->email,
-                'locale' => $data->locale,
+                // Empty hands the person back to the brand's language
+                // (ADR-0068 §4).
+                'locale' => $data->locale === '' ? null : $data->locale,
                 // Empty means "no zone of their own" (#243), not an empty
                 // string an `Intl` call would then throw on.
                 'timezone' => $data->timezone === '' ? null : $data->timezone,

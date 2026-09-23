@@ -104,6 +104,7 @@ class BrandAdminController
                 'logoMediaId' => $brand->logo_media_id,
                 'logoDarkMediaId' => $brand->logo_dark_media_id,
                 'faviconMediaId' => $brand->favicon_media_id,
+                'locale' => $brand->locale,
             ],
             // What the asset pickers choose from. Brand-owned media only —
             // a brand may not wear another brand's file, and the escape

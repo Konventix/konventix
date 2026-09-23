@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { ArrowLeft, Flag, Heart } from '@lucide/vue';
+import { computed } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/datetime';
@@ -36,6 +37,15 @@ type Props = {
 const props = defineProps<Props>();
 
 const form = useForm({ body: '' });
+
+const page = usePage();
+
+/** The brand's language on its own text, when the reader reads another. */
+const contentLang = computed(() =>
+    page.props.contentLocale !== page.props.locale
+        ? page.props.contentLocale
+        : undefined,
+);
 
 function formatDate(value: string | null): string {
     return formatDateTime(value, { dateStyle: 'long', timeStyle: 'short' });
@@ -111,15 +121,28 @@ function toggleReaction(
                 </span>
             </div>
 
-            <h1 class="text-3xl font-semibold">{{ props.entry.title }}</h1>
+            <!--
+                Title, teaser and body are the brand's text, written in the
+                brand's language; the chrome around them speaks the reader's.
+                Where the two differ the container says so (ADR-0068 §7,
+                ADR-0055), so a screen reader switches voice.
+            -->
+            <h1 class="text-3xl font-semibold" :lang="contentLang">
+                {{ props.entry.title }}
+            </h1>
 
-            <p v-if="props.entry.teaser" class="text-lg text-text-muted">
+            <p
+                v-if="props.entry.teaser"
+                class="text-lg text-text-muted"
+                :lang="contentLang"
+            >
                 {{ props.entry.teaser }}
             </p>
 
             <div
                 v-if="props.entry.body"
                 class="text-base leading-relaxed whitespace-pre-line"
+                :lang="contentLang"
             >
                 {{ props.entry.body }}
             </div>

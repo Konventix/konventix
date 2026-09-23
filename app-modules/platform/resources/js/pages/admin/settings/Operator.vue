@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, useForm, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
@@ -51,7 +51,11 @@ const form = useForm({
     signupsOpen: props.operator.signupsOpen,
     dateFormat: props.operator.dateFormat,
     timeFormat: props.operator.timeFormat,
+    locale: props.operator.locale,
 });
+
+/** The locales this instance ships, each named in its own language. */
+const page = usePage();
 
 /**
  * A sample rendered with whatever is currently picked (#242), so the choice
@@ -266,6 +270,38 @@ function submit(): void {
                         </div>
                         <InputError :message="form.errors.signupsOpen" />
                     </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{{ $t('Language') }}</CardTitle>
+                </CardHeader>
+                <CardContent class="grid gap-2">
+                    <Label for="locale">{{ $t('Default language') }}</Label>
+                    <select
+                        id="locale"
+                        v-model="form.locale"
+                        required
+                        aria-describedby="locale-hint"
+                        class="h-9 max-w-xs rounded-md border border-border bg-surface px-3 text-sm"
+                    >
+                        <option
+                            v-for="option in page.props.locales"
+                            :key="option.code"
+                            :value="option.code"
+                        >
+                            {{ option.name }}
+                        </option>
+                    </select>
+                    <p id="locale-hint" class="text-xs text-text-muted">
+                        {{
+                            $t(
+                                'What every brand speaks unless it picks its own language, and what a person reads unless they pick theirs.',
+                            )
+                        }}
+                    </p>
+                    <InputError :message="form.errors.locale" />
                 </CardContent>
             </Card>
 

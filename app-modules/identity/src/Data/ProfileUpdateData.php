@@ -9,6 +9,7 @@ use Illuminate\Validation\Rule;
 use Konventix\Identity\Concerns\ProfileValidationRules;
 use Konventix\Identity\Enums\ProfileVisibility;
 use Konventix\Identity\Profile\SocialLinks;
+use Konventix\Platform\Locales\Locales;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -48,6 +49,11 @@ final class ProfileUpdateData extends Data
          * so the default is the unchecked value and the rule is `sometimes`.
          */
         public readonly bool $listedInAttendees = false,
+        /**
+         * ADR-0068 §4: the person's own language, or null to follow the
+         * site's — the select's "Default" option.
+         */
+        public readonly ?string $locale = null,
     ) {}
 
     /**
@@ -84,6 +90,7 @@ final class ProfileUpdateData extends Data
             // the person then looks at.
             'timezone' => ['nullable', 'timezone:all'],
             'listedInAttendees' => ['sometimes', 'boolean'],
+            'locale' => ['nullable', Rule::in(app(Locales::class)->supported())],
         ]);
 
         foreach (SocialLinks::PLATFORMS as $platform => $regex) {

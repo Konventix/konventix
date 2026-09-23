@@ -117,6 +117,11 @@ function submit(): void {
                 <!-- eslint-disable-next-line vue/no-v-html -->
                 <article
                     class="policy-prose max-h-72 overflow-y-auto rounded-md bg-surface-muted p-3 text-sm"
+                    :lang="
+                        $page.props.contentLocale !== $page.props.locale
+                            ? $page.props.contentLocale
+                            : undefined
+                    "
                     v-html="version.html"
                 />
 

@@ -95,6 +95,11 @@ usePollWhile(() => props.page.pollSeconds);
         <div
             v-if="props.page.competition.descriptionHtml"
             class="flex flex-col gap-3 text-text [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
+            :lang="
+                $page.props.contentLocale !== $page.props.locale
+                    ? $page.props.contentLocale
+                    : undefined
+            "
             v-html="props.page.competition.descriptionHtml"
         />
 
@@ -108,6 +113,11 @@ usePollWhile(() => props.page.pollSeconds);
             <!-- eslint-disable-next-line vue/no-v-html -->
             <div
                 class="mt-3 flex flex-col gap-3 text-text [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
+                :lang="
+                    $page.props.contentLocale !== $page.props.locale
+                        ? $page.props.contentLocale
+                        : undefined
+                "
                 v-html="props.page.competition.rulesHtml"
             />
         </details>

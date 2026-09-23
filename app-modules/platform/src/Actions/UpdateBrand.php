@@ -37,6 +37,8 @@ final class UpdateBrand
                 'logo_media_id' => $data->logoMediaId,
                 'logo_dark_media_id' => $data->logoDarkMediaId,
                 'favicon_media_id' => $data->faviconMediaId,
+                // Empty means "follow the operator" (ADR-0068 §4).
+                'locale' => $data->locale === '' ? null : $data->locale,
             ]);
 
             $hosts = array_values(array_map(mb_strtolower(...), $data->hosts));

@@ -83,6 +83,7 @@ it('saves a changed date and time format', function (): void {
             'signupsOpen' => true,
             'dateFormat' => 'YYYY-MM-DD',
             'timeFormat' => '12h',
+            'locale' => 'en',
         ])
         ->assertRedirect();
 
@@ -108,6 +109,7 @@ it('saves the operator closing signups', function (): void {
             'signupsOpen' => false,
             'dateFormat' => 'DD.MM.YYYY',
             'timeFormat' => '24h',
+            'locale' => 'en',
         ])
         ->assertRedirect();
 
@@ -151,6 +153,7 @@ it('refuses a date format nobody ships a formatter for', function (): void {
             'signupsOpen' => true,
             'dateFormat' => 'the fourteenth',
             'timeFormat' => 'sundial',
+            'locale' => 'en',
         ])
         ->assertInvalid(['dateFormat', 'timeFormat']);
 });
@@ -186,6 +189,7 @@ it('saves the legal seller identity', function (): void {
             'signupsOpen' => true,
             'dateFormat' => 'DD.MM.YYYY',
             'timeFormat' => '24h',
+            'locale' => 'en',
         ])
         ->assertRedirect();
 
@@ -213,6 +217,7 @@ it('records the small-business election', function (): void {
             'signupsOpen' => true,
             'dateFormat' => 'DD.MM.YYYY',
             'timeFormat' => '24h',
+            'locale' => 'en',
         ])
         ->assertRedirect();
 
@@ -233,6 +238,7 @@ it('requires a legal name, because an invoice cannot be issued without one', fun
             'signupsOpen' => true,
             'dateFormat' => 'DD.MM.YYYY',
             'timeFormat' => '24h',
+            'locale' => 'en',
         ])
         ->assertSessionHasErrors('legalName');
 
@@ -252,6 +258,7 @@ it('rejects a country code that is not two letters', function (): void {
             'signupsOpen' => true,
             'dateFormat' => 'DD.MM.YYYY',
             'timeFormat' => '24h',
+            'locale' => 'en',
         ])
         ->assertSessionHasErrors('countryCode');
 });
@@ -272,6 +279,7 @@ it('refuses an admin holding console access but not the operator capability', fu
             'signupsOpen' => true,
             'dateFormat' => 'DD.MM.YYYY',
             'timeFormat' => '24h',
+            'locale' => 'en',
         ])
         ->assertForbidden();
 });
@@ -296,6 +304,7 @@ it('changes what Commerce reads as the invoice seller', function (): void {
             'signupsOpen' => true,
             'dateFormat' => 'DD.MM.YYYY',
             'timeFormat' => '24h',
+            'locale' => 'en',
         ]);
 
     $seller = app(OperatorSettings::class)

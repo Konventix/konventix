@@ -40,6 +40,7 @@ final class UpdateOperatorSettings
                 'signups_open' => $data->signupsOpen,
                 'date_format' => $data->dateFormat->value,
                 'time_format' => $data->timeFormat->value,
+                'locale' => $data->locale,
             ]);
 
             return $operator->refresh();

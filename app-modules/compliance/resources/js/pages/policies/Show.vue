@@ -65,6 +65,11 @@ const props = defineProps<Props>();
         <!-- eslint-disable-next-line vue/no-v-html -->
         <article
             class="policy-prose flex flex-col gap-4"
+            :lang="
+                $page.props.contentLocale !== $page.props.locale
+                    ? $page.props.contentLocale
+                    : undefined
+            "
             v-html="props.policy.html"
         />
     </div>

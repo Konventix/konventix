@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { Palette, Trash2 } from '@lucide/vue';
 import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -35,6 +35,8 @@ type Props = {
         logoMediaId: string | null;
         logoDarkMediaId: string | null;
         faviconMediaId: string | null;
+        /** ADR-0068 §4: null speaks the operator's default. */
+        locale: string | null;
     };
     /** This brand's images, offered to the asset pickers (ADR-0035). */
     media: Konventix.Platform.Data.MediaItemData[];
@@ -54,7 +56,12 @@ const form = useForm({
     logoMediaId: props.brand.logoMediaId,
     logoDarkMediaId: props.brand.logoDarkMediaId,
     faviconMediaId: props.brand.faviconMediaId,
+    // A <select> has no null; '' is "Operator default" and `UpdateBrand`
+    // stores it as null again.
+    locale: props.brand.locale ?? '',
 });
+
+const page = usePage();
 
 const modulesForm = useForm({
     modules: Object.fromEntries(
@@ -155,6 +162,39 @@ const alwaysOnModuleNames = computed(() =>
                                 />
                                 <InputError :message="form.errors.currency" />
                             </div>
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="brand-locale">{{
+                                $t('Language')
+                            }}</Label>
+                            <select
+                                id="brand-locale"
+                                v-model="form.locale"
+                                aria-describedby="brand-locale-hint"
+                                class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
+                            >
+                                <option value="">
+                                    {{ $t('Operator default') }}
+                                </option>
+                                <option
+                                    v-for="option in page.props.locales"
+                                    :key="option.code"
+                                    :value="option.code"
+                                >
+                                    {{ option.name }}
+                                </option>
+                            </select>
+                            <p
+                                id="brand-locale-hint"
+                                class="text-xs text-text-muted"
+                            >
+                                {{
+                                    $t(
+                                        'What this brand’s site speaks to a guest and to everyone who has not picked a language of their own. Your texts on it are read as written in it.',
+                                    )
+                                }}
+                            </p>
+                            <InputError :message="form.errors.locale" />
                         </div>
                         <div class="grid gap-2">
                             <Label>{{ $t('Hosts') }}</Label>
