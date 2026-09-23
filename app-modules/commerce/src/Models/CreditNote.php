@@ -43,6 +43,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property numeric-string $total_gross
  * @property TaxTreatment $tax_treatment
  * @property string $currency
+ * @property string $locale the invoice's locale, copied at issuance (ADR-0068 §6)
  * @property string $reason_code
  * @property string|null $reason_note
  * @property string|null $reduction_key
@@ -81,6 +82,7 @@ class CreditNote extends Model
         'reason_note',
         'reduction_key',
         'issued_on',
+        'locale',
     ];
 
     /**

@@ -13,6 +13,8 @@ use Konventix\Admission\Models\EventSummary;
 use Konventix\Admission\Models\Person;
 use Konventix\Admission\Support\TicketReference;
 use Konventix\Platform\Documents\DocumentWatermark;
+use Konventix\Platform\Locales\LocaleResolver;
+use Konventix\Platform\Locales\Locales;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Operators\OperatorDateTimeFormat;
@@ -58,6 +60,15 @@ use Konventix\Platform\Operators\OperatorSettings;
  * upload; `thumb`), the original only for a row that has none. The
  * signing key behind every page's QR is likewise read once per render,
  * memoised inside `IssueAdmissionToken` for that instance's lifetime.
+ *
+ * **Each page speaks its holder's language** (ADR-0068 §6). Unlike an
+ * invoice, a ticket is never archived — it is re-rendered on demand from
+ * current state (ADR-0061) — so it follows the holder's *current* effective
+ * locale rather than freezing one: holder → brand → operator, and for a
+ * ticket nobody holds yet, the buyer who is about to hand it on. The page
+ * data (whose "Unassigned" and "All event days" are translated) and the
+ * page markup both render inside `Locales::within()` for that locale; the
+ * document shell (`<html lang>`, the title) takes the first page's.
  */
 final class TicketDocumentRenderer
 {
@@ -81,6 +92,8 @@ final class TicketDocumentRenderer
         private readonly DocumentWatermark $watermark,
         private readonly OperatorSettings $operatorSettings,
         private readonly TicketQr $qr,
+        private readonly LocaleResolver $localeResolver,
+        private readonly Locales $locales,
     ) {}
 
     /**
@@ -115,21 +128,41 @@ final class TicketDocumentRenderer
                 $mediaId => $this->mediaLibrary->dataUriForPreferring($mediaId, ['ticket_banner', 'thumb']),
             ]);
 
-        $pages = $admissions->map(fn (Admission $admission): array => $this->pageDataFor(
-            $admission,
-            $brand,
-            $brandLogo,
-            $operatorLegalName,
-            $eventSummaries->get($admission->event_id),
-            $admission->holder_user_id === null ? null : $people->get($admission->holder_user_id),
-            $seats->get($admission->id),
-            $banners->get($eventSummaries->get($admission->event_id)->banner_media_id ?? ''),
-        ))->all();
+        // One resolution per person, not per page: a buyer's file of twenty
+        // unassigned tickets asks for the buyer's locale once.
+        /** @var array<string, string> $localesByUser */
+        $localesByUser = [];
+        $localeFor = function (Admission $admission) use ($brandId, &$localesByUser): string {
+            $userId = $admission->holder_user_id ?? $admission->buyer_user_id;
 
-        return Pdf::loadView('admission::tickets.document', ['pages' => $pages])
-            ->setPaper('a4', 'portrait')
-            ->setOption('dpi', self::DPI)
-            ->output();
+            return $localesByUser[$userId ?? ''] ??= $this->localeResolver->forUserId($userId, $brandId);
+        };
+
+        $pages = $admissions->map(function (Admission $admission) use ($localeFor, $brand, $brandLogo, $operatorLegalName, $eventSummaries, $people, $seats, $banners): array {
+            $locale = $localeFor($admission);
+
+            return $this->locales->within($locale, fn (): array => [
+                ...$this->pageDataFor(
+                    $admission,
+                    $brand,
+                    $brandLogo,
+                    $operatorLegalName,
+                    $eventSummaries->get($admission->event_id),
+                    $admission->holder_user_id === null ? null : $people->get($admission->holder_user_id),
+                    $seats->get($admission->id),
+                    $banners->get($eventSummaries->get($admission->event_id)->banner_media_id ?? ''),
+                ),
+                'locale' => $locale,
+            ]);
+        })->all();
+
+        return $this->locales->within(
+            $admissions->isEmpty() ? app()->getLocale() : $localeFor($admissions->first()),
+            fn (): string => Pdf::loadView('admission::tickets.document', ['pages' => $pages])
+                ->setPaper('a4', 'portrait')
+                ->setOption('dpi', self::DPI)
+                ->output(),
+        );
     }
 
     /**

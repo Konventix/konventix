@@ -81,7 +81,9 @@ final class SendCreditNoteMail
                 issuedOn: $this->dates->date($creditNote->issued_on),
             ),
             recipientEmail: $party->email,
-            recipientLocale: 'de',
+            // The mail speaks the language of the document it carries
+            // (ADR-0068 §6), frozen at issuance.
+            recipientLocale: $creditNote->locale,
             brandId: $creditNote->brand_id,
             attachments: new DataCollection(AttachmentData::class, [
                 new AttachmentData(

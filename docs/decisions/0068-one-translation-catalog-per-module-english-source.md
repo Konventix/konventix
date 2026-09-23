@@ -69,10 +69,20 @@ shared through Inertia props.
    locale explicitly and never relies on whatever `App::getLocale()` the
    worker happens to have.
 
-6. **Issued documents freeze their locale.** An invoice, credit note or
-   ticket renders in the effective locale at the time it is issued, stores
-   that locale, and re-renders in it forever. A document is a record, and a
-   later preference change must not rewrite it.
+6. **Issued documents freeze their locale; on-demand documents follow the
+   holder.** An invoice and a credit note freeze: the invoice renders in the
+   payer's effective locale at the time it is issued (payer → brand →
+   operator), stores it in `invoices.locale`, and re-renders in it forever;
+   a credit note copies the locale of the invoice it reverses into
+   `credit_notes.locale`. Translated text snapshotted onto the row at issue
+   time (the invoice's `paid_via` label) is translated in that same locale,
+   and the mail that carries the document is sent in it too. These are
+   records, and a later preference change must not rewrite them; rows that
+   predate the column are German, which is what they were rendered in. The
+   ticket and the badge follow the holder, because they are rendered on
+   demand (ADR-0061) and never archived: each page renders in its holder's
+   current effective locale — the buyer's while nobody holds it yet —
+   whoever downloads or prints it.
 
 7. **User content stays single-locale per brand** (D-CNT-06 unchanged).
    Where brand content appears on a page whose locale differs, its container

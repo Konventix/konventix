@@ -16,6 +16,7 @@ use Konventix\Commerce\Enums\TaxTreatment;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\CreditNoteLine;
 use Konventix\Commerce\Models\Invoice;
+use Konventix\Platform\Locales\Locales;
 use Konventix\Platform\Operators\OperatorDateTimeFormat;
 
 /**
@@ -48,10 +49,16 @@ use Konventix\Platform\Operators\OperatorDateTimeFormat;
  * It still never reads `Order`/`OrderLine`: the credited lines are the
  * credit note's **own** snapshot (ADR-0031), so the document re-renders
  * identically after the order line has been repriced or relabelled.
+ *
+ * The visual half renders in the credit note's own `locale` — the locale of
+ * the invoice it reverses, copied at issuance (ADR-0068 §6).
  */
 final class CreditNoteDocumentRenderer
 {
-    public function __construct(private readonly OperatorDateTimeFormat $dates) {}
+    public function __construct(
+        private readonly OperatorDateTimeFormat $dates,
+        private readonly Locales $locales,
+    ) {}
 
     public function render(CreditNote $creditNote): string
     {
@@ -71,13 +78,13 @@ final class CreditNoteDocumentRenderer
             ->get()
             ->all();
 
-        $visualPdf = Pdf::loadView('commerce::credit-notes.document', [
+        $visualPdf = $this->locales->within($creditNote->locale, fn (): string => Pdf::loadView('commerce::credit-notes.document', [
             'creditNote' => $creditNote,
             'invoice' => $invoice,
             'lines' => $lines,
             'taxGroups' => $this->taxGroups($lines),
             'dates' => $this->dates,
-        ])->output();
+        ])->output());
 
         $xml = $this->buildFacturX($creditNote, $invoice, $lines);
 

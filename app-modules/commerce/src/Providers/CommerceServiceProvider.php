@@ -513,9 +513,10 @@ class CommerceServiceProvider extends ModuleServiceProvider
 
     /**
      * The invoice mail (SPEC.md "Does not own" — sending is Messaging's;
-     * this module only declares what its mail says). German default: the
-     * release targets domestic DACH events (ADR-0030's framing), and the
-     * billing party's locale is unknown for account-less recipients.
+     * this module only declares what its mail says). The mail is sent in the
+     * invoice's own frozen `locale` (ADR-0068 §6), so it always speaks the
+     * language of the document it carries — including to an account-less
+     * billing party, whose own preference nobody knows.
      *
      * ADR-0048: two template keys, not one branching on `$paid` — a per-
      * brand override of either wording (`TemplateOverride`) then stays a

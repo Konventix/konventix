@@ -64,6 +64,7 @@ class InvoiceFactory extends Factory
             'issued_on' => now()->toDateString(),
             'due_on' => now()->addDays(14)->toDateString(),
             'currency' => 'EUR',
+            'locale' => 'de',
             'total_net' => '30.00',
             'total_tax' => '5.70',
             'total_gross' => '35.70',

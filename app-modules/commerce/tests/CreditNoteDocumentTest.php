@@ -668,14 +668,15 @@ it('prints the credited subset line by line with a per-rate breakdown (#7)', fun
 
     expect($html)->toContain('Konferenzticket')
         ->toContain('Tagungsband')
-        // Each line's own rate, in the same column the invoice prints it in.
-        ->toContain('19,00 %')
-        ->toContain('7,00 %')
+        // Each line's own rate, in the same column the invoice prints it in
+        // — written the way the rendering locale (here English) writes it.
+        ->toContain('19.00%')
+        ->toContain('7.00%')
         // The per-rate breakdown a mixed-rate subset needs: one sum cannot
         // be checked against two bases.
-        ->toContain('VAT 19,00 % on 100,00 €')
-        ->toContain('VAT 7,00 % on 100,00 €')
-        ->toContain('226,00');
+        ->toContain('VAT 19.00% on €100.00')
+        ->toContain('VAT 7.00% on €100.00')
+        ->toContain('€226.00');
 });
 
 it('keeps the summary position for a credit note that names no lines (#7)', function (): void {

@@ -94,7 +94,6 @@ it('draws exactly one invoice number when IssueInvoice is called twice for the s
     $seller = app(OperatorSettings::class)->sellerForBrand($brand->id);
     $paid = new PaymentSnapshotData(
         paidAt: now()->toIso8601String(),
-        paidVia: 'Stripe',
         provider: 'stripe',
         paymentReference: 'pi_test_1',
     );
@@ -259,6 +258,9 @@ it('still issues the invoice for a paid order at exactly the 250 € threshold w
 
 it('archives a paid ZUGFeRD document with the prepaid amount, payment means 48 for a card PSP, and mails it as bezahlt', function (): void {
     $brand = paidInvoiceBrand();
+    // A German brand, so the invoice is issued — and mailed — in German
+    // (ADR-0068 §6: the mail speaks the document's frozen locale).
+    $brand->forceFill(['locale' => 'de'])->save();
     Storage::fake('invoices');
     Mail::fake();
 
@@ -268,6 +270,8 @@ it('archives a paid ZUGFeRD document with the prepaid amount, payment means 48 f
     app(RecordPaymentSuccess::class)->handle($payment);
 
     $invoice = Invoice::query()->where('order_id', $order->id)->sole();
+
+    expect($invoice->locale)->toBe('de');
 
     (new GenerateInvoiceDocument($invoice->id, $brand->id))
         ->handle(app(InvoiceDocumentRenderer::class), app(SendInvoiceMail::class));

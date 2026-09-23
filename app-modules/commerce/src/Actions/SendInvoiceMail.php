@@ -98,7 +98,9 @@ final class SendInvoiceMail
                     : $this->dates->date($invoice->paid_at, $this->brandTimezone->handle($invoice->brand_id)),
             ),
             recipientEmail: $party->email,
-            recipientLocale: 'de',
+            // The mail speaks the language of the document it carries
+            // (ADR-0068 §6), frozen at issuance.
+            recipientLocale: $invoice->locale,
             brandId: $invoice->brand_id,
             attachments: new DataCollection(AttachmentData::class, [
                 new AttachmentData(

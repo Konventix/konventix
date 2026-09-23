@@ -11,7 +11,10 @@ use Konventix\Commerce\Events\InvoiceIssued;
 use Konventix\Commerce\Jobs\GenerateInvoiceDocument;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Settlement\ProviderLabels;
 use Konventix\Platform\Data\OperatorSellerData;
+use Konventix\Platform\Locales\LocaleResolver;
+use Konventix\Platform\Locales\Locales;
 
 /**
  * Issues the invoice for an order (ADR-0031): draws the gapless number,
@@ -41,11 +44,20 @@ use Konventix\Platform\Data\OperatorSellerData;
  * there is nothing left to be due — and the payment snapshot is written
  * onto the row at the same moment as everything else, never as a later
  * edit (ADR-0031 immutability).
+ *
+ * The invoice speaks the payer's effective locale at the moment it is
+ * issued (ADR-0068 §6) — the payer, then the brand, then the operator — and
+ * stores it in `locale`, which every later render reads. The one piece of
+ * translated text snapshotted onto the row, the `paid_via` label, is
+ * translated in that same locale here, so the row and its document never
+ * speak two languages.
  */
 final class IssueInvoice
 {
     public function __construct(
         private readonly DrawInvoiceNumber $drawInvoiceNumber,
+        private readonly LocaleResolver $localeResolver,
+        private readonly Locales $locales,
     ) {}
 
     public function handle(
@@ -68,6 +80,7 @@ final class IssueInvoice
             }
 
             $issuedOn = now()->toDateString();
+            $locale = $this->localeResolver->forUserId($order->payer_user_id, $order->brand_id);
 
             $attributes = [
                 'order_id' => $order->id,
@@ -84,11 +97,12 @@ final class IssueInvoice
                 'price_display' => $order->price_display,
                 'billing_party' => $billingParty,
                 'seller' => $seller,
+                'locale' => $locale,
             ];
 
             if ($paid !== null) {
                 $attributes['paid_at'] = $paid->paidAt;
-                $attributes['paid_via'] = $paid->paidVia;
+                $attributes['paid_via'] = $this->locales->within($locale, fn (): string => ProviderLabels::labelFor($paid->provider));
                 $attributes['paid_provider'] = $paid->provider;
                 $attributes['payment_reference'] = $paid->paymentReference;
             }

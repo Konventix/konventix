@@ -12,7 +12,6 @@ use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
-use Konventix\Commerce\Settlement\ProviderLabels;
 use Konventix\Commerce\Tax\GermanVat;
 use Konventix\Platform\Operators\OperatorSettings;
 
@@ -108,7 +107,6 @@ final class IssueInvoiceOnOrderPaid
             termsDays: 0,
             paid: new PaymentSnapshotData(
                 paidAt: $event->paidAt,
-                paidVia: ProviderLabels::labelFor($event->settlementMethod),
                 provider: $event->settlementMethod,
                 paymentReference: $payment?->external_id,
             ),

@@ -13,18 +13,17 @@ use Spatie\LaravelData\Data;
  * fields onto the immutable `Invoice` row at issuance.
  *
  * `provider` is the raw settlement key (`Payment::provider` /
- * `OrderPaid::settlementMethod`, e.g. `stripe`, `manual`), kept separate
- * from `paidVia` (the human label `ProviderLabels::labelFor()` already
- * produced from it): `InvoiceDocumentRenderer` needs the raw key to pick
- * the UNTDID 4461 payment-means code, and matching that off a translated,
- * operator-overridable label would be a silent trap the moment the label
- * text changes.
+ * `OrderPaid::settlementMethod`, e.g. `stripe`, `manual`). It carries no
+ * human label: `IssueInvoice` translates `ProviderLabels::labelFor()` itself,
+ * in the locale the invoice is issued in (ADR-0068 §6) — a label built by
+ * the caller would be in whatever locale the caller happened to run in.
+ * `InvoiceDocumentRenderer` still needs the raw key to pick the UNTDID 4461
+ * payment-means code, never the translated label.
  */
 final class PaymentSnapshotData extends Data
 {
     public function __construct(
         public readonly string $paidAt,
-        public readonly string $paidVia,
         public readonly string $provider,
         public readonly ?string $paymentReference,
     ) {}

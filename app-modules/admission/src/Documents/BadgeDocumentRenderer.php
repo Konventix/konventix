@@ -12,6 +12,8 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Konventix\Admission\Data\BadgeLayoutData;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\BadgeTemplate;
+use Konventix\Platform\Locales\LocaleResolver;
+use Konventix\Platform\Locales\Locales;
 use Konventix\Platform\Media\MediaLibrary;
 
 /**
@@ -29,6 +31,11 @@ use Konventix\Platform\Media\MediaLibrary;
  * Returns bytes and stores nothing. A badge is reproducible on demand, unlike
  * an invoice that GoBD requires archived unaltered (ADR-0031), so writing
  * attendee-bearing PDFs to disk would add GDPR surface for no gain.
+ *
+ * For the same reason it is not frozen to a locale (ADR-0068 §6): like the
+ * ticket, it renders in the holder's current effective locale — holder →
+ * brand → operator, the buyer standing in for a holder not yet named —
+ * whoever prints it.
  */
 final class BadgeDocumentRenderer
 {
@@ -48,6 +55,8 @@ final class BadgeDocumentRenderer
 
     public function __construct(
         private readonly MediaLibrary $mediaLibrary,
+        private readonly LocaleResolver $localeResolver,
+        private readonly Locales $locales,
     ) {}
 
     /**
@@ -64,7 +73,9 @@ final class BadgeDocumentRenderer
 
         $paper = self::PAPER[$layout->size] ?? self::PAPER[BadgeLayoutData::SIZE_A6];
 
-        return Pdf::loadView('admission::badges.document', [
+        $locale = $this->localeResolver->forUserId($admission->holder_user_id ?? $admission->buyer_user_id, $admission->brand_id);
+
+        return $this->locales->within($locale, fn (): string => Pdf::loadView('admission::badges.document', [
             'admission' => $admission,
             'layout' => $layout,
             'holderName' => $holderName,
@@ -80,7 +91,7 @@ final class BadgeDocumentRenderer
             'qr' => $layout->showQrCode && $token !== null ? $this->qrDataUri($token) : null,
         ])
             ->setPaper($paper, $layout->orientation)
-            ->output();
+            ->output());
     }
 
     /**

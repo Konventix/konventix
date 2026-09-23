@@ -179,6 +179,10 @@ final class IssueCreditNote
                 'reason_note' => $reasonNote,
                 'reduction_key' => $reductionKey,
                 'issued_on' => now(),
+                // A credit note speaks the language of the invoice it
+                // reverses (ADR-0068 §6), whoever makes the refund and in
+                // whatever locale their request runs.
+                'locale' => $invoice->locale,
             ]);
             // brand_id from the order, not ambient context (ADR-0010).
             $creditNote->forceFill(['brand_id' => $order->brand_id])->save();

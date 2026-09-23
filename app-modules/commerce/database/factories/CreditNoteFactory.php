@@ -36,6 +36,7 @@ class CreditNoteFactory extends Factory
             'total_gross' => '119.00',
             'tax_treatment' => TaxTreatment::Standard,
             'currency' => 'EUR',
+            'locale' => 'de',
             'reason_code' => IssueCreditNote::REASON_REFUND,
             'reason_note' => null,
             'issued_on' => now(),

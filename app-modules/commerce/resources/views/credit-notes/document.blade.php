@@ -51,7 +51,10 @@
     @php
         $seller = $creditNote->seller;
         $party = $creditNote->billing_party;
-        $fmt = fn (string $amount): string => number_format((float) $amount, 2, ',', '.');
+        // In the document's own locale (ADR-0068 §6): the renderer runs this
+        // template inside Locales::within($document->locale).
+        $money = fn (string $amount): string => \Konventix\Commerce\Documents\DocumentNumberFormat::money($amount, $creditNote->currency);
+        $rate = fn (string $rate): string => \Konventix\Commerce\Documents\DocumentNumberFormat::rate($rate);
         $reasonLabel = $creditNote->reason_code === Konventix\Commerce\Actions\IssueCreditNote::REASON_TRANSFER
             ? __('Transfer')
             : __('Refund');
@@ -109,9 +112,9 @@
                     <td>{{ $index + 1 }}</td>
                     <td>{{ $line->label }}</td>
                     <td class="num">{{ $line->quantity }}</td>
-                    <td class="num">{{ $fmt($line->unit_amount_net) }} €</td>
-                    <td class="num">{{ $fmt($line->tax_rate) }} %</td>
-                    <td class="num">{{ $fmt($line->line_net) }} €</td>
+                    <td class="num">{{ $money($line->unit_amount_net) }}</td>
+                    <td class="num">{{ $rate($line->tax_rate) }}</td>
+                    <td class="num">{{ $money($line->line_net) }}</td>
                 </tr>
             @endforeach
             </tbody>
@@ -121,7 +124,7 @@
     <table class="totals">
         <tr>
             <td>{{ __('Net total') }}</td>
-            <td class="num">{{ $fmt($creditNote->total_net) }} €</td>
+            <td class="num">{{ $money($creditNote->total_net) }}</td>
         </tr>
         @if ($creditNote->tax_treatment === Konventix\Commerce\Enums\TaxTreatment::Standard)
             {{-- More than one rate in the credited subset: each one is shown
@@ -130,19 +133,19 @@
             @if (count($taxGroups) > 1)
                 @foreach ($taxGroups as $group)
                     <tr class="rate">
-                        <td>{{ __('VAT :rate % on :net €', ['rate' => $fmt($group['rate']), 'net' => $fmt($group['net'])]) }}</td>
-                        <td class="num">{{ $fmt($group['tax']) }} €</td>
+                        <td>{{ __('VAT :rate on :net', ['rate' => $rate($group['rate']), 'net' => $money($group['net'])]) }}</td>
+                        <td class="num">{{ $money($group['tax']) }}</td>
                     </tr>
                 @endforeach
             @endif
             <tr>
                 <td>{{ __('Value added tax') }}</td>
-                <td class="num">{{ $fmt($creditNote->total_tax) }} €</td>
+                <td class="num">{{ $money($creditNote->total_tax) }}</td>
             </tr>
         @endif
         <tr class="grand">
             <td>{{ __('Credit note total') }}</td>
-            <td class="num">{{ $fmt($creditNote->total_gross) }} €</td>
+            <td class="num">{{ $money($creditNote->total_gross) }}</td>
         </tr>
     </table>
 

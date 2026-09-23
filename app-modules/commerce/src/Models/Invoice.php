@@ -46,6 +46,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property TaxTreatment $tax_treatment
  * @property string $price_display
  * @property BillingPartyData $billing_party
+ * @property string $locale the locale the document was issued in, and re-renders in forever (ADR-0068 §6)
  * @property OperatorSellerData $seller
  * @property string|null $document_path
  * @property string|null $document_disk
@@ -78,6 +79,7 @@ class Invoice extends Model
         'price_display',
         'billing_party',
         'seller',
+        'locale',
     ];
 
     /**

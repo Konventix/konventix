@@ -360,7 +360,7 @@
     "Updated": "Aktualisiert",
     "Use product price": "Produktpreis verwenden",
     "VAT": "USt.",
-    "VAT :rate % on :net €": "USt. :rate % auf :net €",
+    "VAT :rate on :net": "USt. :rate auf :net",
     "VAT ID (optional)": "USt-IdNr. (optional)",
     "VAT ID :id": "USt-IdNr. :id",
     "VAT ID of the recipient: :id": "USt-IdNr. des Leistungsempfängers: :id",

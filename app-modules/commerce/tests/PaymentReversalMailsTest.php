@@ -30,7 +30,9 @@ use Konventix\Platform\Models\Role;
  */
 function reversalMailsRecipient(string $brandId, ?string $locale = null): User
 {
-    $user = User::factory()->create();
+    // The account carries the locale too: `SendMessage` resolves the
+    // recipient's effective locale from `users.locale` (ADR-0068 §5).
+    $user = User::factory()->create(['locale' => $locale]);
 
     // Messaging's recipient read model has no factory — rows exist only
     // through `ProjectRecipient`'s projection (`Recipient`'s own docblock).

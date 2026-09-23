@@ -15,7 +15,6 @@ use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
-use Konventix\Commerce\Settlement\ProviderLabels;
 use Konventix\Platform\Operators\OperatorSettings;
 
 /**
@@ -103,7 +102,6 @@ final class AddBillingAddressToOrder
                     termsDays: 0,
                     paid: new PaymentSnapshotData(
                         paidAt: ($locked->paid_at ?? now())->toIso8601String(),
-                        paidVia: ProviderLabels::labelFor($provider),
                         provider: $provider,
                         paymentReference: $payment?->external_id,
                     ),

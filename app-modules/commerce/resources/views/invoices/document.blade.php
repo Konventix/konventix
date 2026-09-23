@@ -42,7 +42,10 @@
     @php
         $seller = $invoice->seller;
         $party = $invoice->billing_party;
-        $fmt = fn (string $amount): string => number_format((float) $amount, 2, ',', '.');
+        // In the document's own locale (ADR-0068 §6): the renderer runs this
+        // template inside Locales::within($document->locale).
+        $money = fn (string $amount): string => \Konventix\Commerce\Documents\DocumentNumberFormat::money($amount, $invoice->currency);
+        $rate = fn (string $rate): string => \Konventix\Commerce\Documents\DocumentNumberFormat::rate($rate);
     @endphp
 
     <div class="sender-line">
@@ -97,9 +100,9 @@
                 <td>{{ $line->position }}</td>
                 <td>{{ $line->label }}</td>
                 <td class="num">{{ $line->quantity }}</td>
-                <td class="num">{{ $fmt($line->unit_amount_net) }} €</td>
-                <td class="num">{{ $fmt($line->tax_rate) }} %</td>
-                <td class="num">{{ $fmt($line->line_net) }} €</td>
+                <td class="num">{{ $money($line->unit_amount_net) }}</td>
+                <td class="num">{{ $rate($line->tax_rate) }}</td>
+                <td class="num">{{ $money($line->line_net) }}</td>
             </tr>
         @endforeach
         </tbody>
@@ -108,17 +111,17 @@
     <table class="totals">
         <tr>
             <td>{{ __('Net total') }}</td>
-            <td class="num">{{ $fmt($invoice->total_net) }} €</td>
+            <td class="num">{{ $money($invoice->total_net) }}</td>
         </tr>
         @if ($invoice->tax_treatment === Konventix\Commerce\Enums\TaxTreatment::Standard)
             <tr>
                 <td>{{ __('Value added tax') }}</td>
-                <td class="num">{{ $fmt($invoice->total_tax) }} €</td>
+                <td class="num">{{ $money($invoice->total_tax) }}</td>
             </tr>
         @endif
         <tr class="grand">
             <td>{{ __('Invoice total') }}</td>
-            <td class="num">{{ $fmt($invoice->total_gross) }} €</td>
+            <td class="num">{{ $money($invoice->total_gross) }}</td>
         </tr>
     </table>
 

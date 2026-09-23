@@ -17,6 +17,7 @@ use Konventix\Commerce\Enums\TaxTreatment;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
+use Konventix\Platform\Locales\Locales;
 use Konventix\Platform\Operators\OperatorDateTimeFormat;
 
 /**
@@ -28,10 +29,17 @@ use Konventix\Platform\Operators\OperatorDateTimeFormat;
  * Both halves read only the `Invoice`/`OrderLine` snapshot — never a live
  * price or party — so the XML can never disagree with the PDF (ADR-0031:
  * "it cannot be a second, independently maintained representation").
+ *
+ * The visual half renders in the invoice's own `locale` (ADR-0068 §6), the
+ * one it was issued in — never the worker's or the downloading person's —
+ * so a re-render after a preference change produces the same document.
  */
 final class InvoiceDocumentRenderer
 {
-    public function __construct(private readonly OperatorDateTimeFormat $dates) {}
+    public function __construct(
+        private readonly OperatorDateTimeFormat $dates,
+        private readonly Locales $locales,
+    ) {}
 
     public function render(Invoice $invoice): string
     {
@@ -47,14 +55,14 @@ final class InvoiceDocumentRenderer
             ->orderBy('position')
             ->get());
 
-        $visualPdf = Pdf::loadView('commerce::invoices.document', [
+        $visualPdf = $this->locales->within($invoice->locale, fn (): string => Pdf::loadView('commerce::invoices.document', [
             'invoice' => $invoice,
             'order' => $order,
             // How this operator writes a date (#242) — the same setting the
             // console and the mails read, so the archived PDF and the page
             // that links to it cannot disagree about a due date.
             'dates' => $this->dates,
-        ])->output();
+        ])->output());
 
         $xml = $this->buildFacturX($invoice, $order);
 
