@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { cancelledNote, cellKey } from './programmeCell';
+import ProgrammeCellTitle from './ProgrammeCellTitle.vue';
 import { sortKey, timeLabel } from './programmeTime';
 
 /**
@@ -17,6 +19,10 @@ import { sortKey, timeLabel } from './programmeTime';
  * `day.rows`, which the builder already sorted, and the untracked ones are
  * merged in by their own start. Sorting is stable in every engine this
  * ships to, so two things at the same time keep the builder's order.
+ *
+ * A selected competition is an entry like any other, keyed by kind and id
+ * — a block's `itemId` is a competition's ULID, so the id alone is not
+ * promised unique across the two kinds.
  */
 type Entry = {
     key: string;
@@ -40,7 +46,7 @@ const entries = computed<Entry[]>(() => {
         props.columns.forEach((column) => {
             (row.cells[column] ?? []).forEach((cell) => {
                 flattened.push({
-                    key: cell.itemId,
+                    key: cellKey(cell),
                     time: row.time,
                     track: props.day.trackNames[column] ?? null,
                     cell,
@@ -51,7 +57,7 @@ const entries = computed<Entry[]>(() => {
 
     props.day.untracked.forEach((cell) => {
         flattened.push({
-            key: cell.itemId,
+            key: cellKey(cell),
             time: sortKey(cell),
             track: null,
             cell,
@@ -72,11 +78,8 @@ const entries = computed<Entry[]>(() => {
             <p class="font-mono text-xs text-text-muted">
                 {{ timeLabel(entry.cell) }}
             </p>
-            <p
-                class="font-medium text-text"
-                :class="{ 'line-through': entry.cell.cancelled }"
-            >
-                {{ entry.cell.title }}
+            <p>
+                <ProgrammeCellTitle :cell="entry.cell" />
             </p>
             <p
                 v-if="entry.track || entry.cell.location || entry.cell.speaker"
@@ -98,11 +101,7 @@ const entries = computed<Entry[]>(() => {
                 <span v-if="entry.cell.speaker">{{ entry.cell.speaker }}</span>
             </p>
             <p v-if="entry.cell.cancelled" class="text-sm text-danger">
-                Fällt aus{{
-                    entry.cell.cancelledReason
-                        ? ` – ${entry.cell.cancelledReason}`
-                        : ''
-                }}
+                {{ cancelledNote(entry.cell) }}
             </p>
         </li>
 

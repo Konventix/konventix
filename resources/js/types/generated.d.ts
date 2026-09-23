@@ -255,6 +255,8 @@ declare namespace Konventix {
                 readonly rowSpan: number;
                 readonly cancelled: boolean;
                 readonly cancelledReason: string | null;
+                readonly kind: Konventix.Agenda.Enums.ProgrammeEntryKind;
+                readonly url: string | null;
             };
             export type ProgrammeDayData = {
                 readonly dayId: string;
@@ -278,6 +280,7 @@ declare namespace Konventix {
             export type CompetitionBlockState = 'published' | 'cancelled';
             export type ItemState = 'draft' | 'published' | 'cancelled';
             export type Permission = 'agenda.manage-agenda';
+            export type ProgrammeEntryKind = 'item' | 'competition';
         }
     }
     namespace Commerce {

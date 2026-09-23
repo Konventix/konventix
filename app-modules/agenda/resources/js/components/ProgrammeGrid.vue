@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { formatTime } from '@/lib/datetime';
+import { cancelledNote, cellKey } from './programmeCell';
+import ProgrammeCellTitle from './ProgrammeCellTitle.vue';
 import { timeLabel } from './programmeTime';
 
 /**
@@ -36,6 +38,11 @@ import { timeLabel } from './programmeTime';
  * span already claims; the cell is still rendered, because losing a
  * published entry is worse than a table that overflows on data nothing
  * forbids yet.
+ *
+ * A selected competition is a cell like any other (§4.5): the builder has
+ * placed it and sized it, and `ProgrammeCellTitle` adds its "Turnier" mark
+ * and link. Keys carry the kind, because a block's `itemId` is a
+ * competition's ULID and the two id spaces are not promised apart.
  *
  * The track filter narrows *columns*, not data: `columns` is the indices of
  * the tracks to show, into `day.trackNames` and into every `row.cells`.
@@ -93,18 +100,13 @@ function isCovered(rowIndex: number, column: number): boolean {
             <ul class="mt-2 flex flex-col gap-2">
                 <li
                     v-for="cell in props.day.untracked"
-                    :key="cell.itemId"
+                    :key="cellKey(cell)"
                     class="flex flex-wrap items-baseline gap-x-3 gap-y-1"
                 >
                     <span class="font-mono text-sm text-text-muted">
                         {{ timeLabel(cell) }}
                     </span>
-                    <span
-                        class="font-medium text-text"
-                        :class="{ 'line-through': cell.cancelled }"
-                    >
-                        {{ cell.title }}
-                    </span>
+                    <ProgrammeCellTitle :cell="cell" />
                     <span v-if="cell.speaker" class="text-sm text-text-muted">
                         {{ cell.speaker }}
                     </span>
@@ -115,11 +117,7 @@ function isCovered(rowIndex: number, column: number): boolean {
                         v-if="cell.cancelled"
                         class="w-full text-sm text-danger"
                     >
-                        Fällt aus{{
-                            cell.cancelledReason
-                                ? ` – ${cell.cancelledReason}`
-                                : ''
-                        }}
+                        {{ cancelledNote(cell) }}
                     </span>
                 </li>
             </ul>
@@ -169,15 +167,12 @@ function isCovered(rowIndex: number, column: number): boolean {
                         <template v-for="column in props.columns" :key="column">
                             <td
                                 v-for="cell in cellsAt(row, column)"
-                                :key="cell.itemId"
+                                :key="cellKey(cell)"
                                 :rowspan="cell.rowSpan"
                                 class="border-b border-l border-border p-2"
                             >
-                                <p
-                                    class="font-medium text-text"
-                                    :class="{ 'line-through': cell.cancelled }"
-                                >
-                                    {{ cell.title }}
+                                <p>
+                                    <ProgrammeCellTitle :cell="cell" />
                                 </p>
                                 <p class="font-mono text-xs text-text-muted">
                                     {{ timeLabel(cell) }}
@@ -198,11 +193,7 @@ function isCovered(rowIndex: number, column: number): boolean {
                                     v-if="cell.cancelled"
                                     class="text-xs text-danger"
                                 >
-                                    Fällt aus{{
-                                        cell.cancelledReason
-                                            ? ` – ${cell.cancelledReason}`
-                                            : ''
-                                    }}
+                                    {{ cancelledNote(cell) }}
                                 </p>
                             </td>
                             <td

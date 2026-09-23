@@ -68,6 +68,9 @@ final class ProgrammeController
                 brandId: $summary->brand_id,
                 days: $summary->programmeDays(),
                 timezone: $timezone,
+                // A selected competition's block links to its page under
+                // this event's slug (§4.5).
+                eventSlug: $slug,
             ),
         ]);
     }

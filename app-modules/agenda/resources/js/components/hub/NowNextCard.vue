@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
+import { Badge } from '@/components/ui/badge';
 import { formatTime } from '@/lib/datetime';
 
 /**
@@ -22,6 +23,13 @@ import { formatTime } from '@/lib/datetime';
  * the operator's 12/24-hour choice, because a wall clock has no date to
  * hang an offset on. It does not convert, which is exactly what must not
  * happen here.
+ *
+ * Either entry may be a selected competition (§4.5): it carries a small
+ * "Turnier" mark and, when the payload has a `url` for it, links to the
+ * tournament's page — which `NowNext` only sends while Competition is on
+ * for the brand. The mark and link are written out here rather than taken
+ * from the programme's `ProgrammeCellTitle`, because a hub component
+ * imports only `@/components/ui/*`, `@/lib/*` and generated types.
  *
  * Both entries are independently null and the card says so rather than
  * hiding: before the first item of the day there is only a "Gleich", after
@@ -50,7 +58,24 @@ const props = defineProps<Props>();
                 Jetzt
             </p>
             <template v-if="props.now">
-                <p class="font-medium text-text">{{ props.now.title }}</p>
+                <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <Badge
+                        v-if="props.now.kind === 'competition'"
+                        variant="outline"
+                    >
+                        Turnier
+                    </Badge>
+                    <Link
+                        v-if="props.now.url"
+                        :href="props.now.url"
+                        class="font-medium text-text underline-offset-4 hover:underline"
+                    >
+                        {{ props.now.title }}
+                    </Link>
+                    <span v-else class="font-medium text-text">
+                        {{ props.now.title }}
+                    </span>
+                </p>
                 <p class="text-sm text-text-muted">
                     <span>{{ formatTime(props.now.startsAt) }}</span>
                     <span v-if="props.now.endsAt">
@@ -69,7 +94,24 @@ const props = defineProps<Props>();
                 Gleich
             </p>
             <template v-if="props.next">
-                <p class="font-medium text-text">{{ props.next.title }}</p>
+                <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <Badge
+                        v-if="props.next.kind === 'competition'"
+                        variant="outline"
+                    >
+                        Turnier
+                    </Badge>
+                    <Link
+                        v-if="props.next.url"
+                        :href="props.next.url"
+                        class="font-medium text-text underline-offset-4 hover:underline"
+                    >
+                        {{ props.next.title }}
+                    </Link>
+                    <span v-else class="font-medium text-text">
+                        {{ props.next.title }}
+                    </span>
+                </p>
                 <p class="text-sm text-text-muted">
                     <span>{{ formatTime(props.next.startsAt) }}</span>
                     <span v-if="props.next.endsAt">

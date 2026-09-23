@@ -6,6 +6,7 @@ namespace Konventix\Agenda\Programme;
 
 use Konventix\Agenda\Models\CompetitionEntry;
 use Konventix\Agenda\Models\ProgrammeCompetition;
+use Konventix\Platform\Modules\ModuleGate;
 
 /**
  * The competitions an event's programme shows (timetable design §4.5,
@@ -62,5 +63,52 @@ final class SelectedCompetitions
         }
 
         return $selected;
+    }
+
+    /**
+     * The selection as the programme places it (§4.5): every selected
+     * competition that has a start, as a `ProgrammeEntry`. A competition
+     * with no `starts_at` has no anchor, so it has no day and no row — it
+     * is left out, not put in the untracked band, which is per day too.
+     *
+     * Cancelled blocks are kept: the grid strikes them (D-AGD-08), and
+     * `NowNext` skips them itself.
+     *
+     * The link goes to Competition's public page, named by its route only
+     * (`competition.page`; Agenda imports nothing of Competition's), and
+     * only when there is an event slug, a competition slug and Competition
+     * is on for the brand. A link that 404s on a card people follow in a
+     * hall is worse than none — `NowNextCard::programmeUrl()`'s reasoning.
+     * The gate is asked once per call, and only when something is selected.
+     *
+     * @return list<ProgrammeEntry>
+     */
+    public static function programmeEntries(string $eventId, string $brandId, ?string $eventSlug): array
+    {
+        $scheduled = array_values(array_filter(
+            self::forEvent($eventId, $brandId),
+            static fn (array $pair): bool => $pair['competition']->starts_at !== null,
+        ));
+
+        if ($scheduled === []) {
+            return [];
+        }
+
+        $linkable = $eventSlug !== null && $eventSlug !== ''
+            && app(ModuleGate::class)->isActiveForBrand('competition', $brandId);
+
+        $entries = [];
+
+        foreach ($scheduled as ['entry' => $entry, 'competition' => $competition]) {
+            $slug = $competition->slug;
+
+            $url = $linkable && $slug !== null && $slug !== ''
+                ? route('competition.page', ['slug' => $eventSlug, 'competition' => $slug], absolute: false)
+                : null;
+
+            $entries[] = ProgrammeEntry::ofCompetition($competition, $entry, $url);
+        }
+
+        return $entries;
     }
 }

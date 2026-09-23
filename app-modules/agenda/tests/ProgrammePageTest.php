@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use Konventix\Agenda\Actions\CancelAgendaItem;
 use Konventix\Agenda\Models\AgendaItem;
+use Konventix\Agenda\Models\CompetitionEntry;
 use Konventix\Agenda\Models\EventSummary;
+use Konventix\Competition\Events\CompetitionRescheduled;
 use Konventix\Event\Events\EventPublished;
 use Konventix\Event\Events\EventUnpublished;
 use Konventix\Event\Models\Event;
@@ -189,4 +191,61 @@ it('leaves a draft off the page entirely', function (): void {
     $this->get("/events/{$event->slug}/programm")
         ->assertOk()
         ->assertInertia(fn ($page) => $page->component('agenda/Programme')->has('days', 0));
+});
+
+/**
+ * Issue #331's first two acceptance boxes through the whole path: the
+ * competition reaches Agenda only as Competition's contract events, the
+ * organizer's selection places it, and a reschedule in Competition moves
+ * the block with nobody touching the editor (§4.5, D-AGD-03).
+ */
+it('shows a selected competition on the public programme, and moves it when Competition reschedules', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('agenda', $brand);
+    $this->activateModule('competition', $brand);
+    $event = agendaPublishedEvent($brand);
+
+    // The helper's default start: 14:00 at +01:00 on Freitag, 13:00 UTC.
+    $competitionId = agendaPublishedCompetition($brand, $event->getKey());
+    CompetitionEntry::factory()->forEvent($event->getKey())->create([
+        'competition_id' => $competitionId, 'track_id' => null, 'position' => 0,
+    ]);
+
+    $this->get("/events/{$event->slug}/programm")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('agenda/Programme')
+            // Only Freitag: the block is the programme's one entry.
+            ->has('days', 1)
+            ->where('days.0.date', '2026-11-20')
+            ->where('days.0.untracked.0.itemId', $competitionId)
+            ->where('days.0.untracked.0.kind', 'competition')
+            ->where('days.0.untracked.0.title', 'Rocket League 2v2')
+            // 13:00 UTC is 14:00 in Berlin (CET, UTC+1).
+            ->where('days.0.untracked.0.startsAt', '14:00')
+            ->where('days.0.untracked.0.endsAt', null)
+            ->where('days.0.untracked.0.url', '/events/agenda-testcon/tournaments/rocket-league-2v2'));
+
+    event(new CompetitionRescheduled(
+        competitionId: $competitionId,
+        eventId: $event->getKey(),
+        brandId: $brand->getKey(),
+        previousStartsAt: '2026-11-20T14:00:00+01:00',
+        startsAt: '2026-11-21T10:30:00+01:00',
+        at: '2026-10-01T09:00:00+00:00',
+    ));
+
+    $this->app->forgetScopedInstances();
+
+    $this->get("/events/{$event->slug}/programm")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('agenda/Programme')
+            // Moved to Samstag, and Freitag, now empty, is omitted.
+            ->has('days', 1)
+            ->where('days.0.date', '2026-11-21')
+            ->where('days.0.label', 'Samstag')
+            ->where('days.0.untracked.0.itemId', $competitionId)
+            // 10:30 at +01:00 is 09:30 UTC, back to 10:30 on the event's clock.
+            ->where('days.0.untracked.0.startsAt', '10:30'));
 });

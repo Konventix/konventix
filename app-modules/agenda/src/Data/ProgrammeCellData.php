@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Konventix\Agenda\Data;
 
+use Konventix\Agenda\Enums\CompetitionBlockState;
 use Konventix\Agenda\Enums\ItemState;
+use Konventix\Agenda\Enums\ProgrammeEntryKind;
 use Konventix\Agenda\Models\AgendaItem;
+use Konventix\Agenda\Models\ProgrammeCompetition;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -34,11 +37,25 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * - `cancelled` and `cancelledReason` carry D-AGD-08: a called-off item
  *   stays on the page, struck through and with its reason, instead of
  *   quietly disappearing on somebody who planned an afternoon around it.
+ * - `kind` says whether the cell is an organizer's item or a selected
+ *   competition (§4.5). A competition is an open-ended block: Competition
+ *   owns its start and nobody has an end for it yet (D-AGD-03), so
+ *   `endsAt` is null and it covers one row.
+ * - `url` is where the title links to, relative, or null for no link.
+ *   Items never link; a competition links to its own public page only
+ *   while Competition is on for the brand — `ProgrammeBuilder` and
+ *   `NowNext` decide that, not the page.
  */
 #[TypeScript]
 final class ProgrammeCellData extends Data
 {
     public function __construct(
+        /**
+         * The item's ULID, or — for a `Competition` block — the
+         * competition's ULID. The name predates competitions and stays so
+         * that nothing reading an item's cell changes; `kind` plus this id
+         * is what identifies a cell uniquely.
+         */
         public readonly string $itemId,
         public readonly string $title,
         public readonly ?string $speaker,
@@ -48,6 +65,8 @@ final class ProgrammeCellData extends Data
         public readonly int $rowSpan,
         public readonly bool $cancelled,
         public readonly ?string $cancelledReason,
+        public readonly ProgrammeEntryKind $kind,
+        public readonly ?string $url,
     ) {}
 
     /**
@@ -78,6 +97,34 @@ final class ProgrammeCellData extends Data
             rowSpan: $rowSpan,
             cancelled: $item->state === ItemState::Cancelled,
             cancelledReason: $item->cancelled_reason,
+            kind: ProgrammeEntryKind::Item,
+            url: null,
+        );
+    }
+
+    /**
+     * A selected competition as an open-ended block (§4.5, D-AGD-03): its
+     * Competition-owned start on the event's wall clock (ADR-0027), no
+     * end, no speaker and no place. A cancelled one stays, struck, like an
+     * item (D-AGD-08) — without a reason, because Competition sends none.
+     *
+     * `$url` is decided by the caller, which knows the event's slug and
+     * whether Competition is on for the brand.
+     */
+    public static function ofCompetition(ProgrammeCompetition $competition, string $timezone, int $rowSpan = 1, ?string $url = null): self
+    {
+        return new self(
+            itemId: $competition->competition_id,
+            title: $competition->name,
+            speaker: null,
+            location: null,
+            startsAt: $competition->starts_at?->setTimezone($timezone)->format('H:i'),
+            endsAt: null,
+            rowSpan: $rowSpan,
+            cancelled: $competition->state === CompetitionBlockState::Cancelled,
+            cancelledReason: null,
+            kind: ProgrammeEntryKind::Competition,
+            url: $url,
         );
     }
 }

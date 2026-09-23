@@ -38,6 +38,12 @@ use Konventix\Agenda\Models\AgendaItem;
  * stops and never when it began, so there is no honest moment at which to
  * call it running and nothing about it ever starts.
  *
+ * **Selected competitions count like items without an end** (§4.5,
+ * D-AGD-03): a block with a Competition-owned start is "now" for the same
+ * two hours, is "next" when it is the first thing still ahead, and loses
+ * to a later-begun item exactly as an item would. A cancelled block is
+ * never either; one with no start has no moment to be either at.
+ *
  * **When several items are running, the one that began last wins.** A
  * half-hour talk inside a four-hour LAN block is what a participant wants
  * to be told about; the block is the background.
@@ -54,9 +60,10 @@ final class NowNext
     public const OPEN_ENDED_RUNS_FOR_MINUTES = 120;
 
     /**
+     * @param  string|null  $eventSlug  the event's public slug; without it a competition block has no link
      * @return array{now: ?ProgrammeCellData, next: ?ProgrammeCellData}
      */
-    public function forEvent(string $eventId, string $brandId, CarbonImmutable $at): array
+    public function forEvent(string $eventId, string $brandId, CarbonImmutable $at, ?string $eventSlug = null): array
     {
         $items = AgendaItem::query()
             ->forBrand($brandId)
@@ -68,13 +75,28 @@ final class NowNext
             ->orderBy('id')
             ->get();
 
+        $entries = [
+            ...$items->map(fn (AgendaItem $item): ProgrammeEntry => ProgrammeEntry::ofItem($item))->all(),
+            ...array_filter(
+                SelectedCompetitions::programmeEntries($eventId, $brandId, $eventSlug),
+                static fn (ProgrammeEntry $entry): bool => ! $entry->cancelled,
+            ),
+        ];
+
+        // The loop below relies on start order, the id breaking a tie the
+        // way the query's `orderBy('id')` did for items alone. Every entry
+        // here has a start: the item query demands one, and
+        // `programmeEntries()` drops a competition without one.
+        usort($entries, static fn (ProgrammeEntry $a, ProgrammeEntry $b): int => [$a->startsAt?->getTimestamp(), $a->id]
+            <=> [$b->startsAt?->getTimestamp(), $b->id]);
+
         $openEndedSince = $at->subMinutes(self::OPEN_ENDED_RUNS_FOR_MINUTES);
 
         $now = null;
         $next = null;
 
-        foreach ($items as $item) {
-            $start = $item->starts_at;
+        foreach ($entries as $item) {
+            $start = $item->startsAt;
 
             if ($start === null) {
                 continue;
@@ -87,7 +109,7 @@ final class NowNext
                 continue;
             }
 
-            $end = $item->ends_at;
+            $end = $item->endsAt;
             $running = $end !== null
                 ? $end->greaterThan($at)
                 : $start->greaterThan($openEndedSince);
@@ -101,8 +123,8 @@ final class NowNext
         $timezone = $at->getTimezone()->getName();
 
         return [
-            'now' => $now === null ? null : ProgrammeCellData::ofItem($now, $timezone),
-            'next' => $next === null ? null : ProgrammeCellData::ofItem($next, $timezone),
+            'now' => $now?->cell($timezone, 1),
+            'next' => $next?->cell($timezone, 1),
         ];
     }
 }

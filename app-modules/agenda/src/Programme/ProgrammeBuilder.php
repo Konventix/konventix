@@ -54,12 +54,23 @@ use Konventix\Agenda\Models\Track;
  * full-width "Ohne Track" band above the grid. A day with no items at all
  * is omitted from the result entirely rather than rendered empty.
  *
+ * **Selected competitions are placed like items** (§4.5): the organizer's
+ * selection, paired with Agenda's read model of Competition's events, as
+ * open-ended blocks at their Competition-owned start (D-AGD-03) in the
+ * track the organizer gave the *selection entry*. Both kinds pass through
+ * one `ProgrammeEntry`, so every rule above — the rows, the half-open
+ * span, the id tie-break — applies to a block exactly as to an item
+ * without an end. A competition with no start has no anchor and is left
+ * out; a cancelled one stays, struck (D-AGD-08).
+ *
  * Everything is resolved **in the event's timezone** (ADR-0027), which the
  * caller passes together with the days: Agenda reads no table of Event's
  * (ADR-0004), so it learns neither the days nor the timezone by itself.
  *
- * Two queries, both constant — the items of the event with their place
- * eager-loaded, and the event's tracks — and all the grouping in PHP. A
+ * Two queries for the items and tracks — the items of the event with their
+ * place eager-loaded, and the event's tracks — plus the two of
+ * `SelectedCompetitions` and at most one gate lookup, all constant, and
+ * all the grouping in PHP. A
  * query per row or per day is what makes a programme page slow. The track
  * is deliberately *not* eager-loaded: the columns come from the tracks
  * query, and an item only ever needs its `track_id` to find its column.
@@ -68,9 +79,10 @@ final class ProgrammeBuilder
 {
     /**
      * @param  list<array{day_id: string, date: string, label: string|null}>  $days  what the caller holds of `event_days`, in order
+     * @param  string|null  $eventSlug  the event's public slug; without it a competition block has no link
      * @return array<int, ProgrammeDayData> one per event day that has items
      */
-    public function forEvent(string $eventId, string $brandId, array $days, string $timezone): array
+    public function forEvent(string $eventId, string $brandId, array $days, string $timezone, ?string $eventSlug = null): array
     {
         $items = AgendaItem::query()
             ->visible()
@@ -87,6 +99,11 @@ final class ProgrammeBuilder
             ->orderBy('name')
             ->get();
 
+        $entries = [
+            ...$items->map(fn (AgendaItem $item): ProgrammeEntry => ProgrammeEntry::ofItem($item))->all(),
+            ...SelectedCompetitions::programmeEntries($eventId, $brandId, $eventSlug),
+        ];
+
         /** @var list<string> $trackNames */
         $trackNames = [];
 
@@ -102,7 +119,7 @@ final class ProgrammeBuilder
 
         foreach ($days as $offset => $day) {
             $date = CarbonImmutable::parse($day['date'], $timezone)->toDateString();
-            $dayItems = $this->itemsOn($items->all(), $date, $timezone);
+            $dayItems = $this->itemsOn($entries, $date, $timezone);
 
             if ($dayItems === []) {
                 continue;
@@ -120,15 +137,15 @@ final class ProgrammeBuilder
      * they happen. The id breaks the tie so that two items beginning
      * together come out the same way on every request.
      *
-     * @param  array<int, AgendaItem>  $items
-     * @return list<array{item: AgendaItem, anchor: CarbonImmutable}>
+     * @param  array<int, ProgrammeEntry>  $items
+     * @return list<array{item: ProgrammeEntry, anchor: CarbonImmutable}>
      */
     private function itemsOn(array $items, string $date, string $timezone): array
     {
         $found = [];
 
         foreach ($items as $item) {
-            $anchor = $item->starts_at ?? $item->ends_at;
+            $anchor = $item->startsAt ?? $item->endsAt;
 
             if ($anchor === null || $anchor->setTimezone($timezone)->toDateString() !== $date) {
                 continue;
@@ -145,7 +162,7 @@ final class ProgrammeBuilder
 
     /**
      * @param  array{day_id: string, date: string, label: string|null}  $day
-     * @param  list<array{item: AgendaItem, anchor: CarbonImmutable}>  $dayItems
+     * @param  list<array{item: ProgrammeEntry, anchor: CarbonImmutable}>  $dayItems
      * @param  array<int, string>  $trackNames
      * @param  array<string, int>  $columnOf
      */
@@ -168,12 +185,12 @@ final class ProgrammeBuilder
         $untracked = [];
 
         foreach ($dayItems as ['item' => $item, 'anchor' => $anchor]) {
-            if ($item->track_id === null || ! isset($columnOf[$item->track_id])) {
+            if ($item->trackId === null || ! isset($columnOf[$item->trackId])) {
                 // The band is a list, not a grid. It has no rows to span, so
                 // the cell keeps the default span of 1 — computing the grid
                 // span here would hand the band a number that means nothing
                 // in it, and break what `ProgrammeCellData` promises.
-                $untracked[] = ProgrammeCellData::ofItem($item, $timezone);
+                $untracked[] = $item->cell($timezone, 1);
 
                 continue;
             }
@@ -181,8 +198,7 @@ final class ProgrammeBuilder
             $startRow = $rowOf[$anchor->setTimezone($timezone)->format('H:i')];
             $closingRow = $this->closingRowOf($item, $anchor, $startRow, $rowOf, count($times), $date, $timezone);
 
-            $grid[$startRow][$columnOf[$item->track_id]][] = ProgrammeCellData::ofItem(
-                $item,
+            $grid[$startRow][$columnOf[$item->trackId]][] = $item->cell(
                 $timezone,
                 max(1, $closingRow - $startRow),
             );
@@ -223,7 +239,7 @@ final class ProgrammeBuilder
      * time that occurs on *this* day, and a 02:00 end would otherwise sort
      * itself to the top of the grid.
      *
-     * @param  list<array{item: AgendaItem, anchor: CarbonImmutable}>  $dayItems
+     * @param  list<array{item: ProgrammeEntry, anchor: CarbonImmutable}>  $dayItems
      * @return list<string>
      */
     private function rowTimes(array $dayItems, string $date, string $timezone): array
@@ -231,7 +247,7 @@ final class ProgrammeBuilder
         $times = [];
 
         foreach ($dayItems as ['item' => $item]) {
-            foreach ([$item->starts_at, $item->ends_at] as $instant) {
+            foreach ([$item->startsAt, $item->endsAt] as $instant) {
                 if ($instant === null) {
                     continue;
                 }
@@ -272,7 +288,7 @@ final class ProgrammeBuilder
      * @param  int  $rowCount  one past the day's last row
      */
     private function closingRowOf(
-        AgendaItem $item,
+        ProgrammeEntry $item,
         CarbonImmutable $anchor,
         int $startRow,
         array $rowOf,
@@ -280,9 +296,9 @@ final class ProgrammeBuilder
         string $date,
         string $timezone,
     ): int {
-        $end = $item->ends_at;
+        $end = $item->endsAt;
 
-        if ($end === null || $item->starts_at === null) {
+        if ($end === null || $item->startsAt === null) {
             return $startRow + 1;
         }
 

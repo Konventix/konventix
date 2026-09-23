@@ -59,6 +59,7 @@ final class NowNextCard
         }
 
         $timezone = $summary->eventTimezone();
+        $slug = $summary->slug ?? $event->eventSlug;
 
         [
             'now' => $now,
@@ -67,12 +68,14 @@ final class NowNextCard
             eventId: $summary->event_id,
             brandId: $summary->brand_id,
             at: CarbonImmutable::now($timezone),
+            // The competition blocks link to their page under this slug.
+            eventSlug: $slug,
         );
 
         return new NowNextCardData(
             now: $now,
             next: $next,
-            programmeUrl: $this->programmeUrl($summary->slug ?? $event->eventSlug),
+            programmeUrl: $this->programmeUrl($slug),
         );
     }
 
