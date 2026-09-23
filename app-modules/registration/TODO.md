@@ -627,6 +627,12 @@
       deliberately its own event rather than a replay of
       `RegistrationConfirmed`, which also drives the confirmation mail.
       Only a projection may ever listen to it.
+- [x] `RegistrationStandingAnnounced` and `registration:announce-standing`
+      (competition design §5.1, final review fix wave B): restates each
+      registration's event, registrant and whether it is confirmed now, so
+      Competition's eligibility projection can be rebuilt after an import
+      that wrote registrations directly. Not auditable, and only a
+      projection may ever listen to it.
 - [x] `registration_event_summaries` now also carries the schedule
       (`starts_at`/`ends_at`/`timezone`) and the primary venue
       (`venue_label`/`venue_id`), projected with the same patch-not-replace

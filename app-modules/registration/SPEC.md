@@ -206,6 +206,7 @@ Payloads carry ULIDs and scalars — never Eloquent models.
 | `RegistrationEntryConditionDecided` | Somebody verified, refused or waived a declaration, at the console or at the door | `assertion_id`, `registration_id`, `entry_condition_key`, `brand_id`, `state`, `decided_by_user_id`, `decided_via`, `reason_code`, `decided_at` |
 | `RegistrationConsentGiven` | A registrant accepted the legal texts on the registration form (D-CPL-10) — Registration's half of the declaration contract, beside Commerce's `CheckoutConsentGiven` | `brand_id`, `subject_id`, `capture_context`, `accepted_at`, `binding_context` (an opaque bag of scalars this module builds and never interprets) |
 | `RegistrationOwnershipAnnounced` | `registration:announce-ownership` replays it for every registration (design doc §13, 2026-09-11 amendment) | `registration_id`, `brand_id`, `registrant_user_id` — a registration's buyer, restated for backfill only — never re-emits `RegistrationConfirmed`'s mail-triggering payload |
+| `RegistrationStandingAnnounced` | `registration:announce-standing` replays it for every registration (competition design §5.1, final review fix wave B) | `registration_id`, `event_id`, `brand_id`, `registrant_user_id`, `confirmed` (the status is `confirmed` now) — restated for backfill only, never auditable, and only a projection listens; Competition's eligibility read model is the first |
 
 ## Consumes
 

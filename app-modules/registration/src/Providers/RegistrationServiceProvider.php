@@ -47,6 +47,7 @@ use Konventix\Platform\Targets\TargetDirectory;
 use Konventix\Registration\Audience\RegistrationRegistrantAudience;
 use Konventix\Registration\Blocks\TicketsForEventBlock;
 use Konventix\Registration\Console\AnnounceRegistrationOwnershipCommand;
+use Konventix\Registration\Console\AnnounceRegistrationStandingCommand;
 use Konventix\Registration\Console\ExpireWaitlistOffersCommand;
 use Konventix\Registration\Data\EventAttendeesData;
 use Konventix\Registration\Data\PublicOfferData;
@@ -733,7 +734,7 @@ class RegistrationServiceProvider extends ModuleServiceProvider
 
         $this->registerMetrics();
 
-        $this->commands([ExpireWaitlistOffersCommand::class, AnnounceRegistrationOwnershipCommand::class]);
+        $this->commands([ExpireWaitlistOffersCommand::class, AnnounceRegistrationOwnershipCommand::class, AnnounceRegistrationStandingCommand::class]);
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             // `withoutOverlapping()` (#8), the guard Commerce's
