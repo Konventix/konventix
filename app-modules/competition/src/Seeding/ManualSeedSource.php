@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Konventix\Competition\Seeding;
 
 use Konventix\Competition\Enums\StageEntrySource;
+use Konventix\Competition\Exceptions\StageDrawRefusedException;
 use Konventix\Competition\Models\Stage;
-use RuntimeException;
 
 /**
  * The desk's drag order (D-CMP-20, design §7.5).
@@ -64,7 +64,7 @@ final class ManualSeedSource implements SeedSource
 
         foreach ($this->entrantIds as $entrantId) {
             if (! isset($inField[$entrantId])) {
-                throw new RuntimeException(sprintf(
+                throw new StageDrawRefusedException(sprintf(
                     'Entrant [%s] is not in stage [%s]\'s field and cannot be seeded into it.',
                     $entrantId,
                     $stage->id,
@@ -72,7 +72,7 @@ final class ManualSeedSource implements SeedSource
             }
 
             if (isset($seen[$entrantId])) {
-                throw new RuntimeException(sprintf(
+                throw new StageDrawRefusedException(sprintf(
                     'Entrant [%s] appears twice in the seed order given for stage [%s].',
                     $entrantId,
                     $stage->id,

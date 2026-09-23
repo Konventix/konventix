@@ -8,9 +8,9 @@ use Illuminate\Support\Facades\DB;
 use Konventix\Competition\Brackets\FormatRegistry;
 use Konventix\Competition\Brackets\Plan\BracketPlan;
 use Konventix\Competition\Brackets\PlanWriter;
+use Konventix\Competition\Exceptions\StageDrawRefusedException;
 use Konventix\Competition\Models\Stage;
 use Konventix\Competition\Seeding\SignupField;
-use RuntimeException;
 
 /**
  * Persists a stage's bracket from its format's plan (ADR-0019).
@@ -40,7 +40,7 @@ final class GenerateBracket
     {
         return DB::transaction(function () use ($stage): BracketPlan {
             if ($stage->isGenerated()) {
-                throw new RuntimeException(sprintf(
+                throw new StageDrawRefusedException(sprintf(
                     'Stage [%s] was already generated at %s; regenerating would orphan recorded results.',
                     $stage->id,
                     $stage->generated_at?->toIso8601String() ?? 'unknown',

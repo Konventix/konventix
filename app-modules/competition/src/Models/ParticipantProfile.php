@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Competition\Models;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 
@@ -69,5 +70,35 @@ class ParticipantProfile extends Model
         }
 
         return $resolved;
+    }
+
+    /**
+     * The console's person search (design §5.2): people the §5.1 gate lets
+     * into this event's competitions — a confirmed registration in this
+     * module's own read model — whose name or username contains `$term`, at
+     * most `$limit` of them, by name.
+     *
+     * Only somebody who could actually be added is offered: `AddTeamMember`
+     * refuses anybody else, and a search that listed them would be a list of
+     * refusals.
+     *
+     * @return Collection<int, self>
+     */
+    public static function searchEligible(string $brandId, string $eventId, string $term, int $limit = 10): Collection
+    {
+        $pattern = '%'.addcslashes($term, '%_\\').'%';
+
+        return self::query()
+            ->whereIn('user_id', EligibleRegistration::withoutBrandScope()
+                ->select('user_id')
+                ->where('brand_id', $brandId)
+                ->where('event_id', $eventId)
+                ->where('is_confirmed', true))
+            ->where(fn ($query) => $query
+                ->where('display_name', 'ilike', $pattern)
+                ->orWhere('username', 'ilike', $pattern))
+            ->orderBy('display_name')
+            ->limit($limit)
+            ->get();
     }
 }

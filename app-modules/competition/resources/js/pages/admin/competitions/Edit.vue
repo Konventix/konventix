@@ -16,6 +16,7 @@ import {
     toLocalDateTimeInput,
 } from '@/lib/datetime';
 import {
+    desk as competitionDesk,
     index as competitionsIndex,
     transition as transitionCompetition,
     update as updateCompetition,
@@ -137,6 +138,11 @@ function move(status: string): void {
                 <Link :href="competitionsIndex().url">
                     <ArrowLeft class="size-4" />
                     All competitions
+                </Link>
+            </Button>
+            <Button as-child>
+                <Link :href="competitionDesk(props.competition.id).url">
+                    Tournament desk
                 </Link>
             </Button>
         </AdminPageHeader>

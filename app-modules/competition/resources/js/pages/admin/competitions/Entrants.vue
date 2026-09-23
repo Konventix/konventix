@@ -1,9 +1,22 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
+import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { inviteCode } from '@/routes/admin/competition-teams';
+import {
+    checkIn as competitionCheckIn,
+    desk as competitionDesk,
+} from '@/routes/admin/competitions';
+import {
+    decline as declineEntrant,
+    disqualify as disqualifyEntrant,
+    fill as fillEntrant,
+    withdraw as withdrawEntrant,
+} from '@/routes/admin/entrants';
+import TeamRosterEditor from '../../../components/admin/TeamRosterEditor.vue';
 
 /**
  * The field of one competition (design §5.2, §5.4, §5.5).
@@ -17,6 +30,10 @@ import { Checkbox } from '@/components/ui/checkbox';
  * Filling is a multi-select over the interested list rather than a search
  * box, because that list is short, ordered by who spoke up first, and carries
  * the note each person wrote about what they can play.
+ *
+ * With `ManageEntrants` every roster opens into the organizer's powers of
+ * §5.2 — rename, add a player found by search, remove, move
+ * (`TeamRosterEditor`); a refusal comes back as an error on `entrant`.
  *
  * Names come from `ParticipantProfile` on the server. Console copy is
  * English.
@@ -50,7 +67,21 @@ const props = defineProps<{
     entrants: EntrantRow[];
     interested: Interested[];
     teams: { id: string; name: string }[];
+    canManage: boolean;
+    people?: Konventix.Competition.Data.PersonOptionData[];
 }>();
+
+const page = usePage();
+
+const refusal = computed(
+    () => (page.props.errors as Record<string, string | undefined>).entrant,
+);
+
+const editing = ref<string | null>(null);
+
+function toggleEditing(teamId: string): void {
+    editing.value = editing.value === teamId ? null : teamId;
+}
 
 const picked = ref<Record<string, string[]>>({});
 
@@ -90,7 +121,7 @@ function toggle(entrantId: string, userId: string, on: boolean): void {
 
 function fill(entrant: EntrantRow): void {
     router.post(
-        `/entrants/${entrant.id}/fill`,
+        fillEntrant(entrant.id).url,
         { userIds: selection(entrant.id) },
         {
             preserveScroll: true,
@@ -101,35 +132,23 @@ function fill(entrant: EntrantRow): void {
 }
 
 function decline(entrant: EntrantRow): void {
-    router.post(
-        `/entrants/${entrant.id}/decline`,
-        {},
-        { preserveScroll: true },
-    );
+    router.post(declineEntrant(entrant.id).url, {}, { preserveScroll: true });
 }
 
 function withdraw(entrant: EntrantRow): void {
-    router.post(
-        `/entrants/${entrant.id}/withdraw`,
-        {},
-        { preserveScroll: true },
-    );
+    router.post(withdrawEntrant(entrant.id).url, {}, { preserveScroll: true });
 }
 
 function disqualify(entrant: EntrantRow): void {
     router.post(
-        `/entrants/${entrant.id}/disqualify`,
+        disqualifyEntrant(entrant.id).url,
         {},
         { preserveScroll: true },
     );
 }
 
 function regenerate(entrant: EntrantRow): void {
-    router.post(
-        `/competition-teams/${entrant.teamId}/invite-code`,
-        {},
-        { preserveScroll: true },
-    );
+    router.post(inviteCode(entrant.teamId).url, {}, { preserveScroll: true });
 }
 </script>
 
@@ -143,14 +162,22 @@ function regenerate(entrant: EntrantRow): void {
             :description="`Team size ${props.competition.teamSize}. ${active.length} full roster(s), ${incomplete.length} incomplete.`"
         />
 
-        <p class="text-sm">
+        <p class="flex flex-wrap gap-4 text-sm">
             <Link
-                :href="`/competitions/${props.competition.id}/check-in`"
+                :href="competitionDesk(props.competition.id).url"
+                class="underline underline-offset-4 hover:text-accent"
+            >
+                Tournament desk
+            </Link>
+            <Link
+                :href="competitionCheckIn(props.competition.id).url"
                 class="underline underline-offset-4 hover:text-accent"
             >
                 Check-in desk
             </Link>
         </p>
+
+        <InputError :message="refusal" role="alert" />
 
         <section v-if="incomplete.length > 0" class="flex flex-col gap-4">
             <h2 class="text-lg font-medium text-text">Incomplete rosters</h2>
@@ -239,7 +266,24 @@ function regenerate(entrant: EntrantRow): void {
                         @click="regenerate(entrant)"
                         >New invite code</Button
                     >
+                    <Button
+                        v-if="props.canManage"
+                        variant="ghost"
+                        size="sm"
+                        :aria-expanded="editing === entrant.teamId"
+                        @click="toggleEditing(entrant.teamId)"
+                        >Edit roster</Button
+                    >
                 </div>
+
+                <TeamRosterEditor
+                    v-if="props.canManage && editing === entrant.teamId"
+                    :team-id="entrant.teamId"
+                    :team-name="entrant.teamName"
+                    :members="entrant.members"
+                    :teams="props.teams"
+                    :people="props.people ?? []"
+                />
             </article>
         </section>
 
@@ -270,6 +314,14 @@ function regenerate(entrant: EntrantRow): void {
 
                 <div class="flex flex-wrap gap-2">
                     <Button
+                        v-if="props.canManage"
+                        variant="ghost"
+                        size="sm"
+                        :aria-expanded="editing === entrant.teamId"
+                        @click="toggleEditing(entrant.teamId)"
+                        >Edit roster</Button
+                    >
+                    <Button
                         variant="outline"
                         size="sm"
                         @click="withdraw(entrant)"
@@ -282,6 +334,16 @@ function regenerate(entrant: EntrantRow): void {
                         >Disqualify</Button
                     >
                 </div>
+
+                <TeamRosterEditor
+                    v-if="props.canManage && editing === entrant.teamId"
+                    class="w-full"
+                    :team-id="entrant.teamId"
+                    :team-name="entrant.teamName"
+                    :members="entrant.members"
+                    :teams="props.teams"
+                    :people="props.people ?? []"
+                />
             </article>
         </section>
 

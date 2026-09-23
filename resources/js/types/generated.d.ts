@@ -713,6 +713,83 @@ declare namespace Konventix {
                 readonly nextStatus: Konventix.Competition.Enums.CompetitionStatus | null;
                 readonly nextLabel: string | null;
             };
+            export type DeskDisputeData = {
+                readonly matchId: string;
+                readonly bracket: string | null;
+                readonly round: number;
+                readonly position: number;
+                readonly disputedAt: string;
+                readonly reason: string | null;
+                readonly recorded: boolean;
+                readonly reports: Konventix.Competition.Data.DeskReportData[];
+            };
+            export type DeskEntrantData = {
+                readonly id: string;
+                readonly teamName: string;
+                readonly seed: number | null;
+                readonly state: Konventix.Competition.Enums.EntrantState;
+            };
+            export type DeskMatchData = {
+                readonly id: string;
+                readonly bracket: string | null;
+                readonly round: number;
+                readonly position: number;
+                readonly state: Konventix.Competition.Enums.MatchState;
+                readonly scheduledAt: string | null;
+                readonly disputed: boolean;
+                readonly sides: Konventix.Competition.Data.DeskSideData[];
+            };
+            export type DeskPowersData = {
+                readonly checkInEntrants: boolean;
+                readonly recordResults: boolean;
+                readonly correctResults: boolean;
+                readonly manageSchedule: boolean;
+            };
+            export type DeskReportData = {
+                readonly entrantId: string;
+                readonly teamName: string;
+                readonly scores: (number | null)[];
+                readonly proofUrl: string | null;
+                readonly reportedAt: string;
+            };
+            export type DeskScoreEntryData = {
+                readonly id: string;
+                readonly entrantId: string;
+                readonly teamName: string;
+                readonly heat: number | null;
+                readonly value: number;
+                readonly note: string | null;
+                readonly proofUrl: string | null;
+                readonly submittedAt: string;
+            };
+            export type DeskSideData = {
+                readonly position: number;
+                readonly entrantId: string | null;
+                readonly teamName: string | null;
+                readonly score: number | null;
+                readonly winner: boolean;
+            };
+            export type DeskStageData = {
+                readonly id: string;
+                readonly name: string;
+                readonly format: string;
+                readonly isLeaderboard: boolean;
+                readonly generated: boolean;
+                readonly hasResult: boolean;
+                readonly heats: number | null;
+                readonly unit: string | null;
+            };
+            export type DeskStandingData = {
+                readonly entrantId: string;
+                readonly teamName: string;
+                readonly group: string | null;
+                readonly placement: number | null;
+                readonly wins: number;
+                readonly losses: number;
+                readonly draws: number;
+                readonly points: number;
+                readonly tiebreaker: number | null;
+            };
             export type DisciplineData = {
                 readonly kind: Konventix.Competition.Enums.DisciplineKind;
                 readonly name: string;
@@ -733,6 +810,27 @@ declare namespace Konventix {
                 readonly allowDraws: boolean;
                 readonly gameId: string | null;
                 readonly competitions: number;
+            };
+            export type PersonOptionData = {
+                readonly userId: string;
+                readonly displayName: string;
+                readonly username: string;
+            };
+            export type TournamentDeskData = {
+                readonly competitionId: string;
+                readonly name: string;
+                readonly status: Konventix.Competition.Enums.CompetitionStatus;
+                readonly startsAt: string | null;
+                readonly checkInMode: Konventix.Competition.Enums.CheckInMode;
+                readonly resultSubmissionMode: Konventix.Competition.Enums.ResultSubmissionMode;
+                readonly checkedIn: number;
+                readonly stage: Konventix.Competition.Data.DeskStageData | null;
+                readonly field: Konventix.Competition.Data.DeskEntrantData[];
+                readonly matches: Konventix.Competition.Data.DeskMatchData[];
+                readonly disputes: Konventix.Competition.Data.DeskDisputeData[];
+                readonly standings: Konventix.Competition.Data.DeskStandingData[];
+                readonly queue: Konventix.Competition.Data.DeskScoreEntryData[];
+                readonly powers: Konventix.Competition.Data.DeskPowersData;
             };
         }
         namespace Enums {
@@ -776,6 +874,7 @@ declare namespace Konventix {
                 | 'competition.manage-competitions'
                 | 'competition.manage-entrants'
                 | 'competition.check-in-entrants'
+                | 'competition.manage-schedule'
                 | 'competition.record-results'
                 | 'competition.correct-results';
             export type ProofPolicy = 'none' | 'optional' | 'required';

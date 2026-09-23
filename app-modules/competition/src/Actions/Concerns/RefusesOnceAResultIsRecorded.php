@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Konventix\Competition\Actions\Concerns;
 
 use Konventix\Competition\Enums\MatchState;
+use Konventix\Competition\Exceptions\StageDrawRefusedException;
 use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\MatchSlot;
 use Konventix\Competition\Models\Stage;
-use RuntimeException;
 
 /**
  * The line D-CMP-20 draws: **regeneration is allowed until the first result**
@@ -25,7 +25,7 @@ use RuntimeException;
  * They should never disagree, and if they ever do, the reading that refuses
  * is the one that does not delete somebody's match.
  *
- * Shared by `SeedStage` and `RegenerateBracket` because re-seeding is as
+ * Shared by `SeedStage` and `ResetStage` (and so `RegenerateBracket`) because re-seeding is as
  * destructive as redrawing: `entrants.seed` breaks ties in every standings
  * calculator, so renumbering the field after a result silently rewrites the
  * table the results produced.
@@ -35,7 +35,7 @@ trait RefusesOnceAResultIsRecorded
     private function guardNoRecordedResult(Stage $stage): void
     {
         if ($this->hasRecordedResult($stage)) {
-            throw new RuntimeException(sprintf(
+            throw new StageDrawRefusedException(sprintf(
                 'Stage [%s] already has a recorded result; re-seeding or redrawing it would orphan matches that were played.',
                 $stage->id,
             ));

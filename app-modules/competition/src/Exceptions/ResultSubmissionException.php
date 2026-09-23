@@ -132,6 +132,19 @@ final class ResultSubmissionException extends RuntimeException
         ));
     }
 
+    /**
+     * The desk pressed "record" on a match the two sides disagree about. A
+     * dispute is settled with a note both sides are shown (§8.4), which a
+     * plain recording would skip.
+     */
+    public static function resolveInstead(string $matchId): self
+    {
+        return new self(sprintf(
+            'Match [%s] is disputed; resolve the dispute with a note instead of recording over it (design §8.4).',
+            $matchId,
+        ));
+    }
+
     public static function alreadyDisputed(string $matchId): self
     {
         return new self(sprintf(

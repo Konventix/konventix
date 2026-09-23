@@ -5,6 +5,12 @@ import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/datetime';
+import {
+    desk as competitionDesk,
+    entrants as competitionEntrants,
+} from '@/routes/admin/competitions';
+import { checkIn as checkInEntrant } from '@/routes/admin/entrants';
+import { undo as undoCheckIn } from '@/routes/admin/entrants/check-in';
 
 /**
  * The desk's check-in list (design §6).
@@ -88,7 +94,7 @@ function checkIn(entrant: EntrantRow): void {
     refusals.value = { ...refusals.value, [entrant.id]: undefined };
 
     router.post(
-        `/entrants/${entrant.id}/check-in`,
+        checkInEntrant(entrant.id).url,
         {},
         {
             preserveScroll: true,
@@ -105,7 +111,7 @@ function checkIn(entrant: EntrantRow): void {
 function undo(entrant: EntrantRow): void {
     refusals.value = { ...refusals.value, [entrant.id]: undefined };
 
-    router.delete(`/entrants/${entrant.id}/check-in`, {
+    router.delete(undoCheckIn(entrant.id).url, {
         preserveScroll: true,
         onError: (errors) => {
             refusals.value = {
@@ -172,9 +178,15 @@ function undo(entrant: EntrantRow): void {
                 Only this desk checks teams in.
             </p>
 
-            <p>
+            <p class="flex flex-wrap gap-4">
                 <Link
-                    :href="`/competitions/${props.competition.id}/entrants`"
+                    :href="competitionDesk(props.competition.id).url"
+                    class="underline underline-offset-4 hover:text-accent"
+                >
+                    Tournament desk
+                </Link>
+                <Link
+                    :href="competitionEntrants(props.competition.id).url"
                     class="underline underline-offset-4 hover:text-accent"
                 >
                     Entrants and rosters

@@ -20,6 +20,7 @@ use Konventix\Competition\Actions\RegenerateInviteCode;
 use Konventix\Competition\Actions\RemoveTeamMember;
 use Konventix\Competition\Actions\RenameTeam;
 use Konventix\Competition\Actions\WithdrawEntrant;
+use Konventix\Competition\Data\PersonOptionData;
 use Konventix\Competition\Enums\Permission;
 use Konventix\Competition\Enums\WithdrawalReason;
 use Konventix\Competition\Exceptions\CompetitionEntryException;
@@ -57,7 +58,7 @@ class EntrantAdminController
 {
     use ScopesToOperator;
 
-    public function index(string $competition): Response
+    public function index(Request $request, string $competition): Response
     {
         Gate::authorize(Permission::ViewCompetitions->value);
 
@@ -127,7 +128,34 @@ class EntrantAdminController
                 'id' => (string) $team->getKey(),
                 'name' => $team->name,
             ])->values()->all(),
+            'canManage' => Gate::allows(Permission::ManageEntrants->value),
+            // The roster editor's person search (§5.2), asked for by a
+            // partial reload with `search` and never sent otherwise. Behind
+            // `ManageEntrants` like the add it feeds, and empty below two
+            // characters: a one-letter search over a whole LAN is a list,
+            // not an answer.
+            'people' => Inertia::optional(fn (): array => $this->people($request, $model)),
         ]);
+    }
+
+    /**
+     * @return list<PersonOptionData>
+     */
+    private function people(Request $request, Competition $competition): array
+    {
+        $term = trim($request->string('search')->toString());
+
+        if (! Gate::allows(Permission::ManageEntrants->value) || mb_strlen($term) < 2) {
+            return [];
+        }
+
+        return array_values(ParticipantProfile::searchEligible($competition->brand_id, $competition->event_id, $term)
+            ->map(fn (ParticipantProfile $profile): PersonOptionData => new PersonOptionData(
+                userId: $profile->user_id,
+                displayName: $profile->display_name,
+                username: $profile->username,
+            ))
+            ->all());
     }
 
     public function fill(Request $request, string $entrant, FillIncompleteEntrant $fill): RedirectResponse

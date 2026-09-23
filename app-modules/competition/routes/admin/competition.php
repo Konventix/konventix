@@ -23,8 +23,10 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Competition\Http\Controllers\Admin\CheckInDeskController;
 use Konventix\Competition\Http\Controllers\Admin\CompetitionAdminController;
+use Konventix\Competition\Http\Controllers\Admin\DeskResultController;
 use Konventix\Competition\Http\Controllers\Admin\DisciplineAdminController;
 use Konventix\Competition\Http\Controllers\Admin\EntrantAdminController;
+use Konventix\Competition\Http\Controllers\Admin\TournamentDeskController;
 
 // Disciplines (design §9): what is being contested, and its defaults.
 Route::get('/disciplines', [DisciplineAdminController::class, 'index'])->name('admin.disciplines.index');
@@ -86,3 +88,42 @@ Route::post('/entrants/{entrant}/check-in', [CheckInDeskController::class, 'chec
     ->name('admin.entrants.check-in');
 Route::delete('/entrants/{entrant}/check-in', [CheckInDeskController::class, 'undo'])
     ->name('admin.entrants.check-in.undo');
+
+/*
+ * The tournament desk (design §9, D-CMP-20, D-CMP-21). The page opens for any
+ * of §9's four desk capabilities; each write asks for its own —
+ * `ManageSchedule` to seed, draw and time the matches, `RecordResults` to
+ * record, resolve and work the verification queue, `CorrectResults` to
+ * correct and to resolve a dispute raised against a standing result (§8.4).
+ * The check-in list stays on its own route above and the desk links to it.
+ */
+Route::get('/competitions/{competition}/desk', [TournamentDeskController::class, 'show'])
+    ->name('admin.competitions.desk');
+
+Route::post('/competition-stages/{stage}/seed', [TournamentDeskController::class, 'seed'])
+    ->name('admin.competition-stages.seed');
+Route::post('/competition-stages/{stage}/shuffle', [TournamentDeskController::class, 'shuffle'])
+    ->name('admin.competition-stages.shuffle');
+Route::post('/competition-stages/{stage}/generate', [TournamentDeskController::class, 'generate'])
+    ->name('admin.competition-stages.generate');
+Route::post('/competition-stages/{stage}/regenerate', [TournamentDeskController::class, 'regenerate'])
+    ->name('admin.competition-stages.regenerate');
+Route::post('/competition-stages/{stage}/reset', [TournamentDeskController::class, 'reset'])
+    ->name('admin.competition-stages.reset');
+Route::post('/competition-stages/{stage}/schedule-round', [TournamentDeskController::class, 'scheduleRound'])
+    ->name('admin.competition-stages.schedule-round');
+Route::put('/competition-matches/{match}/schedule', [TournamentDeskController::class, 'scheduleMatch'])
+    ->name('admin.competition-matches.schedule');
+
+Route::post('/competition-matches/{match}/record', [DeskResultController::class, 'record'])
+    ->name('admin.competition-matches.record');
+Route::post('/competition-matches/{match}/correct', [DeskResultController::class, 'correct'])
+    ->name('admin.competition-matches.correct');
+Route::post('/competition-matches/{match}/resolve', [DeskResultController::class, 'resolve'])
+    ->name('admin.competition-matches.resolve');
+Route::post('/competition-stages/{stage}/score-entries', [DeskResultController::class, 'enterScore'])
+    ->name('admin.competition-stages.score-entries');
+Route::post('/competition-score-entries/{entry}/verify', [DeskResultController::class, 'verify'])
+    ->name('admin.competition-score-entries.verify');
+Route::post('/competition-score-entries/{entry}/reject', [DeskResultController::class, 'reject'])
+    ->name('admin.competition-score-entries.reject');

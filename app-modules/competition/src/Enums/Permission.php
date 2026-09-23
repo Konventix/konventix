@@ -27,6 +27,15 @@ enum Permission: string
      */
     case CheckInEntrants = 'competition.check-in-entrants';
 
+    /**
+     * The desk's scheduling and drawing (design §9, D-CMP-21, D-CMP-23):
+     * `scheduled_at` per match and per round, and the seed order, generate
+     * and reset that decide who plays whom. Added by §9's slice for the same
+     * reason as `CheckInEntrants` — the desk actions it gates exist now;
+     * `ViewEntrantContacts` and the `Tournament Desk` role stay §11's pass.
+     */
+    case ManageSchedule = 'competition.manage-schedule';
+
     case RecordResults = 'competition.record-results';
     case CorrectResults = 'competition.correct-results';
 }

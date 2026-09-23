@@ -797,3 +797,27 @@ mandates, and it is recorded as owed in Competition's `TODO.md`. Nothing in
 this module moves when it lands — a media ULID is a media ULID whichever door
 it came in through — but **the participant-facing upload control should not
 ship until it does** (§10's slice).
+
+### §9, 2026-09-23 — the draw is `ManageSchedule`, and it arrives with the desk
+
+§9 gives the desk page four capabilities and does not say which of them the
+seed order, generate and reset sit behind. None of `CheckInEntrants`,
+`RecordResults` or `CorrectResults` is about arranging who plays whom, and
+§11 keeps `ManageEntrants` and `CorrectResults` with the admin as the two
+operations with a blast radius; so the draw is `ManageSchedule`, the other
+half of "who plays whom, and when". The Tournament Desk role §11 sketches
+(`ViewCompetitions`, `CheckInEntrants`, `RecordResults`, `ManageSchedule`)
+can therefore run a tournament end to end except for corrections, which is
+what #135 asked for. A reset is harmless under this reading because
+`ResetStage` refuses once the first result is recorded (D-CMP-20).
+
+`ManageSchedule` itself is added by the desk's slice rather than §11's pass,
+for the reason `CheckInEntrants` was added by §6's: the desk actions it
+gates exist now. `ViewEntrantContacts` and the role split stay with §11.
+
+Two smaller things the desk decides. Recording over a **disputed** match is
+refused (`RecordResultAtDesk` → "resolve it instead"), because §8.4 owes both
+sides the note a plain record would skip. And the per-round "schedule all at"
+is one instant for every open match of `(bracket, round)`, skipping matches
+already at that instant so their timeline does not gain a `rescheduled` row
+that says nothing changed; staggering across stations is #117's estimator.

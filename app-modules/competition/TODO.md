@@ -78,12 +78,27 @@ ADR-0062). The build order for #32, each item its own merge request:
       (`competition.proofs.store`) is **live ahead of it**, behind `auth` and
       `throttle:6,1`; the participant screens must not offer an upload
       control until the read half lands.
-- [ ] Desk and public pages (D-CMP-20..22): seed order, generate / reset,
-      per-round scheduling, the ported canvas bracket with its table view,
-      event tournament index, competition, match and team pages, polling
-      while `Running`.
-- [ ] Capabilities and roles (D-CMP-23): `ManageSchedule`, `CheckInEntrants`,
-      `ViewEntrantContacts`; Tournament Desk as a second default role.
+- [x] Tournament desk (D-CMP-20, D-CMP-21, #301 first half):
+      `…/{competition}/desk` with the open disputes and their resolve dialog,
+      the seed-order drag and shuffle, generate / draw again / reset
+      (`ResetStage`, which `RegenerateBracket` now composes), the matches
+      round by round with per-round "schedule all at" (`ScheduleRound`) and
+      per-match times, record (`RecordResultAtDesk`) / correct / resolve
+      dialogs, the standings, and a leaderboard's verification queue with
+      the desk's own verified score entry. The entrants screen gained the
+      §5.2 roster powers (rename, add by person search, remove, move) and
+      both it and the check-in list now use Wayfinder routes. Every console
+      controller is held to the admin host's own brands
+      (`ScopesToOperator`). Left: the check-in list keeps its own screen and
+      the desk links to it (§14); `MatchRescheduled` is still not emitted —
+      §12's event list is reconciled with #302; no proof upload anywhere on
+      the desk (#322).
+- [ ] Public pages (D-CMP-22, #301 second half): the ported canvas bracket
+      with its table view, event tournament index, competition, match and
+      team pages, polling while `Running`.
+- [ ] Capabilities and roles (D-CMP-23): `ViewEntrantContacts`; Tournament
+      Desk as a second default role. (`CheckInEntrants` and
+      `ManageSchedule` landed with the desk actions they gate.)
 - [ ] Metrics, dashboard row and the open-dispute alert (ADR-0059); GDPR
       export and anonymisation for the new tables; the two
       definition-of-done flows and the feature-off test.

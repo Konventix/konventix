@@ -6,11 +6,15 @@ use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
+use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Enums\Permission;
 use Konventix\Competition\Models\Competition;
+use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\CompetitionTeam;
 use Konventix\Competition\Models\Discipline;
 use Konventix\Competition\Models\Entrant;
+use Konventix\Competition\Models\ScoreEntry;
+use Konventix\Competition\Models\Stage;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -43,7 +47,7 @@ use Konventix\Platform\Models\Operator;
  * from `$this->withBrand()` in the test itself: a plain helper cannot call a
  * protected TestCase method (.ai/rules/tests.md).
  *
- * @return array{brandId: string, eventId: string, discipline: Discipline, competition: Competition, team: CompetitionTeam, entrant: Entrant, stranger: User, home: User}
+ * @return array{brandId: string, eventId: string, discipline: Discipline, competition: Competition, team: CompetitionTeam, entrant: Entrant, stage: Stage, match: CompetitionMatch, entry: ScoreEntry, stranger: User, home: User}
  */
 function consoleScopeWorld(Brand $brand): array
 {
@@ -63,6 +67,21 @@ function consoleScopeWorld(Brand $brand): array
         'competition_team_id' => $team->getKey(),
     ]);
 
+    $stage = Stage::factory()->create(['competition_id' => $competition->getKey()]);
+
+    $match = CompetitionMatch::factory()->create([
+        'competition_id' => $competition->getKey(),
+        'stage_id' => $stage->getKey(),
+    ]);
+
+    $entry = new ScoreEntry([
+        'stage_id' => $stage->getKey(),
+        'entrant_id' => $entrant->getKey(),
+        'value' => 61.5,
+        'submitted_by_user_id' => (string) Str::ulid(),
+    ]);
+    $entry->save();
+
     $everything = ['platform.access-admin', ...array_column(Permission::cases(), 'value')];
 
     // Home first: `competitionOperator()` without an operator takes the
@@ -81,6 +100,9 @@ function consoleScopeWorld(Brand $brand): array
         'competition' => $competition,
         'team' => $team,
         'entrant' => $entrant,
+        'stage' => $stage,
+        'match' => $match,
+        'entry' => $entry,
         'stranger' => $stranger,
         'home' => $home,
     ];
@@ -235,4 +257,52 @@ it('hides another operator\'s field from the check-in desk', function (): void {
         ->assertOk();
 
     expect($world['entrant']->refresh()->state)->toBe(EntrantState::Registered);
+});
+
+it('hides another operator\'s bracket and clock from the tournament desk', function (): void {
+    $world = consoleScopeWorld($this->withBrand());
+    $stage = $world['stage']->getKey();
+    $entrant = $world['entrant']->getKey();
+
+    consoleScopeExpectNotFound($this, $world['stranger'], [
+        ['get', '/competitions/'.$world['competition']->getKey().'/desk'],
+        ['post', "/competition-stages/{$stage}/seed", ['entrantIds' => [$entrant]]],
+        ['post', "/competition-stages/{$stage}/shuffle"],
+        ['post', "/competition-stages/{$stage}/generate"],
+        ['post', "/competition-stages/{$stage}/regenerate"],
+        ['post', "/competition-stages/{$stage}/reset"],
+        ['post', "/competition-stages/{$stage}/schedule-round", ['round' => 1, 'scheduledAt' => '2026-10-24T12:00:00+02:00']],
+        ['put', '/competition-matches/'.$world['match']->getKey().'/schedule', ['scheduledAt' => '2026-10-24T12:00:00+02:00']],
+    ]);
+
+    $this->actingAs($world['home'])
+        ->get('http://admin.tournaments.test/admin/competitions/'.$world['competition']->getKey().'/desk')
+        ->assertOk();
+
+    expect($world['stage']->refresh()->generated_at)->toBeNull()
+        ->and($world['match']->refresh()->scheduled_at)->toBeNull()
+        ->and($world['entrant']->refresh()->seed)->toBeNull();
+});
+
+it('hides another operator\'s results from the desk\'s result dialogs and queue', function (): void {
+    $world = consoleScopeWorld($this->withBrand());
+    $match = $world['match']->getKey();
+    $entry = $world['entry']->getKey();
+    $line = ['scores' => [1 => 1, 2 => 0], 'winnerEntrantId' => null, 'note' => 'Stolen'];
+
+    consoleScopeExpectNotFound($this, $world['stranger'], [
+        ['post', "/competition-matches/{$match}/record", $line],
+        ['post', "/competition-matches/{$match}/correct", $line],
+        ['post', "/competition-matches/{$match}/resolve", $line],
+        ['post', '/competition-stages/'.$world['stage']->getKey().'/score-entries', [
+            'entrantId' => $world['entrant']->getKey(),
+            'value' => 1,
+        ]],
+        ['post', "/competition-score-entries/{$entry}/verify"],
+        ['post', "/competition-score-entries/{$entry}/reject", ['rejectionNote' => 'Stolen']],
+    ]);
+
+    expect($world['match']->refresh()->state)->toBe(MatchState::Pending)
+        ->and($world['entry']->refresh()->verified_at)->toBeNull()
+        ->and($world['entry']->rejected_at)->toBeNull();
 });
