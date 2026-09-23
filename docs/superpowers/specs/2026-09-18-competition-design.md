@@ -862,6 +862,8 @@ consumer does not exist yet and B should not invent a contract for a projection
 nobody has written — but **the competition half of the timetable must not ship
 without it.**
 
+*2026-09-23: Emitted from 0.9.1, #331.*
+
 ### §6, 2026-09-23 — door presence also listens to `AdmissionIssued` and `AdmissionOwnershipAnnounced`
 
 *(Corrected 2026-09-23 in the fix round on this task: the first version of this
@@ -1243,7 +1245,7 @@ lists what is emitted, with its real payload.
 | `CompetitionPublished` | `competition_id`, `event_id`, `discipline_id`, `status`, `at` | Adds `brand_id`, `name`, `starts_at` | Code is right. `brand_id` is what a listener gates on (ADR-0003), and the name and start are what Agenda's timetable projects. |
 | `CompetitionStarted` / `Finished` / `Cancelled` | As above | Adds `brand_id` | Code is right, for the same reason. |
 | `CompetitionRescheduled` | Not listed | Emitted by `UpdateCompetition` when an announced competition's `starts_at` moves | Code is right. It is additive and Agenda's timetable reads it. |
-| `CompetitionUnpublished` | Not listed | Not emitted | Stays unemitted in 0.9.0, because nothing consumes a competition's publication yet. It is the precondition of Agenda's competition half, and Agenda's `TODO.md` now says so (see "Unpublishing a competition tells nobody" above). |
+| `CompetitionUnpublished` | Not listed | Not emitted | Stays unemitted in 0.9.0, because nothing consumes a competition's publication yet. It is the precondition of Agenda's competition half, and Agenda's `TODO.md` now says so (see "Unpublishing a competition tells nobody" above). *2026-09-23: Emitted from 0.9.1, #331.* |
 | `SignupOpened` | Emitted when the window opens (scheduler tick) or the organizer reopens | Emitted on publish into an open window and on reopen. There is no scheduler tick, and `brand_id` is added. | §12 is right about the tick, and the tick is not built. Signup is derived from the window (§4), so entering works on time. Only the event is late or missing: a competition published before its window opens emits no `SignupOpened` when the window arrives. Owed in `TODO.md`. |
 | `SignupClosed` | `competition_id`, `event_id`, `at`, `entrant_count` | As listed, plus `brand_id`. Emitted by the organizer's close only. | Same as above: nothing closes a competition automatically when `signup_closes_at` passes. Signup is shut by the window anyway, but the status stays `Published` until the organizer closes it. Owed in `TODO.md`. |
 | `EntrantRegistered` | `entrant_id`, `competition_id`, `team_id`, `member_user_ids` | `competitionTeamId`, plus `event_id`, `brand_id`, `registered_at` and `state` | Code is right. `state` is there because an incomplete roster enters too (§5.4) and is announced as `incomplete`. A later fill-up that completes it emits nothing, so a consumer that needs the full roster reads it from `MatchScheduled`. |

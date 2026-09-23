@@ -50,6 +50,7 @@ final class PublishCompetition
                     disciplineId: $competition->discipline_id,
                     brandId: $competition->brand_id,
                     name: $competition->name,
+                    slug: $competition->slug,
                     status: $competition->status->value,
                     startsAt: $competition->starts_at?->toIso8601String(),
                     at: now()->toIso8601String(),
