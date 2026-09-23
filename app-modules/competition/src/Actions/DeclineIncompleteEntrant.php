@@ -38,6 +38,8 @@ final class DeclineIncompleteEntrant
     public function handle(Entrant $entrant): Entrant
     {
         return DB::transaction(function () use ($entrant): Entrant {
+            $this->lockCompetitionOf($entrant);
+
             if ($entrant->state !== EntrantState::Incomplete) {
                 throw CompetitionEntryException::entrantNotIncomplete((string) $entrant->getKey());
             }

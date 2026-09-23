@@ -64,6 +64,8 @@ final class DisqualifyEntrant
     public function handle(Entrant $entrant): array
     {
         return DB::transaction(function () use ($entrant): array {
+            $this->lockCompetitionOf($entrant);
+
             $this->retireEntrant($entrant, EntrantState::Disqualified, WithdrawalReason::Disqualified);
 
             $forfeited = $this->forfeitOpenMatches($entrant);

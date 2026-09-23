@@ -9,6 +9,7 @@ use Konventix\Competition\Actions\CalculateStandings;
 use Konventix\Competition\Actions\RecordMatchResult;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Enums\StageFormat;
+use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\MatchSlot;
@@ -28,6 +29,17 @@ trait ForfeitsOpenMatches
 {
     use RefusesOnceAResultIsRecorded;
     use SettlesAMatch;
+
+    /**
+     * The competition's row lock, taken first — before the entrant is
+     * retired or a slot emptied — in the order every other writer takes its
+     * locks (`GuardsCompetitionLifecycle`), so a forfeit pass and a desk
+     * write cannot deadlock (fix wave A round 2, M-b).
+     */
+    protected function lockCompetitionOf(Entrant $entrant): void
+    {
+        Competition::withoutBrandScope()->whereKey($entrant->competition_id)->lockForUpdate()->firstOrFail();
+    }
 
     /**
      * @return list<string>
@@ -67,6 +79,11 @@ trait ForfeitsOpenMatches
                     $winnerId = $sideId;
                 }
             }
+
+            // A forfeit settles a disputed match like any other settlement,
+            // so the dispute ends with it (fix wave A round 2, M-a). Nobody
+            // pressed a button, so no `MatchDisputeResolved` names anyone.
+            $this->closeDispute($match, $winnerId, null, __('Ein Team ist nicht mehr im Turnier; das Spiel ist kampflos entschieden.'));
 
             app(RecordMatchResult::class)->handle($match, $scores, $winnerId);
             app(AdvanceBracket::class)->handle($match->refresh());

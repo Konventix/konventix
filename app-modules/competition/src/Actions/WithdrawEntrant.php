@@ -43,6 +43,8 @@ final class WithdrawEntrant
     public function handle(Entrant $entrant, WithdrawalReason $reason): Entrant
     {
         return DB::transaction(function () use ($entrant, $reason): Entrant {
+            $this->lockCompetitionOf($entrant);
+
             if ($reason === WithdrawalReason::CaptainWithdrew) {
                 $this->guardBeforeRunning($entrant);
             }

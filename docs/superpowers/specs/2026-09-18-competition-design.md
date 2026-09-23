@@ -1718,3 +1718,14 @@ Two changes close it:
 - **`start` accepts every retired entrant that stands in no open match** —
   withdrawn or disqualified — not only a disqualified one. A withdrawn team
   still in an open match is still a change the desk draws again for.
+
+### §8.4/§13, 2026-09-23 (fix wave A, round 2) — two edges of the earlier entries
+
+- A disqualification's forfeit of a **disputed** match ends the dispute, like
+  every other settlement: a `resolved` row with a German note, and no
+  `MatchDisputeResolved`, because nobody acted on the match
+  (`ForfeitsOpenMatches`). `SPEC.md`'s contract table now says who
+  `MatchDisputeResolved.user_id` names.
+- Erasing a captain never hands the captaincy to a member who was **erased
+  earlier**. Every account gets a participant profile at registration, and
+  erasure deletes it, so a member without one is skipped.

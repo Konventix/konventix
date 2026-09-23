@@ -1174,3 +1174,35 @@ describe('the start after a pre-start result (round 2, N2)', function (): void {
         expect($competition->refresh()->status)->toBe(CompetitionStatus::Running);
     });
 });
+
+describe('a forfeit of a disputed match (round 2, M-a)', function (): void {
+    it('ends the dispute when a disqualification forfeits the match, and names nobody', function (): void {
+        $this->withBrand();
+
+        [$competition, , $members] = competitionFieldWithRosters(2, ['result_submission_mode' => ResultSubmissionMode::Participants]);
+        $match = competitionMatchAt(competitionGeneratedStage($competition), 1, 1);
+        $sides = competitionSidesOf($match);
+
+        app(ReportMatchResult::class)->handle($match, integrityTestEntrant($sides[1]), new MatchReportData(scores: [1 => 16, 2 => 9]), $members[$sides[1]]);
+        app(ReportMatchResult::class)->handle($match->fresh(), integrityTestEntrant($sides[2]), new MatchReportData(scores: [1 => 9, 2 => 16]), $members[$sides[2]]);
+
+        expect($match->fresh()->isDisputed())->toBeTrue();
+
+        Event::fake([MatchDisputeResolved::class]);
+
+        // Side 2 is disqualified: the match is forfeited 1:0 to side 1. Before
+        // the fix it finished still "disputed", on the desk's panel and in the
+        // open-disputes alert.
+        app(DisqualifyEntrant::class)->handle(integrityTestEntrant($sides[2]));
+
+        $settled = $match->fresh();
+
+        expect($settled->state)->toBe(MatchState::Finished)
+            ->and($settled->winner_entrant_id)->toBe($sides[1])
+            ->and($settled->isDisputed())->toBeFalse()
+            ->and($settled->history()->get()->map(fn (MatchHistoryEntry $entry): string => $entry->kind->value)->all())
+            ->toBe(['reported', 'reported', 'disputed', 'resolved', 'recorded']);
+
+        Event::assertNotDispatched(MatchDisputeResolved::class);
+    });
+});

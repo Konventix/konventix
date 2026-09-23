@@ -367,7 +367,7 @@ design's §12 and why.
 | `EntrantWithdrawn` | An entrant is withdrawn, declined or disqualified | `entrant_id`, `competition_id`, `competition_team_id`, `event_id`, `brand_id`, `member_user_ids`, `reason`, `final_state`, `withdrawn_at` |
 | `EntrantCheckedIn` | The desk or the captain checks a team in | `entrant_id`, `competition_id`, `competition_team_id`, `event_id`, `brand_id`, `member_user_ids`, `checked_in_at`, `via_self_service` |
 | `MatchResultReported` / `MatchDisputed` (D-CMP-19) | A side reports; the sides disagree or one disputes | `match_id`, `competition_id`, `brand_id`, `entrant_id`, `user_id`, `at` |
-| `MatchDisputeResolved` (D-CMP-19) | The desk decides a dispute | `match_id`, `competition_id`, `brand_id`, `entrant_id` (the side the decision went to, null for a draw), `user_id`, `at` |
+| `MatchDisputeResolved` (D-CMP-19) | A dispute ends: the desk resolves it or corrects the contested result, or the sides agree after all (a confirm, an agreeing re-report) | `match_id`, `competition_id`, `brand_id`, `entrant_id` (the side the result went to, null for a draw), `user_id` (whoever ended it: the organizer, or the member of a side whose agreement settled the match), `at`. Not sent when a disqualification's forfeit ends a dispute: nobody acted on the match |
 
 **Proposed, not emitted.** `MatchRescheduled` (`match_id`, `competition_id`,
 `previous_scheduled_at`, `scheduled_at`) and `MatchCancelled` (`match_id`,

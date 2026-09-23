@@ -250,8 +250,9 @@ final class CompetitionGdprHandler implements GdprHandler
 
     /**
      * Every team the person captains passes to its longest-standing other
-     * member (`created_at`, then `id`, the order `rotateCaptaincy()` uses);
-     * with nobody else on it, the team keeps no captain. Idempotent: a second
+     * member who has not been erased (`created_at`, then `id`, the order
+     * `rotateCaptaincy()` uses); with nobody left, the team keeps no
+     * captain. Idempotent: a second
      * run finds the person captaining nothing.
      */
     private function handOverCaptaincy(string $userId): void
@@ -264,10 +265,15 @@ final class CompetitionGdprHandler implements GdprHandler
         foreach ($captaincies as $captaincy) {
             $captaincy->forceFill(['role' => TeamRole::Member])->save();
 
+            // Never to a member erased earlier: their profile went with the
+            // erasure (every account gets one at registration), and the
+            // captaincy would land on a forgotten account again (fix wave A
+            // round 2, M-e).
             /** @var CompetitionTeamMember|null $successor */
             $successor = CompetitionTeamMember::withoutBrandScope()
                 ->where('competition_team_id', $captaincy->competition_team_id)
                 ->where('user_id', '!=', $userId)
+                ->whereIn('user_id', ParticipantProfile::query()->select('user_id'))
                 ->orderBy('created_at')
                 ->orderBy('id')
                 ->first();

@@ -206,14 +206,17 @@ it('hands an erased captain\'s team to its longest-standing member, leaves a tea
     $captain = $members[$full->id];
     $loneCaptain = $members[$alone->id];
 
-    // Two more on the full team, joining a minute apart: the first of them
-    // has stood longest after the captain.
+    // Three more on the full team, joining a minute apart, each with the
+    // profile every account gets at registration. "first" has stood longest
+    // after the captain, but asked to be erased earlier.
     $joined = [];
 
-    foreach (['first', 'second'] as $which) {
+    foreach (['first', 'second', 'third'] as $which) {
         $this->travel(1)->minutes();
 
         $joined[$which] = (string) Str::ulid();
+        competitionParticipantName($joined[$which], ucfirst($which), $which.'-'.Str::lower(Str::random(6)));
+
         $member = new CompetitionTeamMember([
             'competition_team_id' => $full->competition_team_id,
             'user_id' => $joined[$which],
@@ -223,6 +226,7 @@ it('hands an erased captain\'s team to its longest-standing member, leaves a tea
     }
 
     $handler = new CompetitionGdprHandler;
+    $handler->delete(SubjectRef::forUser($joined['first']), DeletionMode::Erase);
     $handler->delete(SubjectRef::forUser($captain), DeletionMode::Erase);
     $handler->delete(SubjectRef::forUser($loneCaptain), DeletionMode::Erase);
 
@@ -231,12 +235,15 @@ it('hands an erased captain\'s team to its longest-standing member, leaves a tea
     /** @var CompetitionTeam $loneTeam */
     $loneTeam = CompetitionTeam::query()->findOrFail($alone->competition_team_id);
 
-    // The full team: the captain's row stays, as a member; the member who
-    // joined first captains now; the later one is still a member.
-    expect($fullTeam->captain()?->user_id)->toBe($joined['first'])
+    // The full team: the captain's row stays, as a member. By standing the
+    // order is first, second, third; "first" was erased before, so the
+    // captaincy skips that forgotten account (round 2, M-e) and goes to
+    // "second". "third" is still a member. All five rows stay.
+    expect($fullTeam->captain()?->user_id)->toBe($joined['second'])
         ->and($fullTeam->isCaptain($captain))->toBeFalse()
+        ->and($fullTeam->isCaptain($joined['first']))->toBeFalse()
         ->and(CompetitionTeamMember::query()->where('competition_team_id', $fullTeam->id)->where('user_id', $captain)->value('role'))->toBe(TeamRole::Member)
-        ->and(CompetitionTeamMember::query()->where('competition_team_id', $fullTeam->id)->count())->toBe(3)
+        ->and(CompetitionTeamMember::query()->where('competition_team_id', $fullTeam->id)->count())->toBe(4)
         // The lone captain's team has nobody to hand to: no captain, the desk
         // steps in. The row stays.
         ->and($loneTeam->captain())->toBeNull()
