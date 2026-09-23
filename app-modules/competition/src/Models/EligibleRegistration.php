@@ -19,10 +19,12 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * confirmation, and `RegistrationConfirmed` carries confirmation but not the
  * user.
  *
- * D-CMP-05's second half — "admission possession is verified at check-in /
- * match start" — is deliberately *not* modelled here. That check belongs to
- * the door and the desk; Competition records that it happened via
- * `Entrant::$checked_in_at` and never performs it.
+ * This table is the gate's registration leg. Since #330 the gate has a second
+ * leg, a non-revoked admission held in one's own name, which
+ * `userMayEnter()` asks of `AdmissionPresence` (design §5.1, addendum of
+ * 2026-09-23, amending D-CMP-05). Whether that admission was *scanned* at
+ * the door is still not asked here: that stays §6's `requires_event_check_in`,
+ * and Competition records a tournament check-in via `Entrant::$checked_in_at`.
  *
  * @property string $id
  * @property string $brand_id
@@ -43,7 +45,11 @@ class EligibleRegistration extends Model
     protected $fillable = ['registration_id', 'event_id', 'user_id', 'is_confirmed'];
 
     /**
-     * Whether this user holds a confirmed registration for the event.
+     * The §5.1 gate: whether this user holds a confirmed registration for the
+     * event, **or** a non-revoked admission in their own name for it (design
+     * §5.1 addendum, #330). Every call site asks this method and nothing
+     * else, so the gate has one definition.
+     *
      * `withoutBrandScope()` scoped explicitly (ADR-0010): signup may run from
      * a queue worker with no ambient brand.
      */
@@ -54,7 +60,8 @@ class EligibleRegistration extends Model
             ->where('event_id', $eventId)
             ->where('user_id', $userId)
             ->where('is_confirmed', true)
-            ->exists();
+            ->exists()
+            || AdmissionPresence::holdsAdmission($brandId, $eventId, $userId);
     }
 
     /**

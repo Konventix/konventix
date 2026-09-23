@@ -59,7 +59,8 @@ final class CompetitionPageController
         abort_if($team === null || ! $team->isCaptain($userId), 404);
 
         // §5.1: everyone who enters holds a confirmed registration for the
-        // event. The roster is handed to the Action as the entering members,
+        // event, or since #330 a ticket in their own name (§5.1 addendum).
+        // The roster is handed to the Action as the entering members,
         // which is what makes `EnterCompetition` check each of them — a
         // registration cancelled after the team was formed must not still
         // get the team in. Asked here first only to answer in German with

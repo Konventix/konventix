@@ -18,7 +18,7 @@ use Konventix\Competition\Models\CompetitionTeamMember;
  * One transaction, and the departure happens first so the destination's
  * roster bound is measured without this person counted on both sides. If the
  * arrival then fails — the destination is full, or the player holds no
- * confirmed registration — the whole move rolls back and they are still on
+ * confirmed registration and no ticket in their name (§5.1 addendum) — the whole move rolls back and they are still on
  * the team they started on. Nobody ends up belonging to nobody.
  *
  * Both teams are rechecked for completeness on the way through, so the team

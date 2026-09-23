@@ -20,7 +20,8 @@ use Konventix\Competition\Models\CompetitionTeamMember;
  * can do at two in the morning without the desk.
  *
  * The gate is §5.1's and nothing else: a confirmed registration for the
- * competition's event. It is enforced in `MaintainsTeamRoster::addRosterMember()`
+ * competition's event, or since #330 a non-revoked admission in one's own
+ * name (§5.1 addendum). It is enforced in `MaintainsTeamRoster::addRosterMember()`
  * along with the roster bound, because joining a team that is already entered
  * puts you in the bracket exactly as entering would have.
  *

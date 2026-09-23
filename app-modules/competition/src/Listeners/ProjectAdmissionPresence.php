@@ -53,6 +53,11 @@ use Konventix\Platform\Modules\ModuleGate;
  * The gate is mandated (ADR-0003, #298) and stays; the recovery path is an
  * operator-documentation question, not a silent one.
  *
+ * Since #330 the §5.1 signup gate reads this table too
+ * (`AdmissionPresence::holdsAdmission()`, §5.1 addendum), so a ticket claimed
+ * while the module was off opens the gate only once
+ * `admission:announce-ownership` has run after the enable.
+ *
  * Registered explicitly in `CompetitionServiceProvider::registerListeners()`;
  * modular's event discovery is off and must stay off (.ai/rules/listeners.md).
  * `ModuleGate` is resolved inside the handler, never constructor-injected —

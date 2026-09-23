@@ -21,7 +21,8 @@ use Konventix\Competition\Models\EventSummary;
  * looking for a team and teams looking for people are reading the same
  * screen.
  *
- * The gate is §5.1's — a confirmed registration — and it lives in the Action,
+ * The gate is §5.1's — a confirmed registration, or since #330 a ticket in
+ * one's own name (§5.1 addendum) — and it lives in the Action,
  * so the console's own paths obey it too. A refusal comes back as a field
  * error on `note`, which is the only field the form has.
  *

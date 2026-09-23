@@ -7,6 +7,7 @@ use Illuminate\Support\Str;
 use Konventix\Agenda\Data\AgendaItemData;
 use Konventix\Agenda\Enums\Permission as AgendaPermission;
 use Konventix\Agenda\Models\AgendaItem;
+use Konventix\Competition\Events\CompetitionPublished;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDaysChanged;
 use Konventix\Event\Events\EventPublished;
@@ -115,6 +116,38 @@ function agendaPublishedItem(string $eventId, string $title, string $startsAt, ?
         'starts_at' => CarbonImmutable::parse($startsAt)->utc(),
         'ends_at' => $endsAt === null ? null : CarbonImmutable::parse($endsAt)->utc(),
     ]);
+}
+
+/**
+ * A published competition of `$eventId`, known to Agenda the way it is in
+ * production: by emitting Competition's `CompetitionPublished`, which
+ * `ProjectProgrammeCompetition` projects into `agenda_competitions`. There
+ * is no factory for that table, so a test cannot skip the projection.
+ *
+ * Returns the competition's ULID. `$overrides` takes the event's named
+ * arguments (`competitionId`, `name`, `slug`, `status`, `startsAt`, …); the
+ * default start is 14:00 Berlin on the fixture event's first day, which is
+ * 13:00 UTC.
+ *
+ * @param  array<string, mixed>  $overrides
+ */
+function agendaPublishedCompetition(Brand $brand, string $eventId, array $overrides = []): string
+{
+    $payload = array_merge([
+        'competitionId' => (string) Str::ulid(),
+        'eventId' => $eventId,
+        'disciplineId' => (string) Str::ulid(),
+        'brandId' => $brand->getKey(),
+        'name' => 'Rocket League 2v2',
+        'slug' => 'rocket-league-2v2',
+        'status' => 'published',
+        'startsAt' => '2026-11-20T14:00:00+01:00',
+        'at' => '2026-09-01T12:00:00+00:00',
+    ], $overrides);
+
+    event(new CompetitionPublished(...$payload));
+
+    return $payload['competitionId'];
 }
 
 /**

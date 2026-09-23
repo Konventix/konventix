@@ -7,6 +7,7 @@ namespace Konventix\Competition\Actions;
 use Illuminate\Support\Facades\DB;
 use Konventix\Competition\Actions\Concerns\TransitionsCompetitionStatus;
 use Konventix\Competition\Enums\CompetitionStatus;
+use Konventix\Competition\Events\CompetitionUnpublished;
 use Konventix\Competition\Models\Competition;
 
 /**
@@ -18,8 +19,11 @@ use Konventix\Competition\Models\Competition;
  * read two fields and disagree with itself. A later publish stamps a fresh
  * one.
  *
- * No event: §12's contract names none for this direction, and inventing one
- * would put a name in other modules' code that the design never settled.
+ * Emits `CompetitionUnpublished` (0.9.1, #331; design §14 "Unpublishing a
+ * competition tells nobody"), so a consumer that projected the competition on
+ * `CompetitionPublished` can forget it. The dispatch is registered only after
+ * `transition()` has succeeded: a refused unpublish throws before it and
+ * announces nothing.
  */
 final class UnpublishCompetition
 {
@@ -27,12 +31,25 @@ final class UnpublishCompetition
 
     public function handle(Competition $competition): Competition
     {
-        return DB::transaction(fn (): Competition => $this->transition(
-            $competition,
-            CompetitionStatus::Draft,
-            // `signup_opened_at` too: a competition published again is
-            // announced again when its window is open (`AnnounceSignupOpened`).
-            ['published_at' => null, 'signup_opened_at' => null],
-        ));
+        return DB::transaction(function () use ($competition): Competition {
+            $competition = $this->transition(
+                $competition,
+                CompetitionStatus::Draft,
+                // `signup_opened_at` too: a competition published again is
+                // announced again when its window is open (`AnnounceSignupOpened`).
+                ['published_at' => null, 'signup_opened_at' => null],
+            );
+
+            DB::afterCommit(static function () use ($competition): void {
+                event(new CompetitionUnpublished(
+                    competitionId: $competition->id,
+                    eventId: $competition->event_id,
+                    brandId: $competition->brand_id,
+                    unpublishedAt: now()->toIso8601String(),
+                ));
+            });
+
+            return $competition;
+        });
     }
 }

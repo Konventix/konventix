@@ -359,7 +359,9 @@ design's §12 and why.
 | `MatchScheduled` | A match has a time **and** every slot holds a side: when the desk times a full match, when the bracket fills the last slot of a timed match, and when a correction voids a timed match that is then on again between new sides. Never for a bye. Again on a reschedule. Consumers upsert on `match_id`. | `match_id`, `competition_id`, `event_id`, `brand_id`, `game_id`, `game_mode` (both null unless the discipline is a video game), `round`, `scheduled_at`, `entrant_ids` (slot order), `member_user_ids` (entrant ULID => roster) |
 | `MatchFinished` | A result is recorded — **once per match**, even when a voided match is played again (D-CMP-12). Not sent for a match closed because nobody can reach it (no side, every feeder finished): nothing was played and nothing was announced | `match_id`, `competition_id`, `brand_id`, `winner_entrant_id`, `scores` (entrant ULID => score), `finished_at` |
 | `MatchResultCorrected` (D-CMP-12) | The desk corrects a recorded result | `match_id`, `competition_id`, `brand_id`, `previous_winner_entrant_id`, `winner_entrant_id`, `scores`, `corrected_by_user_id`, `corrected_at` |
-| `CompetitionPublished` (D-CMP-15) | A competition becomes publicly visible | `competition_id`, `event_id`, `discipline_id`, `brand_id`, `name`, `status`, `starts_at`, `at` |
+| `CompetitionPublished` (D-CMP-15) | A competition becomes publicly visible | `competition_id`, `event_id`, `discipline_id`, `brand_id`, `name`, `slug` (0.9.1, #331), `status`, `starts_at`, `at` |
+| `CompetitionUnpublished` (0.9.1, #331; design §14) | An announced competition goes back to `Draft`. Only on a successful transition; a refused unpublish sends nothing | `competition_id`, `event_id`, `brand_id`, `unpublished_at` |
+| `CompetitionAnnounced` (0.9.1, #331) — **projection-only, backfill** | `competition:announce-competitions`, once per competition of every brand and every status, on demand. Not a lifecycle event and not auditable; only a read model may listen, and a replay changes nothing once every row is projected. Never a replay of `CompetitionPublished` | `competition_id`, `event_id`, `brand_id`, `name`, `slug`, `status`, `starts_at`, `announced` (`status` is not `draft` and `published_at` is set; `false` tells a consumer to forget the competition) |
 | `CompetitionRescheduled` | An announced competition's `starts_at` moves | `competition_id`, `event_id`, `brand_id`, `previous_starts_at`, `starts_at`, `at` |
 | `CompetitionStarted` / `CompetitionFinished` / `CompetitionCancelled` (D-CMP-15) | The lifecycle moves | `competition_id`, `event_id`, `discipline_id`, `brand_id`, `status`, `at` |
 | `SignupOpened` / `SignupClosed` (D-CMP-15) | Publish into an open window, reopen, or the window opening (`competition:signup-tick`, once per window); the organizer closes, or the tick once `signup_closes_at` passes | `competition_id`, `event_id`, `brand_id`, `entrant_count`, `at` |
@@ -378,9 +380,7 @@ paths need one before GameOps consumes it: a redraw (`RegenerateBracket`,
 empty a slot of an announced, unplayed match; and a correction re-announces a
 voided match that finishes again with no second `MatchFinished`. GameOps
 0.10 (#179) owns that contract and has decided to add `MatchCancelled` (design
-§14, "`MatchScheduled` has no retraction yet"). `CompetitionUnpublished`
-(`competition_id`, `event_id`, `brand_id`, `unpublished_at`) is owed before
-Agenda's competition half ships (design §14).
+§14, "`MatchScheduled` has no retraction yet").
 
 Competition's own `MatchResultReported` is **not** GameOps' proposed event of
 the same name under "Consumes": same words, opposite direction. A participant's
@@ -403,7 +403,7 @@ maintains from them. Every listener is idempotent and replayable (ADR-0004).
 | `UserRegistered` / `UserProfileUpdated` | Identity | Maintains `ParticipantProfile` (`display_name`, `username`, `visibility`). Ungated for the same reason. `identity:replay-profiles` backfills it. |
 | `SocialIdentityLinked` / `SocialIdentityUnlinked` / `SocialIdentityAnnounced` / `AccountsMerged` | Identity | Maintains `competition_linked_identities`, the providers a person has linked, which a discipline's `requires_linked_provider` is checked against on entry and on every roster join (design §5.6). Global rather than per brand, and it stores no provider account id. It is ungated, because the events carry no brand and a brand switching the module on must find the links already there. `identity:announce-social-identities` backfills it. |
 | `EventCreated` / `EventDetailsUpdated` / `EventRescheduled` and the seven lifecycle events | Event | Maintains `competition_event_summaries` — slug, name, time zone and lifecycle state — which the public tournament pages resolve by and are gated on. Ungated. `event:replay-details --with-state` backfills it. |
-| `AdmissionIssued` / `AdmissionHolderAssigned` / `AdmissionHolderUnassigned` / `AdmissionCheckedIn` / `AdmissionRevoked` / `AdmissionOwnershipAnnounced` | Admission | Maintains the **presence read model** — which person the door has seen at which event. Read by check-in when a competition sets `requires_event_check_in` (D-CMP-18). Never a signup gate (D-CMP-05). Gated on the brand the event names; `admission:announce-ownership` backfills it, but cannot restore a scan time. |
+| `AdmissionIssued` / `AdmissionHolderAssigned` / `AdmissionHolderUnassigned` / `AdmissionCheckedIn` / `AdmissionRevoked` / `AdmissionOwnershipAnnounced` | Admission | Maintains the **presence read model** — which person the door has seen at which event. Read by check-in when a competition sets `requires_event_check_in` (D-CMP-18). and, since #330, the ticket leg of the §5.1 gate: a holder named on a row that still stands may enter (D-CMP-05 as amended 2026-09-23). Gated on the brand the event names; `admission:announce-ownership` backfills it, but cannot restore a scan time. |
 | `MatchSessionLive` *(proposed)* | GameOps | The server is up and the handler has started the match; Competition moves the match to live and can show connection details. It is a lifecycle signal, not a result. |
 | `MatchResultReported` *(proposed)* | GameOps | The match handler observed a final score. Competition remains the owner of result state: it decides whether the reported score is recorded, held for review, or overridden. |
 | `MatchSessionFailed` *(proposed)* | GameOps | Provisioning or the handler failed; the match is flagged for the tournament desk rather than silently stalling. |
@@ -438,7 +438,7 @@ and so runs a tournament end to end except for corrections and roster changes
 Entering a competition, joining a team by code, registering interest,
 reporting, confirming or disputing a result and self-service check-in are
 **not** capabilities: they follow from a confirmed registration (D-CMP-05)
-and membership in a side.
+or a ticket in one's name (§5.1 addendum, #330) and membership in a side.
 
 ## Activation
 
@@ -528,7 +528,10 @@ its words (design §14).
   admissions exist, which may be too late for a schedule built in advance.~~
   **Decision log Round 6 (D-CMP-05):** confirmed Registration suffices to
   enter; admission possession is verified at check-in / match start, not at
-  signup.
+  signup. **Amended 2026-09-23 (#330, design §5.1 addendum):** a
+  non-revoked admission held in one's own name opens the gate as well, read
+  from the presence read model; being scanned at the door is still not asked
+  at signup, and losing either leg later removes nobody from a roster.
 - ~~How are ranking and points systems configured per brand without
   reintroducing free-form settings blobs (ADR-0009)?~~ **Decision log Round 7
   (D-BATCH-7):** typed per-discipline config Data objects (ADR-0009) — no

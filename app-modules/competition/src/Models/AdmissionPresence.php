@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Competition\Models;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
@@ -26,6 +27,11 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * The key is the admission's own ULID, assigned from the payload — so no
  * `HasUlids`, this row never mints an id. No factory either: rows exist only
  * through the projection, and a test emits Admission's events instead.
+ *
+ * Since #330 the §5.1 gate reads this table too: a row whose holder is set is
+ * an assigned admission that still stands, and holding one opens the signup
+ * gate (design §5.1, addendum of 2026-09-23). That leg looks at the holder
+ * only, never at `checked_in_at`.
  *
  * @property string $admission_id
  * @property string $brand_id
@@ -97,6 +103,43 @@ class AdmissionPresence extends Model
         $seen = self::seenAtTheDoor($brandId, $eventId, $userIds);
 
         return array_values(array_filter($userIds, fn (string $userId): bool => ! in_array($userId, $seen, true)));
+    }
+
+    /**
+     * Whether this person holds a non-revoked admission for the event (§5.1
+     * addendum).
+     *
+     * Holding is enough: `checked_in_at` is not read, because whether the
+     * door has seen them is §6's question. A revoked admission has no row, and
+     * an unassigned one has no holder, so neither matches.
+     *
+     * `withoutBrandScope()` and an explicit brand, for the reason
+     * `seenAtTheDoor()` gives: queue workers and the operator console
+     * (ADR-0029).
+     */
+    public static function holdsAdmission(string $brandId, string $eventId, string $userId): bool
+    {
+        return self::withoutBrandScope()
+            ->where('brand_id', $brandId)
+            ->where('event_id', $eventId)
+            ->where('holder_user_id', $userId)
+            ->exists();
+    }
+
+    /**
+     * The holders of this event's non-revoked admissions, as a subquery for
+     * `whereIn('user_id', …)` — the person search's half of the ticket leg
+     * (§5.1 addendum). Scoped explicitly, like `holdsAdmission()`.
+     *
+     * @return Builder<static>
+     */
+    public static function holderIdsQuery(string $brandId, string $eventId): Builder
+    {
+        return self::withoutBrandScope()
+            ->where('brand_id', $brandId)
+            ->where('event_id', $eventId)
+            ->whereNotNull('holder_user_id')
+            ->select('holder_user_id');
     }
 
     /**

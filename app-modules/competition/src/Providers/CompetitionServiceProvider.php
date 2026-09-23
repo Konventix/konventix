@@ -22,6 +22,7 @@ use Konventix\Competition\Brackets\Formats\GroupStageGenerator;
 use Konventix\Competition\Brackets\Formats\RoundRobinGenerator;
 use Konventix\Competition\Brackets\Formats\SingleEliminationGenerator;
 use Konventix\Competition\Brackets\Formats\SwissGenerator;
+use Konventix\Competition\Console\AnnounceCompetitionsCommand;
 use Konventix\Competition\Console\SignupWindowTickCommand;
 use Konventix\Competition\Data\MyCompetitionsCardData;
 use Konventix\Competition\Data\NextGamesCardData;
@@ -144,9 +145,11 @@ class CompetitionServiceProvider extends ModuleServiceProvider
         $this->registerMetrics();
 
         // The signup clock of design §4, scheduled in registerSchedule() and
-        // runnable by hand from docs/operations.md.
+        // runnable by hand from docs/operations.md; and the backfill for a
+        // read model built after competitions were published (#331).
         $this->commands([
             SignupWindowTickCommand::class,
+            AnnounceCompetitionsCommand::class,
         ]);
     }
 

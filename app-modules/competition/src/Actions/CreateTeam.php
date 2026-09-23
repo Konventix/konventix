@@ -20,7 +20,8 @@ use Konventix\Competition\Models\EligibleRegistration;
  * member is captain (D-CMP-13). The invite code is issued here, because a
  * team without one is a team nobody else can reach.
  *
- * The §5.1 gate applies: a confirmed registration for the event. A team
+ * The §5.1 gate applies: a confirmed registration for the event, or since
+ * #330 a ticket in one's own name (§5.1 addendum). A team
  * founded by somebody who is not coming is a roster the desk has to unpick.
  *
  * The name clash comes back as a field error — names are unique per brand and

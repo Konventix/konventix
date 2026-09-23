@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use Konventix\Competition\Actions\CancelCompetition;
@@ -18,6 +19,7 @@ use Konventix\Competition\Events\CompetitionCancelled;
 use Konventix\Competition\Events\CompetitionFinished;
 use Konventix\Competition\Events\CompetitionPublished;
 use Konventix\Competition\Events\CompetitionStarted;
+use Konventix\Competition\Events\CompetitionUnpublished;
 use Konventix\Competition\Events\SignupClosed;
 use Konventix\Competition\Events\SignupOpened;
 use Konventix\Competition\Exceptions\IllegalCompetitionStateTransitionException;
@@ -120,6 +122,67 @@ it('unpublishes back to draft and reopens signup', function (): void {
     // Twice: once on the publish into an open window, once on the reopen —
     // design §4 names both as causes.
     Event::assertDispatchedTimes(SignupOpened::class, 2);
+});
+
+it('announces an unpublish once, with the event and brand it left', function (): void {
+    $this->withBrand();
+
+    Event::fake([CompetitionPublished::class, CompetitionUnpublished::class, SignupOpened::class]);
+
+    $this->travelTo(CarbonImmutable::parse('2026-10-01T10:00:00Z'));
+
+    $competition = Competition::factory()->status(CompetitionStatus::Draft)->create();
+
+    app(PublishCompetition::class)->handle($competition);
+
+    // Nothing was taken back yet: publishing is not an unpublish.
+    Event::assertNotDispatched(CompetitionUnpublished::class);
+
+    $this->travelTo(CarbonImmutable::parse('2026-10-01T10:15:00Z'));
+
+    app(UnpublishCompetition::class)->handle($competition);
+
+    Event::assertDispatchedTimes(CompetitionUnpublished::class, 1);
+    Event::assertDispatched(CompetitionUnpublished::class, fn (CompetitionUnpublished $e): bool => $e->competitionId === $competition->id
+        && $e->eventId === $competition->event_id
+        && $e->brandId === $competition->brand_id
+        // The clock stood at 10:15:00 UTC when the unpublish ran; the app
+        // timezone is UTC, so toIso8601String() writes the +00:00 offset.
+        && $e->unpublishedAt === '2026-10-01T10:15:00+00:00');
+});
+
+it('announces nothing when an unpublish is refused', function (): void {
+    $this->withBrand();
+
+    Event::fake([CompetitionUnpublished::class]);
+
+    $competition = Competition::factory()->status(CompetitionStatus::SignupClosed)->create();
+
+    // SignupClosed → Draft is not an arrow of design §4: the way back from a
+    // closed signup is reopen, to Published.
+    expect(fn () => app(UnpublishCompetition::class)->handle($competition))
+        ->toThrow(IllegalCompetitionStateTransitionException::class);
+
+    expect($competition->refresh()->status)->toBe(CompetitionStatus::SignupClosed);
+    Event::assertNotDispatched(CompetitionUnpublished::class);
+});
+
+it('carries the competition slug on CompetitionPublished', function (): void {
+    $this->withBrand();
+
+    Event::fake([CompetitionPublished::class, SignupOpened::class]);
+
+    $competition = Competition::factory()->status(CompetitionStatus::Draft)->create([
+        'name' => 'Main Cup',
+        'slug' => 'main-cup-2026',
+    ]);
+
+    app(PublishCompetition::class)->handle($competition);
+
+    Event::assertDispatched(CompetitionPublished::class, fn (CompetitionPublished $e): bool => $e->competitionId === $competition->id
+        && $e->name === 'Main Cup'
+        // The slug as stored, not one re-derived from the name ('main-cup').
+        && $e->slug === 'main-cup-2026');
 });
 
 it('cancels from every state but finished', function (): void {
