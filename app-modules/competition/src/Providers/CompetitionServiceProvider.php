@@ -454,7 +454,7 @@ class CompetitionServiceProvider extends ModuleServiceProvider
                     <p>{{ $detail }}</p>
                     <p>Turnier: <strong>{{ $competitionName }}</strong><br>
                     Gegner: <strong>{{ $teamName }}</strong></p>
-                    <p>Unter „Meine Turniere" kannst du das Ergebnis bestaetigen oder widersprechen.</p>
+                    <p>Unter „Meine Turniere" kannst du das Ergebnis bestätigen oder widersprechen.</p>
                     BLADE,
                 'en' => <<<'BLADE'
                     <p>Hello,</p>
