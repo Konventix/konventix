@@ -781,12 +781,12 @@ it('lets a captain enter their team and nobody enter a team they do not captain'
         ->assertNotFound();
 
     // Fix round 1 (I3): §5.1 is checked on the server for the whole roster.
-    // The member holds no confirmed registration yet, so the captain's entry
-    // is refused with one German sentence and nothing is written.
+    // The member holds neither a confirmed registration nor a ticket in
+    // their name yet, so the captain's entry is refused with one German sentence and nothing is written.
     $this->actingAs($captain)
         ->post('/tournaments/'.$competition->id.'/entries', ['teamId' => $team->id])
         ->assertSessionHasErrors([
-            'teamId' => 'Alle im Team brauchen eine bestätigte Anmeldung zur Veranstaltung, bevor ihr euch anmelden könnt.',
+            'teamId' => 'Alle im Team brauchen eine bestätigte Anmeldung zur Veranstaltung oder ein Ticket auf ihren Namen, bevor ihr euch anmelden könnt.',
         ]);
 
     expect(Entrant::query()->where('competition_id', $competition->id)->exists())->toBeFalse();

@@ -114,7 +114,7 @@ function withdrawInterest(): void {
 
         <p v-else-if="!props.viewer.eligible" class="text-sm text-text-muted">
             Mitspielen kann, wer eine bestätigte Anmeldung zur Veranstaltung
-            hat.
+            oder ein Ticket auf den eigenen Namen hat.
         </p>
 
         <template v-else>

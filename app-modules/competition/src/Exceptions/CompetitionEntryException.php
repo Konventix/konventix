@@ -156,12 +156,12 @@ final class CompetitionEntryException extends RuntimeException
     {
         return self::refusal(
             sprintf(
-                'User [%s] holds no confirmed registration for event [%s]; a confirmed registration is '
-                .'what entitles someone to enter (D-CMP-05).',
+                'User [%s] holds neither a confirmed registration nor an admission in their name for event [%s]; '
+                .'either entitles someone to enter (D-CMP-05, amended by #330).',
                 $userId,
                 $eventId,
             ),
-            __('Dafür braucht es eine bestätigte Anmeldung zur Veranstaltung – für dich und für alle im Team.'),
+            __('Dafür braucht es eine bestätigte Anmeldung zur Veranstaltung oder ein Ticket auf den eigenen Namen – für dich und für alle im Team.'),
         );
     }
 

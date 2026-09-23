@@ -302,7 +302,8 @@ It joins the manual post-rollout backfills, which are now
 the hand-run Eventula import, and since 0.9.1 Admission's
 `admission_registration_summaries`: the attendee list's ticket type and
 registration status; until it has run, a ticket issued before 0.9.1 shows no
-type in the list), `admission:announce-ownership` and
+type in the list), `admission:announce-ownership` (door presence, and since
+#330 the ticket half of the competition gate) and
 `identity:announce-social-identities`. On the cluster:
 
     kubectl --context rancher -n konventix exec <web pod> -- php artisan identity:announce-social-identities
@@ -348,7 +349,15 @@ projection listens to what they emit:
 - `admission:announce-ownership` fills `competition_admission_presence`, the
   door presence that `requires_event_check_in` checks. The door listeners are
   gated on the brand, so admissions issued or claimed while `competition` was
-  off for it are missing until this runs. Run it after enabling the module.
+  off for it are missing until this runs. It also fills the ticket half of
+  the §5.1 gate (#330): until it runs after an enable, a person whose only
+  entitlement is a claimed ticket cannot enter, join a team, put their name
+  on an interest list or be found by the desk's search. Run it after
+  **every** enable of `competition`, including a re-enable: a revocation or
+  an unassignment heard while the module was off never reached the table,
+  and an announced `revoked` deletes the stale row. Run it once after the
+  0.9.1 deploy that brings #330 as well. It is idempotent, and it is what
+  covers the tickets claimed before that deploy.
 - `identity:replay-profiles` fills `competition_participant_profiles`, the
   names every tournament page and the console's person search show. Without
   it a roster renders with dashes until each person edits their profile.

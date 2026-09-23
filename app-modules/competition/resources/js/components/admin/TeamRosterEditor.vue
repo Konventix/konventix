@@ -22,8 +22,9 @@ import {
  * component offers, it does not decide.
  *
  * The search asks the page for its `people` prop by partial reload, and the
- * server lists only people with a confirmed registration for the event,
- * which is everyone `AddTeamMember` would accept.
+ * server lists only people with a confirmed registration for the event or
+ * a ticket in their own name for it (§5.1 and its #330 addendum), which is
+ * everyone `AddTeamMember` would accept.
  */
 type Member = { userId: string; displayName: string };
 
@@ -187,7 +188,8 @@ function move(member: Member): void {
                     </Button>
                 </li>
                 <li v-if="props.people.length === 0" class="text-text-muted">
-                    Nobody with a confirmed registration matches.
+                    Nobody with a confirmed registration or a ticket in their
+                    name matches.
                 </li>
             </ul>
         </div>

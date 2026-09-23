@@ -70,7 +70,7 @@ final class CompetitionPageController
         foreach ($roster as $memberId) {
             if (! EligibleRegistration::userMayEnter($model->brand_id, $model->event_id, $memberId)) {
                 throw ValidationException::withMessages([
-                    'teamId' => __('Alle im Team brauchen eine bestätigte Anmeldung zur Veranstaltung, bevor ihr euch anmelden könnt.'),
+                    'teamId' => __('Alle im Team brauchen eine bestätigte Anmeldung zur Veranstaltung oder ein Ticket auf ihren Namen, bevor ihr euch anmelden könnt.'),
                 ]);
             }
         }

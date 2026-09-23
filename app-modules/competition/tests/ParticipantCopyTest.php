@@ -154,7 +154,7 @@ it('refuses interest from somebody without a registration in German', function (
     $this->actingAs($stranger)
         ->post('/tournaments/'.$competition->getKey().'/interest', ['note' => null])
         ->assertSessionHasErrors([
-            'note' => 'Dafür braucht es eine bestätigte Anmeldung zur Veranstaltung – für dich und für alle im Team.',
+            'note' => 'Dafür braucht es eine bestätigte Anmeldung zur Veranstaltung oder ein Ticket auf den eigenen Namen – für dich und für alle im Team.',
         ]);
 });
 
