@@ -25,6 +25,7 @@ use Konventix\Compliance\Gdpr\SubjectResolver;
 use Konventix\Identity\Actions\AuthenticateUser;
 use Konventix\Identity\Actions\CreateNewUser;
 use Konventix\Identity\Actions\ResetUserPassword;
+use Konventix\Identity\Console\AnnounceSocialIdentitiesCommand;
 use Konventix\Identity\Console\ReplayProfilesCommand;
 use Konventix\Identity\Enums\AccountState;
 use Konventix\Identity\Enums\Permission;
@@ -120,7 +121,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
         // routes get the class wrapped on above.
         Route::aliasMiddleware('signups-open', EnsureSignupsOpen::class);
 
-        $this->commands([ReplayProfilesCommand::class]);
+        $this->commands([ReplayProfilesCommand::class, AnnounceSocialIdentitiesCommand::class]);
     }
 
     /**

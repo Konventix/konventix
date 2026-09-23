@@ -157,6 +157,7 @@ event class lands.
 | `UserAccountUnlocked` | The lock is lifted | `user_id`, `unlocked_at` | implemented |
 | `SocialIdentityLinked` | A social provider identity is attached | `user_id`, `provider`, `provider_user_id` | implemented |
 | `SocialIdentityUnlinked` | A social provider identity is detached | `user_id`, `provider` | implemented |
+| `SocialIdentityAnnounced` | `identity:announce-social-identities` restates every linked identity for backfill. It is not auditable, and only projections may listen to it (competition design §5.6). | `user_id`, `provider`, `linked_at` | implemented |
 | `TwoFactorEnabled` | 2FA enrolment is confirmed | `user_id`, `enabled_at` | proposed |
 | `TwoFactorDisabled` | 2FA is switched off or reset | `user_id`, `disabled_at` | proposed |
 | `UserAnonymized` | Identity's own records for a subject are scrubbed | `user_id`, `anonymized_at` | shipped |
