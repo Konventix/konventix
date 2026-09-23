@@ -27,10 +27,13 @@ use Spatie\Permission\PermissionRegistrar;
  *
  * Helper names prefixed: Pest helpers are process-global (.ai/rules/tests.md).
  */
-function badgeTestOperator(array $permissions = ['platform.access-admin', 'admission.print-badge']): array
-{
-    $operator = Operator::factory()->create();
-    $operator->forceFill(['admin_host' => 'admin.badge.test'])->save();
+function badgeTestOperator(
+    array $permissions = ['platform.access-admin', 'admission.print-badge'],
+    ?Operator $operator = null,
+    string $host = 'admin.badge.test',
+): array {
+    $operator ??= Operator::factory()->create();
+    $operator->forceFill(['admin_host' => $host])->save();
 
     $registrar = app(PermissionRegistrar::class);
     $registrar->setPermissionsTeamId($operator->getKey());
@@ -182,8 +185,10 @@ it('still prints when a referenced media item has been deleted', function (): vo
 });
 
 it('serves the badge from the operator console behind print-badge', function (): void {
-    [, $admin] = badgeTestOperator();
     $brand = $this->withBrand();
+    // The brand's own operator: the badge must be this admin host's to print
+    // (#329 final review I2).
+    [, $admin] = badgeTestOperator(operator: Operator::query()->findOrFail($brand->operator_id));
     app(RotateEntranceSigningKey::class)->handle($brand->id);
 
     $admission = Admission::factory()->create();
@@ -194,6 +199,26 @@ it('serves the badge from the operator console behind print-badge', function ():
 
     expect($response->headers->get('Content-Type'))->toBe('application/pdf')
         ->and(str_starts_with((string) $response->getContent(), '%PDF'))->toBeTrue();
+});
+
+it('404s another operator\'s badge and prints nothing', function (): void {
+    $brand = $this->withBrand();
+    app(RotateEntranceSigningKey::class)->handle($brand->id);
+
+    $admission = Admission::factory()->create();
+
+    // A console account of a second operator, holding print-badge on its own
+    // team, that knows the ULID and asks for a holder name of its choosing
+    // (#329 final review I2). The capability passes; the operator scope
+    // answers 404 before `IssueBadge` runs.
+    [, $stranger] = badgeTestOperator(host: 'admin.badge-elsewhere.test');
+
+    $this->actingAs($stranger)
+        ->get('http://admin.badge-elsewhere.test/admin/admissions/'.$admission->id.'/badge?holder_name=Mallory')
+        ->assertNotFound();
+
+    // Derivation: no issuance is written, because the 404 comes first.
+    expect(BadgeIssuance::withoutBrandScope()->where('admission_id', $admission->id)->count())->toBe(0);
 });
 
 it('403s an admin without the print-badge capability', function (): void {

@@ -35,6 +35,12 @@
       asks every owed door check Confirm / Refuse. Every refusal is one
       sentence under `check_in`, never a 500.
 
+- [x] The badge print (`BadgeController`) and the event stats endpoint
+      (`AdmissionStatsController`) are held to the admin host's operator
+      through `ScopesToOperator` like the #329 screens: another operator's
+      admission or event, or an event with no summary, reads 404 (#329 final
+      review I2).
+
 - [ ] **Per-brand console desk roles** (ADR-0029): a console capability is
       resolved against the operator's team, so a brand's own door staff
       cannot be given the attendee list without operator-wide reach. Tracked

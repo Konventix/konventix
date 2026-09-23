@@ -17,10 +17,13 @@ use Spatie\Permission\PermissionRegistrar;
  * controller's docblock for why every query here uses withoutBrandScope()
  * deliberately.
  */
-function admissionStatsOperator(array $permissions = ['platform.access-admin', 'admission.view-admissions']): array
-{
-    $operator = Operator::factory()->create();
-    $operator->forceFill(['admin_host' => 'admin.admstats.test'])->save();
+function admissionStatsOperator(
+    array $permissions = ['platform.access-admin', 'admission.view-admissions'],
+    ?Operator $operator = null,
+    string $host = 'admin.admstats.test',
+): array {
+    $operator ??= Operator::factory()->create();
+    $operator->forceFill(['admin_host' => $host])->save();
 
     $registrar = app(PermissionRegistrar::class);
     $registrar->setPermissionsTeamId($operator->getKey());
@@ -60,11 +63,13 @@ it('403s an authenticated admin without the view-admissions capability', functio
 });
 
 it('returns lifecycle-state counts scoped to the event', function (): void {
-    [, $admin] = admissionStatsOperator();
-
-    $this->withBrand();
+    $brand = $this->withBrand();
     $eventId = (string) Str::ulid();
     $otherEventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId);
+    // The console account is the brand's own operator's (#329 final review
+    // I2): the event must be this admin host's to be counted at all.
+    [, $admin] = admissionStatsOperator(operator: Operator::query()->findOrFail($brand->operator_id));
 
     Admission::factory()->count(2)->create(['event_id' => $eventId, 'state' => AdmissionState::Issued]);
     Admission::factory()->create(['event_id' => $eventId, 'state' => AdmissionState::Assigned]);
@@ -85,4 +90,34 @@ it('returns lifecycle-state counts scoped to the event', function (): void {
             ],
             'total' => 4,
         ]);
+});
+
+it('404s another operator\'s event and counts nothing of it', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId);
+    Admission::factory()->count(2)->create(['event_id' => $eventId, 'state' => AdmissionState::Issued]);
+
+    // A console account of a second operator, holding view-admissions on its
+    // own team, that knows the first operator's event ULID (#329 final
+    // review I2). The capability passes; the operator scope answers 404.
+    [, $stranger] = admissionStatsOperator(host: 'admin.admstats-elsewhere.test');
+
+    $this->actingAs($stranger)
+        ->get("http://admin.admstats-elsewhere.test/admin/events/{$eventId}/admission-stats")
+        ->assertNotFound();
+});
+
+it('404s an event Admission holds no summary of', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    Admission::factory()->create(['event_id' => $eventId, 'state' => AdmissionState::Issued]);
+    [, $admin] = admissionStatsOperator(operator: Operator::query()->findOrFail($brand->operator_id));
+
+    // Derivation: without `admission_event_summaries` there is no brand to
+    // hold to the operator, so `findEventSummary()` answers 404 rather than
+    // counting rows it cannot scope.
+    $this->actingAs($admin)
+        ->get("http://admin.admstats.test/admin/events/{$eventId}/admission-stats")
+        ->assertNotFound();
 });
