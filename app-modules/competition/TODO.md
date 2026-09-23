@@ -219,6 +219,33 @@ Found on the way and not built. Each one is still true as of #302.
       prompts the desk for it. And a later correction that makes a
       disqualified entrant the winner of a match it lost routes it on again:
       `AdvanceBracket` does not look at entrant states.
+- [ ] **The signup tick's close does not re-check `signup_closes_at` under the
+      lock**: `SignupWindowTickCommand::dueToClose()` reads the date outside
+      the lock, and `TransitionsCompetitionStatus::transition()` re-checks
+      only that `Published → SignupClosed` is legal, not the date itself — a
+      window reopened between the query and the lock still closes.
+- [ ] **Withdraw and check-in gate on the event but not on a `Draft`
+      competition**: `WithdrawEntrant` and `CheckInEntrant` refuse `Running`
+      or a terminal state respectively, and neither refuses a competition
+      still in `Draft`.
+- [ ] **The score bound `Between(±999999999)` accepts values that round past
+      `decimal(12,3)`**: `ScoreEntryData::MAX_VALUE` bounds the whole part
+      only; a float that carries more than three fractional digits at the
+      boundary can still round the column past its 12-digit capacity.
+- [ ] **`withoutOverlapping()` keeps the default 24 h lock**: a killed
+      `competition:signup-tick` run leaves the schedule's lock standing, so
+      the next minute's run is skipped until it expires — signup can stall
+      closed or unannounced for up to a day.
+- [ ] **The signup tick has no metric**: `competition:signup-tick` closes and
+      announces windows unobserved; `CompetitionMetrics` has nothing for it
+      (`.ai/rules/observability.md`).
+- [ ] **`registration:announce-standing` has a small replay race with a live
+      confirmation**: a `RegistrationConfirmed` landing mid-replay can
+      interleave with the backfill's own write to
+      `competition_eligible_registrations`.
+- [ ] **The console desk times and `MatchHistory` still show the reader's
+      time zone**: only the hub card and the public tournament pages read the
+      event's wall clock so far (§10a, ADR-0027).
 - [ ] Deferred review minors, each small: the invite-code retry loop cannot
       retry under Postgres (a unique violation aborts the transaction) though
       its docblock says it does; `ExpressInterest::enteredTeamOf()` is N+1;

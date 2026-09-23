@@ -28,7 +28,7 @@ enum WithdrawalReason: string
         return match ($this) {
             self::IncompleteRoster => __('Das Team war beim Anmeldeschluss nicht vollzählig.'),
             self::CaptainWithdrew => __('Das Team hat sich selbst zurückgezogen.'),
-            self::OrganizerWithdrew => __('Die Orga hat das Team zurückgezogen.'),
+            self::OrganizerWithdrew => __('Die Turnierleitung hat das Team zurückgezogen.'),
             self::Disqualified => __('Das Team wurde disqualifiziert.'),
         };
     }

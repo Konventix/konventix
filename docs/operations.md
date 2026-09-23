@@ -277,7 +277,9 @@ unlinked. One command fixes that, and it is safe to re-run:
 
 It joins the manual post-rollout backfills, which are now
 `identity:replay-profiles`, `event:replay-details`,
-`registration:announce-ownership`, `admission:announce-ownership` and
+`registration:announce-ownership`, `registration:announce-standing`
+(competition eligibility for registrations written without events, such as
+the hand-run Eventula import), `admission:announce-ownership` and
 `identity:announce-social-identities`. On the cluster:
 
     kubectl --context rancher -n konventix exec <web pod> -- php artisan identity:announce-social-identities
