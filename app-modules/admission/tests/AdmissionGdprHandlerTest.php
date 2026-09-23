@@ -170,3 +170,65 @@ it('exports the console check-ins an admin wrote, and nulls the actor on erasure
     'anonymize' => [DeletionMode::Anonymize],
     'erase' => [DeletionMode::Erase],
 ]);
+
+// #329 final review M3: `check_ins.conditions_checked` holds what the door or
+// the console decided about the holder's entry conditions, so the guest's own
+// export lists every check-in on their tickets, with the outcomes, and no
+// admin as the actor. Erasure keeps the rows (the attendance record).
+it('exports the check-ins on a holder\'s own tickets with the door-check outcomes', function (): void {
+    $this->withBrand();
+    $holderId = (string) Str::ulid();
+    $adminId = (string) Str::ulid();
+    $dayId = (string) Str::ulid();
+
+    $ticket = Admission::factory()->create(['holder_user_id' => $holderId]);
+    $someoneElses = Admission::factory()->create(['holder_user_id' => (string) Str::ulid()]);
+
+    $refused = CheckIn::factory()->onDay($dayId)->rejected('reentry_not_permitted')->create([
+        'admission_id' => $ticket->id,
+        'scanned_at' => now()->subHour(),
+    ]);
+    $accepted = CheckIn::factory()->onDay($dayId)->create([
+        'admission_id' => $ticket->id,
+        'actor_user_id' => $adminId,
+        'conditions_checked' => [['key' => 'student', 'outcome' => 'refused']],
+        'scanned_at' => now()->subHours(2),
+    ]);
+    CheckIn::factory()->create(['admission_id' => $someoneElses->id]);
+
+    $handler = new AdmissionGdprHandler;
+    $export = $handler->exportFor(SubjectRef::forUser($holderId));
+
+    // Derivation: two rows on the holder's ticket, by scanned_at — the
+    // console accept two hours ago with `student: refused`, then the door's
+    // refusal an hour ago, which carries no outcomes. The other holder's row
+    // is not theirs, and no row names the admin.
+    expect($export['check_ins'])->toBe([
+        [
+            'id' => $accepted->id,
+            'admission_id' => $ticket->id,
+            'event_day_id' => $dayId,
+            'direction' => 'in',
+            'result' => 'accepted',
+            'reason_code' => null,
+            'scanned_at' => $accepted->fresh()->scanned_at->toIso8601String(),
+            'conditions_checked' => [['key' => 'student', 'outcome' => 'refused']],
+        ],
+        [
+            'id' => $refused->id,
+            'admission_id' => $ticket->id,
+            'event_day_id' => $dayId,
+            'direction' => 'in',
+            'result' => 'rejected',
+            'reason_code' => 'reentry_not_permitted',
+            'scanned_at' => $refused->fresh()->scanned_at->toIso8601String(),
+            'conditions_checked' => null,
+        ],
+    ]);
+
+    $handler->delete(SubjectRef::forUser($holderId), DeletionMode::Erase);
+
+    // Derivation: three rows before, three after — the holder's erasure keeps
+    // the attendance rows, which then point at the tombstone only.
+    expect(CheckIn::query()->count())->toBe(3);
+});

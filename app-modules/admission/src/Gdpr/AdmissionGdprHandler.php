@@ -43,6 +43,15 @@ use Konventix\Compliance\Gdpr\SubjectRef;
  * modes — but the rows stay, because they are the *guest's* attendance
  * record, not the admin's.
  *
+ * Those rows are the guest's data as well, and since #329 they hold more than
+ * a time: `check_ins.conditions_checked` records what the door or the console
+ * decided about the holder's entry conditions (`student: refused`,
+ * ADR-0066). So the holder's export lists every check-in on their own
+ * admissions, with the outcomes (#329 final review M3). The rows themselves
+ * are kept on erasure like the admission they belong to — the attendance
+ * record — and then point at Identity's tombstone only; Registration's
+ * `EntryConditionAssertion` holds the same outcome and anonymises it there.
+ *
  * Both methods are idempotent.
  */
 final class AdmissionGdprHandler implements GdprHandler
@@ -128,6 +137,26 @@ final class AdmissionGdprHandler implements GdprHandler
                     'last_check_in_at' => $presence->last_check_in_at->toIso8601String(),
                     'last_direction' => $presence->last_direction,
                     'hub_access' => $presence->hub_access,
+                ])
+                ->all(),
+            // Every door or console check-in on this person's own tickets,
+            // accepted or refused, with the entry-condition outcomes an
+            // accepted one carries (#329 final review M3). The admin who
+            // wrote a console row is another person, so no actor here.
+            'check_ins' => CheckIn::withoutBrandScope()
+                ->whereIn('admission_id', $admissions->modelKeys())
+                ->orderBy('scanned_at')
+                ->orderBy('id')
+                ->get()
+                ->map(fn (CheckIn $checkIn): array => [
+                    'id' => $checkIn->getKey(),
+                    'admission_id' => $checkIn->admission_id,
+                    'event_day_id' => $checkIn->event_day_id,
+                    'direction' => $checkIn->direction,
+                    'result' => $checkIn->result->value,
+                    'reason_code' => $checkIn->reason_code,
+                    'scanned_at' => $checkIn->scanned_at->toIso8601String(),
+                    'conditions_checked' => $checkIn->conditions_checked,
                 ])
                 ->all(),
             // Check-ins this person wrote as an operator (#329 §6): ids and

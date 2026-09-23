@@ -171,7 +171,10 @@ reading either.
   console, null for a door scan; exported and nulled by the GDPR handler) and
   `conditions_checked` (the `[{key, outcome}]` door-check answers of an
   accepted check-in, ADR-0066 §6.4), which is where the ticket page and
-  `Support\OwedDoorChecks` read what a ticket has already been asked.
+  `Support\OwedDoorChecks` read what a ticket has already been asked. Those
+  outcomes are the guest's data, so the holder's GDPR export lists every
+  check-in on their own tickets with them; the rows stay on erasure as the
+  attendance record (#329 final review M3).
 - **The console desk** (#329, attendee-list design §4) — the attendee list
   of an event (`/admin/events/{event}/attendees`), the ticket detail page
   (`/admin/tickets/{admission}`, `TicketDetailController`,

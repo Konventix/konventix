@@ -126,7 +126,12 @@ the registration's details as Admission knows them (type, status, registration i
   it with the admin's data.
 - The console checkpoint is a normal checkpoint row with a flag (`kind = console`), excluded from any device
   enrolment surface (#328).
-- No new person data is stored; the list reads `admission_people`.
+- `check_ins.conditions_checked` (Task 1) stores the holder's per-condition door-check outcome (for example
+  `student: refused`) on an accepted check-in, written by the door and the console alike. That is new person data about
+  the guest: Admission's GDPR handler exports every check-in on the holder's own tickets with it. The rows are kept on
+  erasure as the attendance record and then point at Identity's tombstone only; Registration's `EntryConditionAssertion`
+  holds the same outcome and anonymises it (#329 final review M3). The list itself stores nothing new and reads
+  `admission_people`.
 
 ## 7. Testing
 
