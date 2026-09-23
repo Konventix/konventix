@@ -6,6 +6,7 @@ namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Konventix\Competition\Actions\Concerns\GuardsCompetitionLifecycle;
 use Konventix\Competition\Models\ScoreEntry;
 use Konventix\Competition\Models\Stage;
 use RuntimeException;
@@ -44,6 +45,8 @@ use RuntimeException;
  */
 final class RejectScoreEntry
 {
+    use GuardsCompetitionLifecycle;
+
     public function __construct(
         private readonly CalculateStandings $standings,
     ) {}
@@ -67,6 +70,8 @@ final class RejectScoreEntry
                     $entry->stage_id,
                 ));
             }
+
+            $this->guardStillBeingPlayed($stage->competition_id);
 
             $countedBefore = $entry->isVerified();
 

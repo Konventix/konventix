@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Competition\Actions\Concerns\GuardsCompetitionLifecycle;
 use Konventix\Competition\Models\ScoreEntry;
 use Konventix\Competition\Models\Stage;
 use RuntimeException;
@@ -29,6 +30,8 @@ use RuntimeException;
  */
 final class VerifyScoreEntry
 {
+    use GuardsCompetitionLifecycle;
+
     public function __construct(
         private readonly CalculateStandings $standings,
     ) {}
@@ -50,6 +53,8 @@ final class VerifyScoreEntry
                     $entry->stage_id,
                 ));
             }
+
+            $this->guardStillBeingPlayed($stage->competition_id);
 
             $entry->forceFill([
                 'verified_at' => now(),

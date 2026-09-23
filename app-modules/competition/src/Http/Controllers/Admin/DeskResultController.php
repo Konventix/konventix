@@ -138,7 +138,7 @@ class DeskResultController
             ->where('competition_id', $stageModel->competition_id)
             ->findOrFail($entrantId);
 
-        $submit->handle($stageModel, $entrant, $data, $this->actorId($request), asOrganizer: true);
+        $this->attempt(fn () => $submit->handle($stageModel, $entrant, $data, $this->actorId($request), asOrganizer: true));
 
         return $this->done('Score entered.');
     }
@@ -147,7 +147,9 @@ class DeskResultController
     {
         Gate::authorize(Permission::RecordResults->value);
 
-        $verify->handle($this->findEntry($entry), $this->actorId($request));
+        $model = $this->findEntry($entry);
+
+        $this->attempt(fn () => $verify->handle($model, $this->actorId($request)));
 
         return $this->done('Score verified.');
     }
@@ -159,7 +161,7 @@ class DeskResultController
         $model = $this->findEntry($entry);
         $note = $request->validate(['rejectionNote' => ['required', 'string', 'max:255']])['rejectionNote'];
 
-        $reject->handle($model, $this->actorId($request), $note);
+        $this->attempt(fn () => $reject->handle($model, $this->actorId($request), $note));
 
         return $this->done('Score rejected; the participant sees why.');
     }

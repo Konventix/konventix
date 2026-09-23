@@ -6,6 +6,7 @@ namespace Konventix\Competition\Actions;
 
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
+use Konventix\Competition\Actions\Concerns\GuardsCompetitionLifecycle;
 use Konventix\Competition\Data\MatchHistoryPayload;
 use Konventix\Competition\Enums\MatchHistoryKind;
 use Konventix\Competition\Enums\MatchState;
@@ -40,6 +41,8 @@ use Konventix\Competition\Models\MatchSlot;
  */
 final class ScheduleMatch
 {
+    use GuardsCompetitionLifecycle;
+
     /**
      * @var list<MatchState>
      */
@@ -56,6 +59,7 @@ final class ScheduleMatch
         ?string $scheduledByUserId = null,
     ): CompetitionMatch {
         return DB::transaction(function () use ($match, $at, $gameMode, $scheduledByUserId): CompetitionMatch {
+            $this->guardStillBeingPlayed($match->competition_id);
             $this->guardTransition($match);
 
             $competition = $match->competition()->withoutGlobalScopes()->firstOrFail();

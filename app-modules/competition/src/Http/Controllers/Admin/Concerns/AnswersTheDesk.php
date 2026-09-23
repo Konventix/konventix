@@ -8,6 +8,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use Konventix\Competition\Exceptions\CompetitionLifecycleException;
 use Konventix\Competition\Exceptions\IllegalMatchStateTransitionException;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
 use Konventix\Competition\Exceptions\StageDrawRefusedException;
@@ -17,7 +18,7 @@ use Konventix\Competition\Exceptions\StageDrawRefusedException;
  *
  * A refusal from an Action is the answer to the button the desk pressed —
  * "that stage already has a result", "that match is disputed, resolve it",
- * "that match is already finished" — so it comes back as a field error on
+ * "that match is already finished", "that competition is over" — so it comes back as a field error on
  * `desk`, shown above the panel, rather than as a 500. Only the module's own
  * named refusals are translated; anything else is a real failure and stays
  * one.
@@ -34,7 +35,7 @@ trait AnswersTheDesk
     {
         try {
             return $work();
-        } catch (StageDrawRefusedException|IllegalMatchStateTransitionException|ResultSubmissionException $e) {
+        } catch (StageDrawRefusedException|CompetitionLifecycleException|IllegalMatchStateTransitionException|ResultSubmissionException $e) {
             throw ValidationException::withMessages(['desk' => $e->getMessage()]);
         }
     }

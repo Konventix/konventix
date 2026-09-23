@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Competition\Actions\Concerns\GuardsCompetitionLifecycle;
 use Konventix\Competition\Brackets\FormatRegistry;
 use Konventix\Competition\Brackets\Plan\BracketPlan;
 use Konventix\Competition\Brackets\PlanWriter;
@@ -30,6 +31,8 @@ use Konventix\Competition\Seeding\SignupField;
  */
 final class GenerateBracket
 {
+    use GuardsCompetitionLifecycle;
+
     public function __construct(
         private readonly FormatRegistry $formats,
         private readonly PlanWriter $writer,
@@ -39,6 +42,10 @@ final class GenerateBracket
     public function handle(Stage $stage): BracketPlan
     {
         return DB::transaction(function () use ($stage): BracketPlan {
+            // §4: drawn once signup is closed — never while signup may still
+            // add somebody the bracket would leave out.
+            $this->guardDrawIsOpen($stage->competition_id);
+
             if ($stage->isGenerated()) {
                 throw new StageDrawRefusedException(sprintf(
                     'Stage [%s] was already generated at %s; regenerating would orphan recorded results.',

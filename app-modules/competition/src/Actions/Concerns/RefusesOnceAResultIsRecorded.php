@@ -8,6 +8,7 @@ use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Exceptions\StageDrawRefusedException;
 use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\MatchSlot;
+use Konventix\Competition\Models\ScoreEntry;
 use Konventix\Competition\Models\Stage;
 
 /**
@@ -20,13 +21,15 @@ use Konventix\Competition\Models\Stage;
  * that people actually played for, and no amount of convenience is worth
  * that.
  *
- * "A result" is deliberately the widest of the three things that could mean
- * it: a finished match, a match with a winner, or a slot carrying a score.
- * They should never disagree, and if they ever do, the reading that refuses
- * is the one that does not delete somebody's match.
+ * "A result" is deliberately the widest of the things that could mean it: a
+ * finished match, a match with a winner, a slot carrying a score — and, on a
+ * leaderboard, which has no matches at all, a **verified** score entry, the
+ * only kind that counts (§7.2). They should never disagree, and if they ever
+ * do, the reading that refuses is the one that does not delete somebody's
+ * result.
  *
- * Shared by `SeedStage` and `ResetStage` (and so `RegenerateBracket`) because re-seeding is as
- * destructive as redrawing: `entrants.seed` breaks ties in every standings
+ * Shared by `SeedStage` and `ClearsTheDraw` (reset and redraw) because
+ * re-seeding is as destructive as redrawing: `entrants.seed` breaks ties in every standings
  * calculator, so renumbering the field after a result silently rewrites the
  * table the results produced.
  */
@@ -36,7 +39,7 @@ trait RefusesOnceAResultIsRecorded
     {
         if ($this->hasRecordedResult($stage)) {
             throw new StageDrawRefusedException(sprintf(
-                'Stage [%s] already has a recorded result; re-seeding or redrawing it would orphan matches that were played.',
+                'Stage [%s] already has a recorded result; re-seeding or redrawing it would orphan results that were played for.',
                 $stage->id,
             ));
         }
@@ -55,6 +58,16 @@ trait RefusesOnceAResultIsRecorded
             ->exists();
 
         if ($decided) {
+            return true;
+        }
+
+        $verified = ScoreEntry::withoutBrandScope()
+            ->where('brand_id', $stage->brand_id)
+            ->where('stage_id', $stage->id)
+            ->whereNotNull('verified_at')
+            ->exists();
+
+        if ($verified) {
             return true;
         }
 

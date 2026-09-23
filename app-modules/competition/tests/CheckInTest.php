@@ -593,6 +593,9 @@ it('seeds only checked-in entrants when the competition checks its teams in', fu
     app(CheckInEntrant::class)->handle($entrants['Da']);
     app(CheckInEntrant::class)->handle($entrants['Auch da']);
 
+    // Signup closes before the draw (§4).
+    $competition->forceFill(['status' => CompetitionStatus::SignupClosed])->save();
+
     $stage = Stage::factory()->create(['competition_id' => $competition->getKey()]);
 
     app(GenerateBracket::class)->handle($stage);
@@ -615,6 +618,9 @@ it('seeds every registered entrant when the competition checks nobody in', funct
 
     $first = checkInTestEnter($competition, $brand->id, $eventId, 'Eins', [competitionEligibleUser($eventId, $brand->id)]);
     $second = checkInTestEnter($competition, $brand->id, $eventId, 'Zwei', [competitionEligibleUser($eventId, $brand->id)]);
+
+    // Signup closes before the draw (§4).
+    $competition->forceFill(['status' => CompetitionStatus::SignupClosed])->save();
 
     $stage = Stage::factory()->create(['competition_id' => $competition->getKey()]);
 

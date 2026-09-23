@@ -20,6 +20,11 @@ use Konventix\Competition\Models\CompetitionMatch;
  * bracket advances and the standings are recomputed. A desk that recorded a
  * semi-final and then had to find the final's slot empty would be the bug.
  *
+ * It will not finish a match against nobody: every slot must be filled, or
+ * be a **bye** that nothing will ever fill (`guardEverySideHasArrived`) — a
+ * round-two match whose other side is still being played waits. Nor will it
+ * record a draw where the bracket cannot advance one (`guardDrawIsPossible`).
+ *
  * Two matches it will not take, and each has its own door:
  *
  * - a **disputed** one — the two sides are owed a reason, so that is
@@ -54,11 +59,14 @@ final class RecordResultAtDesk
 
             $sides = $this->entrantIdsByPosition($match);
 
+            $this->guardEverySideHasArrived($match, $sides);
             $this->guardScoreLineIsComplete($match, $scoresByPosition, $sides);
 
             if ($winnerEntrantId !== null && ! in_array($winnerEntrantId, $sides, true)) {
                 throw ResultSubmissionException::notASide($match->id, $winnerEntrantId);
             }
+
+            $this->guardDrawIsPossible($match, $winnerEntrantId);
 
             return $this->settleMatch($match, $scoresByPosition, $winnerEntrantId, $recordedByUserId);
         });

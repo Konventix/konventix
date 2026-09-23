@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Competition\Actions\Concerns\GuardsCompetitionLifecycle;
 use Konventix\Competition\Data\MatchHistoryPayload;
 use Konventix\Competition\Enums\MatchHistoryKind;
 use Konventix\Competition\Enums\MatchState;
@@ -45,6 +46,8 @@ use Konventix\Competition\Models\MatchSlot;
  */
 final class RecordMatchResult
 {
+    use GuardsCompetitionLifecycle;
+
     /**
      * @var list<MatchState>
      */
@@ -64,6 +67,7 @@ final class RecordMatchResult
         ?string $recordedByUserId = null,
     ): CompetitionMatch {
         return DB::transaction(function () use ($match, $scores, $winnerEntrantId, $recordedByUserId): CompetitionMatch {
+            $this->guardStillBeingPlayed($match->competition_id);
             $this->guardTransition($match);
 
             $this->writeScores($match, $scores);

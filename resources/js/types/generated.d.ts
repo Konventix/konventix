@@ -767,6 +767,7 @@ declare namespace Konventix {
                 readonly teamName: string | null;
                 readonly score: number | null;
                 readonly winner: boolean;
+                readonly awaiting: boolean;
             };
             export type DeskStageData = {
                 readonly id: string;

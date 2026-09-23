@@ -6,6 +6,7 @@ namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Konventix\Competition\Actions\Concerns\GuardsCompetitionLifecycle;
 use Konventix\Competition\Data\ScoreEntryData;
 use Konventix\Competition\Enums\ResultSubmissionMode;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
@@ -14,7 +15,6 @@ use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\ScoreEntry;
 use Konventix\Competition\Models\Stage;
 use Konventix\Competition\Proofs\ProofGate;
-use RuntimeException;
 
 /**
  * A score on a leaderboard stage (design §7.2, §8.3).
@@ -60,6 +60,8 @@ use RuntimeException;
  */
 final class SubmitScoreEntry
 {
+    use GuardsCompetitionLifecycle;
+
     public function __construct(
         private readonly CalculateStandings $standings,
         private readonly ProofGate $proofs,
@@ -73,6 +75,8 @@ final class SubmitScoreEntry
         bool $asOrganizer = false,
     ): ScoreEntry {
         return DB::transaction(function () use ($stage, $entrant, $data, $submittedByUserId, $asOrganizer): ScoreEntry {
+            $this->guardStillBeingPlayed($stage->competition_id);
+
             $competition = $this->competitionOf($stage);
 
             $this->guardStage($stage, $entrant);
@@ -143,27 +147,15 @@ final class SubmitScoreEntry
     private function guardStage(Stage $stage, Entrant $entrant): void
     {
         if (! $stage->isLeaderboard()) {
-            throw new RuntimeException(sprintf(
-                'Stage [%s] runs [%s]; only a leaderboard stage accumulates score entries.',
-                $stage->id,
-                $stage->format,
-            ));
+            throw ResultSubmissionException::notALeaderboard($stage->id, $stage->format);
         }
 
         if ($entrant->competition_id !== $stage->competition_id || $entrant->brand_id !== $stage->brand_id) {
-            throw new RuntimeException(sprintf(
-                'Entrant [%s] does not belong to stage [%s]\'s competition.',
-                $entrant->id,
-                $stage->id,
-            ));
+            throw ResultSubmissionException::notInTheField($entrant->id, $stage->id);
         }
 
         if (! $entrant->isActive()) {
-            throw new RuntimeException(sprintf(
-                'Entrant [%s] is [%s] and no longer scores.',
-                $entrant->id,
-                $entrant->state->value,
-            ));
+            throw ResultSubmissionException::noLongerScores($entrant->id, $entrant->state->value);
         }
     }
 

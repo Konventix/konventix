@@ -10,6 +10,7 @@ use Konventix\Competition\Actions\SeedStage;
 use Konventix\Competition\Brackets\FormatRegistry;
 use Konventix\Competition\Brackets\Plan\PlannedMatch;
 use Konventix\Competition\Enums\CheckInMode;
+use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Enums\StageEntrySource;
 use Konventix\Competition\Models\Competition;
@@ -31,7 +32,10 @@ use Konventix\Competition\Standings\MatchSide;
  */
 function seedingTestStage(int $entrants, CheckInMode $checkInMode = CheckInMode::None, string $format = 'single_elimination'): Stage
 {
-    $competition = Competition::factory()->create(['check_in_mode' => $checkInMode]);
+    // §4: the bracket is drawn once signup is closed (`GuardsCompetitionLifecycle`).
+    $competition = Competition::factory()
+        ->status(CompetitionStatus::SignupClosed)
+        ->create(['check_in_mode' => $checkInMode]);
 
     for ($i = 1; $i <= $entrants; $i++) {
         $team = CompetitionTeam::factory()->forEvent($competition->event_id)->create();

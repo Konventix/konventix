@@ -90,9 +90,15 @@ function scheduleAll(round: Round, index: number): void {
     );
 }
 
+/**
+ * Recordable once no side is still to come. A slot nothing will ever fill is
+ * a bye, and the match is settled by giving the lone side the win — the same
+ * rule the server enforces (`guardEverySideHasArrived`).
+ */
 function playable(match: Match): boolean {
     return (
-        match.sides.filter((side) => side.entrantId !== null).length >= 2 &&
+        match.sides.some((side) => side.entrantId !== null) &&
+        !match.sides.some((side) => side.awaiting) &&
         (match.state === 'pending' ||
             match.state === 'scheduled' ||
             match.state === 'live')
@@ -166,7 +172,10 @@ function canResolve(match: Match): boolean {
                                 <span
                                     :class="side.winner ? 'font-semibold' : ''"
                                 >
-                                    {{ side.teamName ?? 'TBD' }}
+                                    {{
+                                        side.teamName ??
+                                        (side.awaiting ? 'TBD' : 'Bye')
+                                    }}
                                     <template v-if="side.score !== null">
                                         ({{ side.score }})
                                     </template>

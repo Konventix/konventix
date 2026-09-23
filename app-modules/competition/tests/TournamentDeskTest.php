@@ -6,17 +6,21 @@ use Illuminate\Support\Str;
 use Inertia\Support\Header;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Competition\Actions\DisputeMatchResult;
+use Konventix\Competition\Actions\RecordMatchResult;
 use Konventix\Competition\Actions\ReportMatchResult;
 use Konventix\Competition\Actions\SubmitScoreEntry;
 use Konventix\Competition\Data\LeaderboardSettings;
 use Konventix\Competition\Data\MatchReportData;
 use Konventix\Competition\Data\ScoreEntryData;
+use Konventix\Competition\Enums\CompetitionStatus;
+use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Enums\LeaderboardDirection;
 use Konventix\Competition\Enums\MatchHistoryKind;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Enums\ResultSubmissionMode;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionMatch;
+use Konventix\Competition\Models\Discipline;
 use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\MatchHistoryEntry;
 use Konventix\Competition\Models\MatchSlot;
@@ -729,4 +733,304 @@ it('finds people with a confirmed registration for the roster editor, and nobody
     expect($people->json('props.people'))->toBe([
         ['userId' => $eligible, 'displayName' => 'Anna Beispiel', 'username' => 'anna'],
     ]);
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * The lifecycle (§4) on desk writes — fix round 1
+ * ---------------------------------------------------------------------------
+ */
+
+it('refuses to seed or draw while signup can still add entrants', function (CompetitionStatus $status): void {
+    // §4: "SignupClosed — the bracket can be generated and seeded". Before
+    // it, a late entrant would be missing from a bracket already drawn.
+    $this->withBrand();
+
+    [$competition] = competitionFieldWithRosters(4, ['status' => $status]);
+    $stage = Stage::factory()->create(['competition_id' => $competition->getKey()]);
+
+    $admin = deskTestAdmin();
+
+    foreach (['generate', 'shuffle'] as $action) {
+        $this->actingAs($admin)
+            ->post(deskTestUrl('/competition-stages/'.$stage->getKey().'/'.$action))
+            ->assertSessionHasErrors('desk');
+    }
+
+    expect($stage->refresh()->generated_at)->toBeNull()
+        ->and(deskTestMatchCount($stage))->toBe(0)
+        ->and(Entrant::withoutBrandScope()->where('competition_id', $competition->getKey())->whereNull('seed')->count())->toBe(0);
+})->with([
+    'draft' => [CompetitionStatus::Draft],
+    'published' => [CompetitionStatus::Published],
+]);
+
+it('refuses to empty a running competition\'s bracket but lets it be drawn again', function (): void {
+    // §4: `Running` requires a generated stage. Reset would leave none;
+    // "draw again" replaces the bracket in one transaction and is allowed
+    // until the first result (D-CMP-20).
+    $this->withBrand();
+
+    [$competition, [$a, , , $d]] = competitionFieldWithRosters(4);
+    $stage = competitionGeneratedStage($competition);
+    $competition->forceFill(['status' => CompetitionStatus::Running])->save();
+
+    $admin = deskTestAdmin();
+    $url = fn (string $action): string => deskTestUrl('/competition-stages/'.$stage->getKey().'/'.$action);
+
+    $this->actingAs($admin)->post($url('reset'))->assertSessionHasErrors('desk');
+
+    // Still S(4) over seeds 1..4: 3 matches, match 1 = $a v $d.
+    expect(deskTestMatchCount($stage))->toBe(3)
+        ->and($stage->refresh()->generated_at)->not->toBeNull();
+
+    $this->actingAs($admin)->post($url('regenerate'))->assertSessionHasNoErrors();
+
+    expect(deskTestMatchCount($stage))->toBe(3)
+        ->and($stage->refresh()->generated_at)->not->toBeNull()
+        ->and(deskTestSides(deskTestMatch($stage, 1, 1)))->toBe([1 => $a->id, 2 => $d->id]);
+});
+
+it('refuses to schedule, record, correct or resolve once the competition is over', function (CompetitionStatus $status): void {
+    $this->withBrand();
+
+    [$competition, [$a, $b, $c, $d], $members] = competitionFieldWithRosters(4, [
+        'result_submission_mode' => ResultSubmissionMode::Participants,
+    ]);
+    $stage = competitionGeneratedStage($competition);
+
+    // S(4): match 1 = $a v $d (decided now), match 2 = $b v $c (disputed).
+    $first = deskTestMatch($stage, 1, 1);
+    $second = deskTestMatch($stage, 1, 2);
+
+    app(RecordMatchResult::class)->handle($first, [$a->id => 2, $d->id => 0], $a->id);
+    app(ReportMatchResult::class)->handle($second, $b, new MatchReportData(scores: [1 => 2, 2 => 0]), $members[$b->id]);
+    app(ReportMatchResult::class)->handle($second->refresh(), $c, new MatchReportData(scores: [1 => 0, 2 => 2]), $members[$c->id]);
+
+    $competition->forceFill(['status' => $status])->save();
+
+    $admin = deskTestAdmin();
+
+    $this->actingAs($admin)
+        ->post(deskTestUrl('/competition-stages/'.$stage->getKey().'/schedule-round'), [
+            'round' => 2,
+            'scheduledAt' => '2026-10-24T12:00:00+02:00',
+        ])
+        ->assertSessionHasErrors('desk');
+
+    $this->actingAs($admin)
+        ->put(deskTestUrl('/competition-matches/'.deskTestMatch($stage, 2, 1)->getKey().'/schedule'), [
+            'scheduledAt' => '2026-10-24T12:00:00+02:00',
+        ])
+        ->assertSessionHasErrors('desk');
+
+    $this->actingAs($admin)
+        ->post(deskTestUrl('/competition-matches/'.$first->getKey().'/correct'), [
+            'scores' => [$a->id => 0, $d->id => 2],
+            'winnerEntrantId' => $d->id,
+            'note' => 'Too late.',
+        ])
+        ->assertSessionHasErrors('desk');
+
+    $this->actingAs($admin)
+        ->post(deskTestUrl('/competition-matches/'.$second->getKey().'/resolve'), [
+            'scores' => [1 => 2, 2 => 0],
+            'winnerEntrantId' => $b->id,
+            'note' => 'Too late.',
+        ])
+        ->assertSessionHasErrors('desk');
+
+    expect(deskTestMatch($stage, 1, 1)->winner_entrant_id)->toBe($a->id)
+        ->and(deskTestMatch($stage, 1, 2)->state)->toBe(MatchState::Pending)
+        ->and(deskTestMatch($stage, 2, 1)->scheduled_at)->toBeNull();
+})->with([
+    'finished' => [CompetitionStatus::Finished],
+    'cancelled' => [CompetitionStatus::Cancelled],
+]);
+
+it('refuses to record over a finished competition and to work its verification queue', function (CompetitionStatus $status): void {
+    $this->withBrand();
+
+    // A bracket: 2 entrants, one open match ($a v $b by S(2)).
+    [$bracket, [$a]] = competitionFieldWithRosters(2);
+    $bracketStage = competitionGeneratedStage($bracket);
+    $open = deskTestMatch($bracketStage, 1, 1);
+
+    // A leaderboard with one unverified participant score.
+    [$board, [$x, $y], $members] = competitionFieldWithRosters(2, [
+        'result_submission_mode' => ResultSubmissionMode::Participants,
+    ]);
+    $boardStage = Stage::factory()->leaderboard()->create(['competition_id' => $board->getKey()]);
+    $entry = app(SubmitScoreEntry::class)->handle($boardStage, $x, new ScoreEntryData(value: 10.0), $members[$x->id]);
+
+    $bracket->forceFill(['status' => $status])->save();
+    $board->forceFill(['status' => $status])->save();
+
+    $admin = deskTestAdmin();
+
+    $this->actingAs($admin)
+        ->post(deskTestUrl('/competition-matches/'.$open->getKey().'/record'), [
+            'scores' => [1 => 1, 2 => 0],
+            'winnerEntrantId' => $a->id,
+        ])
+        ->assertSessionHasErrors('desk');
+
+    $this->actingAs($admin)->post(deskTestUrl('/competition-score-entries/'.$entry->id.'/verify'))->assertSessionHasErrors('desk');
+    $this->actingAs($admin)
+        ->post(deskTestUrl('/competition-score-entries/'.$entry->id.'/reject'), ['rejectionNote' => 'Too late.'])
+        ->assertSessionHasErrors('desk');
+    $this->actingAs($admin)
+        ->post(deskTestUrl('/competition-stages/'.$boardStage->getKey().'/score-entries'), ['entrantId' => $y->id, 'value' => 5])
+        ->assertSessionHasErrors('desk');
+
+    expect(deskTestMatch($bracketStage, 1, 1)->state)->toBe(MatchState::Pending)
+        ->and(ScoreEntry::withoutBrandScope()->findOrFail($entry->id)->verified_at)->toBeNull()
+        ->and(ScoreEntry::withoutBrandScope()->findOrFail($entry->id)->rejected_at)->toBeNull()
+        ->and(ScoreEntry::withoutBrandScope()->where('stage_id', $boardStage->getKey())->count())->toBe(1);
+})->with([
+    'finished' => [CompetitionStatus::Finished],
+    'cancelled' => [CompetitionStatus::Cancelled],
+]);
+
+/*
+ * ---------------------------------------------------------------------------
+ * A verified score freezes a leaderboard's draw (D-CMP-20) — fix round 1
+ * ---------------------------------------------------------------------------
+ */
+
+it('refuses to reset, redraw or reshuffle a leaderboard once a score is verified', function (): void {
+    $this->withBrand();
+
+    [$competition, [$a]] = competitionFieldWithRosters(2);
+    $stage = Stage::factory()->leaderboard()->create(['competition_id' => $competition->getKey()]);
+
+    // The desk's own entry is verified on creation (§8.3) — the table moves.
+    app(SubmitScoreEntry::class)->handle($stage, $a, new ScoreEntryData(value: 42.0), (string) Str::ulid(), asOrganizer: true);
+
+    $standings = Standing::withoutBrandScope()->where('stage_id', $stage->getKey())->count();
+    $seed = deskTestSeedOf($a);
+
+    $admin = deskTestAdmin();
+
+    foreach (['reset', 'regenerate', 'shuffle'] as $action) {
+        $this->actingAs($admin)
+            ->post(deskTestUrl('/competition-stages/'.$stage->getKey().'/'.$action))
+            ->assertSessionHasErrors('desk');
+    }
+
+    // Nothing moved: the table the verified score produced stands, and so
+    // do the seeds that break its ties.
+    expect($standings)->toBeGreaterThan(0)
+        ->and(Standing::withoutBrandScope()->where('stage_id', $stage->getKey())->count())->toBe($standings)
+        ->and(deskTestSeedOf($a))->toBe($seed);
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * Sides that have not arrived, byes and draws — fix round 1
+ * ---------------------------------------------------------------------------
+ */
+
+it('refuses to record a match whose other side is still being played, and settles a bye', function (): void {
+    $this->withBrand();
+
+    // Three entrants in a bracket of four. S(4) = [1, 4, 2, 3]:
+    //   match 1: seed 1 ($a) v seed 4 — absent, so a bye nothing will fill
+    //   match 2: seed 2 ($b) v seed 3 ($c)
+    //   final:   slot 1 from match 1, slot 2 from match 2
+    [$competition, [$a, $b, $c]] = competitionFieldWithRosters(3);
+    $stage = competitionGeneratedStage($competition);
+
+    $admin = deskTestAdmin();
+
+    $this->actingAs($admin)
+        ->get(deskTestUrl('/competitions/'.$competition->getKey().'/desk'))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            // Match 1's empty slot 2 has no incoming edge: a bye.
+            ->where('desk.matches.0.sides.1.entrantId', null)
+            ->where('desk.matches.0.sides.1.awaiting', false)
+            // The final's two slots wait on matches 1 and 2.
+            ->where('desk.matches.2.sides.0.awaiting', true)
+            ->where('desk.matches.2.sides.1.awaiting', true));
+
+    // The bye is settled by giving the lone side the match; $a goes to the
+    // final's slot 1 (match 1, odd position).
+    $this->actingAs($admin)
+        ->post(deskTestUrl('/competition-matches/'.deskTestMatch($stage, 1, 1)->getKey().'/record'), [
+            'scores' => [1 => 0],
+            'winnerEntrantId' => $a->id,
+        ])
+        ->assertSessionHasNoErrors();
+
+    $final = deskTestMatch($stage, 2, 1);
+
+    expect(deskTestSides($final))->toBe([1 => $a->id, 2 => null]);
+
+    // The final's slot 2 still waits on match 2 ($b v $c, pending): recording
+    // $a through against nobody is refused, and the final stays open.
+    $this->actingAs($admin)
+        ->post(deskTestUrl('/competition-matches/'.$final->getKey().'/record'), [
+            'scores' => [1 => 1],
+            'winnerEntrantId' => $a->id,
+        ])
+        ->assertSessionHasErrors('desk');
+
+    expect(deskTestMatch($stage, 2, 1)->state)->toBe(MatchState::Pending);
+
+    // A draw cannot be sent on through an elimination bracket.
+    $this->actingAs($admin)
+        ->post(deskTestUrl('/competition-matches/'.deskTestMatch($stage, 1, 2)->getKey().'/record'), [
+            'scores' => [1 => 1, 2 => 1],
+            'winnerEntrantId' => null,
+        ])
+        ->assertSessionHasErrors('desk');
+
+    expect(deskTestMatch($stage, 1, 2)->state)->toBe(MatchState::Pending)
+        ->and(deskTestSides(deskTestMatch($stage, 1, 2)))->toBe([1 => $b->id, 2 => $c->id]);
+});
+
+it('records a draw where the format and the discipline both have draws', function (): void {
+    $this->withBrand();
+
+    $discipline = Discipline::factory()->create(['allow_draws' => true]);
+
+    // Round robin allows draws by default (`RoundRobinGenerator::defaults()`);
+    // two entrants play one match.
+    [$competition] = competitionFieldWithRosters(2, ['discipline_id' => $discipline->getKey()]);
+    $stage = competitionGeneratedStage($competition, 'round_robin');
+
+    $this->actingAs(deskTestAdmin())
+        ->post(deskTestUrl('/competition-matches/'.deskTestMatch($stage, 1, 1)->getKey().'/record'), [
+            'scores' => [1 => 1, 2 => 1],
+            'winnerEntrantId' => null,
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect(deskTestMatch($stage, 1, 1)->state)->toBe(MatchState::Finished)
+        ->and(deskTestMatch($stage, 1, 1)->winner_entrant_id)->toBeNull();
+});
+
+it('answers a score entry the queue cannot take with a desk error, not a 500', function (): void {
+    $this->withBrand();
+
+    [$competition, [$a]] = competitionFieldWithRosters(2);
+    $bracket = competitionGeneratedStage($competition);
+
+    [$board, [, $gone]] = competitionFieldWithRosters(2);
+    $leaderboard = Stage::factory()->leaderboard()->create(['competition_id' => $board->getKey()]);
+    $gone->forceFill(['state' => EntrantState::Withdrawn])->save();
+
+    $admin = deskTestAdmin();
+
+    // A stage that plays matches keeps no score entries (§7.2).
+    $this->actingAs($admin)
+        ->post(deskTestUrl('/competition-stages/'.$bracket->getKey().'/score-entries'), ['entrantId' => $a->id, 'value' => 1])
+        ->assertSessionHasErrors('desk');
+
+    // A withdrawn entrant no longer scores.
+    $this->actingAs($admin)
+        ->post(deskTestUrl('/competition-stages/'.$leaderboard->getKey().'/score-entries'), ['entrantId' => $gone->id, 'value' => 1])
+        ->assertSessionHasErrors('desk');
+
+    expect(ScoreEntry::withoutBrandScope()->whereIn('stage_id', [$bracket->getKey(), $leaderboard->getKey()])->count())->toBe(0);
 });

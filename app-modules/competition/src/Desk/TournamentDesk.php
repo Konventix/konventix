@@ -25,6 +25,7 @@ use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\CompetitionTeam;
 use Konventix\Competition\Models\Entrant;
+use Konventix\Competition\Models\MatchConnection;
 use Konventix\Competition\Models\MatchHistoryEntry;
 use Konventix\Competition\Models\MatchResultReport;
 use Konventix\Competition\Models\MatchSlot;
@@ -95,6 +96,16 @@ final class TournamentDesk
             ->get()
             ->groupBy('competition_match_id');
 
+        // Empty slots still fed by an undecided match, as `match|slot`: the
+        // same rule `SettlesAMatch::guardEverySideHasArrived()` refuses on.
+        $unfinished = $matches->where('state', '!=', MatchState::Finished)->pluck('id')->all();
+        $awaited = MatchConnection::withoutBrandScope()
+            ->where('brand_id', $competition->brand_id)
+            ->whereIn('source_match_id', $unfinished)
+            ->get(['target_match_id', 'target_slot'])
+            ->map(fn (MatchConnection $edge): string => $edge->target_match_id.'|'.$edge->target_slot)
+            ->flip();
+
         return new TournamentDeskData(
             competitionId: (string) $competition->getKey(),
             name: $competition->name,
@@ -133,6 +144,7 @@ final class TournamentDesk
                         teamName: $slot->entrant_id === null ? null : $nameOf($slot->entrant_id),
                         score: $slot->score,
                         winner: $slot->entrant_id !== null && $slot->entrant_id === $match->winner_entrant_id,
+                        awaiting: $slot->entrant_id === null && $awaited->has($match->id.'|'.$slot->position),
                     ),
                 )->all()),
             ))->values()->all(),

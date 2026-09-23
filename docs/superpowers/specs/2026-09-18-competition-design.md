@@ -821,3 +821,29 @@ sides the note a plain record would skip. And the per-round "schedule all at"
 is one instant for every open match of `(bracket, round)`, skipping matches
 already at that instant so their timeline does not gain a `rescheduled` row
 that says nothing changed; staggering across stations is #117's estimator.
+
+### §4/§7.5, 2026-09-23 — where in the lifecycle the desk may draw, empty and play
+
+§4 says the bracket "can be generated and seeded" in `SignupClosed` and that
+`Running` **requires** a generated stage; D-CMP-20 allows a redraw until the
+first result. `Concerns\GuardsCompetitionLifecycle` reads those three
+sentences as rules, locking the competition row like the state writer does:
+
+- **seed, shuffle, generate, draw again** — `SignupClosed`, and `Running`
+  until the first result. Never `Draft` or `Published`: signup may still add
+  an entrant the bracket would leave out.
+- **reset** — `SignupClosed` only. A reset in `Running` would leave a running
+  competition with no bracket; "draw again" replaces it in one transaction
+  and keeps §4's invariant, so that is the button there.
+- **schedule, record, correct, resolve, verify, reject, enter a score** —
+  anything but `Finished` and `Cancelled`, which are history.
+
+"The first result" now includes a **verified score entry** on a leaderboard,
+which has no matches for the old reading to find (§7.2: only verified
+entries count). The previous entry's "a reset is harmless" holds with both.
+
+The desk also refuses to finish a match whose other side is still to come (an
+empty slot fed by an undecided match) while still settling a **bye** — an
+empty slot nothing will ever fill, which is how the generators leave the top
+seeds' byes — and refuses a draw on an elimination bracket or wherever the
+discipline or the format's settings have none.

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Competition\Actions\Concerns\GuardsCompetitionLifecycle;
 use Konventix\Competition\Actions\Concerns\RefusesOnceAResultIsRecorded;
 use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\Stage;
@@ -32,12 +33,17 @@ use Konventix\Competition\Seeding\SeedSourceRegistry;
  * not keep seed 3 and reappear ahead of the field the next time something
  * orders by it.
  *
+ * Seeding is part of the draw, so it happens where the draw does — once
+ * signup is closed, and while the competition runs until the first result
+ * (§4, `GuardsCompetitionLifecycle`).
+ *
  * Refuses once the stage has a recorded result. Seeds break ties in every
  * standings calculator, so renumbering after a result rewrites the table the
  * results produced.
  */
 final class SeedStage
 {
+    use GuardsCompetitionLifecycle;
     use RefusesOnceAResultIsRecorded;
 
     public function __construct(
@@ -50,6 +56,7 @@ final class SeedStage
     public function handle(Stage $stage, ?SeedSource $source = null): array
     {
         return DB::transaction(function () use ($stage, $source): array {
+            $this->guardDrawIsOpen($stage->competition_id);
             $this->guardNoRecordedResult($stage);
 
             $order = ($source ?? $this->sources->get($stage->entry_source))->seedOrder($stage);

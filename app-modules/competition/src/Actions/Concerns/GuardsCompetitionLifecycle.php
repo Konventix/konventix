@@ -1,0 +1,69 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Konventix\Competition\Actions\Concerns;
+
+use Konventix\Competition\Enums\CompetitionStatus;
+use Konventix\Competition\Exceptions\CompetitionLifecycleException;
+use Konventix\Competition\Models\Competition;
+
+/**
+ * What a competition's lifecycle state allows the desk to do inside it
+ * (design §4, D-CMP-15, D-CMP-20).
+ *
+ * `TransitionsCompetitionStatus` is the one writer of the state; this is its
+ * reading counterpart for every Action that works *within* a state. It locks
+ * the competition row the same way the writer does, so a draw and a
+ * concurrent "start" or "cancel" are serialised instead of each reading the
+ * state the other is about to leave — the lock is held until the caller's
+ * transaction ends, which is why every caller runs inside one.
+ *
+ * Three rules, straight from §4's table:
+ *
+ * - **The draw** (seed, generate, redraw) happens in `SignupClosed` — "the
+ *   bracket can be generated and seeded" — and in `Running` until the first
+ *   result, which `RefusesOnceAResultIsRecorded` guards. Not in `Draft` or
+ *   `Published`: signup may still add an entrant the bracket would leave out.
+ * - **Emptying the draw** (reset) happens in `SignupClosed` only: `Running`
+ *   requires a generated stage.
+ * - **Playing** (schedule, record, correct, resolve, verify, reject, score)
+ *   stops at `Finished` and `Cancelled`, which are history.
+ */
+trait GuardsCompetitionLifecycle
+{
+    private function lockedCompetition(string $competitionId): Competition
+    {
+        /** @var Competition */
+        return Competition::withoutBrandScope()->whereKey($competitionId)->lockForUpdate()->firstOrFail();
+    }
+
+    private function guardDrawIsOpen(string $competitionId): Competition
+    {
+        $competition = $this->lockedCompetition($competitionId);
+
+        if (! in_array($competition->status, [CompetitionStatus::SignupClosed, CompetitionStatus::Running], true)) {
+            throw CompetitionLifecycleException::drawNotOpen($competition->id, $competition->status);
+        }
+
+        return $competition;
+    }
+
+    private function guardDrawMayBeEmptied(string $competitionId): void
+    {
+        $competition = $this->guardDrawIsOpen($competitionId);
+
+        if ($competition->status === CompetitionStatus::Running) {
+            throw CompetitionLifecycleException::wouldEmptyARunningCompetition($competition->id);
+        }
+    }
+
+    private function guardStillBeingPlayed(string $competitionId): void
+    {
+        $competition = $this->lockedCompetition($competitionId);
+
+        if ($competition->status->isTerminal()) {
+            throw CompetitionLifecycleException::over($competition->id, $competition->status);
+        }
+    }
+}

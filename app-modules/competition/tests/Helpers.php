@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Str;
 use Konventix\Competition\Actions\GenerateBracket;
+use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\TeamRole;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionMatch;
@@ -182,7 +183,10 @@ function competitionParticipantName(string $userId, string $displayName, string 
  */
 function competitionFieldWithRosters(int $entrants, array $competitionAttributes = []): array
 {
-    $competition = Competition::factory()->create($competitionAttributes);
+    // `SignupClosed` unless the caller says otherwise: the field is made
+    // here, not through signup, and §4 draws the bracket only once signup is
+    // closed (`GuardsCompetitionLifecycle`).
+    $competition = Competition::factory()->create(['status' => CompetitionStatus::SignupClosed, ...$competitionAttributes]);
 
     $field = [];
     $members = [];

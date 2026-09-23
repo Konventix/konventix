@@ -145,6 +145,65 @@ final class ResultSubmissionException extends RuntimeException
         ));
     }
 
+    /**
+     * A side of the match is still to come: its slot is fed by a match that
+     * has not been decided. Recording now would finish a match against
+     * nobody and advance a side past an opponent who has not arrived. A
+     * **bye** — an empty slot nothing will ever fill — is not this.
+     */
+    public static function sideStillToCome(string $matchId): self
+    {
+        return new self(sprintf(
+            'Match [%s] is still waiting for a side; record it once both teams are known.',
+            $matchId,
+        ));
+    }
+
+    /**
+     * A draw where the format or the discipline has none (§7.1, ADR-0062):
+     * an elimination bracket cannot send "nobody" on, and a discipline
+     * without draws has a winner in every match.
+     */
+    public static function drawNotPossible(string $matchId, string $format): self
+    {
+        return new self(sprintf(
+            'Match [%s] cannot end in a draw: its stage runs `%s`, where every match needs a winner.',
+            $matchId,
+            $format,
+        ));
+    }
+
+    /**
+     * A score entry on a stage that plays matches (§7.2): only a leaderboard
+     * accumulates scores.
+     */
+    public static function notALeaderboard(string $stageId, string $format): self
+    {
+        return new self(sprintf(
+            'Stage [%s] runs [%s]; only a leaderboard stage accumulates score entries.',
+            $stageId,
+            $format,
+        ));
+    }
+
+    public static function notInTheField(string $entrantId, string $stageId): self
+    {
+        return new self(sprintf(
+            'Entrant [%s] does not belong to stage [%s]\'s competition.',
+            $entrantId,
+            $stageId,
+        ));
+    }
+
+    public static function noLongerScores(string $entrantId, string $state): self
+    {
+        return new self(sprintf(
+            'Entrant [%s] is [%s] and no longer scores.',
+            $entrantId,
+            $state,
+        ));
+    }
+
     public static function alreadyDisputed(string $matchId): self
     {
         return new self(sprintf(

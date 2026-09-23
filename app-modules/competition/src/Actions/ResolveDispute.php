@@ -6,6 +6,7 @@ namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Konventix\Competition\Actions\Concerns\GuardsCompetitionLifecycle;
 use Konventix\Competition\Actions\Concerns\GuardsSideMembership;
 use Konventix\Competition\Actions\Concerns\SettlesAMatch;
 use Konventix\Competition\Data\MatchHistoryPayload;
@@ -53,6 +54,7 @@ use Konventix\Competition\Models\CompetitionMatch;
  */
 final class ResolveDispute
 {
+    use GuardsCompetitionLifecycle;
     use GuardsSideMembership;
     use SettlesAMatch;
 
@@ -72,6 +74,8 @@ final class ResolveDispute
         string $resolutionNote,
     ): CompetitionMatch {
         return DB::transaction(function () use ($match, $scoresByPosition, $winnerEntrantId, $resolvedByUserId, $resolutionNote): CompetitionMatch {
+            $this->guardStillBeingPlayed($match->competition_id);
+
             if ($match->disputed_at === null || $match->dispute_resolved_at !== null) {
                 throw ResultSubmissionException::notDisputed($match->id);
             }
@@ -83,6 +87,7 @@ final class ResolveDispute
             }
 
             $this->guardScoreLineIsComplete($match, $scoresByPosition, $this->entrantIdsByPosition($match));
+            $this->guardDrawIsPossible($match, $winnerEntrantId);
 
             $match->forceFill(['dispute_resolved_at' => now()])->save();
             $match->refresh();

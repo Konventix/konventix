@@ -7,6 +7,7 @@ use Konventix\Competition\Actions\CalculateStandings;
 use Konventix\Competition\Actions\GenerateBracket;
 use Konventix\Competition\Actions\PairNextSwissRound;
 use Konventix\Competition\Actions\RecordMatchResult;
+use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionMatch;
@@ -27,7 +28,8 @@ use Konventix\Competition\Standings\StandingsCalculatorRegistry;
  */
 function standingsTestStage(string $format, int $entrants, array $settings = []): Stage
 {
-    $competition = Competition::factory()->create();
+    // §4: the bracket is drawn once signup is closed (`GuardsCompetitionLifecycle`).
+    $competition = Competition::factory()->status(CompetitionStatus::SignupClosed)->create();
 
     for ($i = 1; $i <= $entrants; $i++) {
         $team = CompetitionTeam::factory()->forEvent($competition->event_id)->create();

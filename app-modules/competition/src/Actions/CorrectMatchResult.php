@@ -6,6 +6,7 @@ namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Konventix\Competition\Actions\Concerns\GuardsCompetitionLifecycle;
 use Konventix\Competition\Actions\Concerns\RecomputesStageStandings;
 use Konventix\Competition\Data\MatchHistoryPayload;
 use Konventix\Competition\Enums\MatchHistoryKind;
@@ -74,6 +75,7 @@ use Konventix\Competition\Models\MatchSlot;
  */
 final class CorrectMatchResult
 {
+    use GuardsCompetitionLifecycle;
     use RecomputesStageStandings;
 
     public function __construct(
@@ -92,6 +94,8 @@ final class CorrectMatchResult
         ?string $note = null,
     ): CompetitionMatch {
         return DB::transaction(function () use ($match, $scores, $winnerEntrantId, $correctedByUserId, $note): CompetitionMatch {
+            $this->guardStillBeingPlayed($match->competition_id);
+
             if ($match->state !== MatchState::Finished) {
                 throw IllegalMatchStateTransitionException::forAction($match, 'corrected');
             }
