@@ -550,13 +550,19 @@ listeners do anything for it.
 **Retention: 30 days after the event concluded** (D-COM-05).
 `EventConcluded` sets the room's `closed_at` to the conclusion instant —
 and `EventCancelled` to the cancellation instant, since a cancelled event
-never concludes; the wall is readable but refuses posts from then on. `community:sweep-shoutbox`
-runs **daily** (`withoutOverlapping()`) and, for every room closed at least
+never concludes; the wall refuses posts from then on. It is **not** left
+readable for participants: the same events end their hub access
+(Admission's queued `EndHubAccessOnEventClosed`), and `/live/shoutbox`
+finds its room through the member's *running* event, so once that listener
+has run, the page and its feed answer 404 to every participant and the hub
+card is gone. Only the desk still reads a closed wall.
+`community:sweep-shoutbox` runs **daily** (`withoutOverlapping()`) and, for every room closed at least
 30 days ago, deletes its messages, the reports on them and its mutes. The
-room row stays as a tombstone, so an old link opens onto an empty, closed
-room rather than a 404. The sweep runs across every brand and is not gated
-on `community`: switching the module off does not stop a closed wall's clock.
-It is safe to run by hand at any time (`php artisan community:sweep-shoutbox`
+room row stays as a tombstone, so the desk URL still opens onto an empty,
+closed room rather than a 404. No participant URL names a room, so for
+participants nothing changes at the sweep: the wall was already gone. The
+sweep runs across every brand and is not gated on `community`: switching
+the module off does not stop a closed wall's clock. It is safe to run by hand at any time (`php artisan community:sweep-shoutbox`
 in the scheduler or web pod); a room already swept has nothing left to
 delete. If the scheduler role was down for days, the next run catches up —
 there is no window it can miss.
@@ -591,9 +597,14 @@ away are never on disk, so there is nothing to erase for them.
 **What to watch** (Platform dashboard, row "Shoutbox").
 `konventix_community_messages_posted_total{brand}` counts lines accepted.
 `konventix_community_shoutbox_broadcasts_total{brand,outcome}` counts the
-live push of a line or a removal to the room, `sent` or `failed`. A failed
-push never fails the post — the line is already saved and appears for
-everyone on their next reload or reconnect — so this counter and
+live push of a line or a removal to the room, `sent` or `failed`. A
+removal made at the desk is pushed with the room brand's Reverb
+credentials, not the admin host's (which has none). A failed push never
+fails the post or the removal — the change is already saved — but an open
+wall does not see it until it is reloaded. A failed push does not make a
+client reconnect, so the catch-up a reconnect runs only helps when the
+outage also dropped that client's socket. Until then a removed line stays
+visible on every open wall. This counter and
 `KonventixShoutboxBroadcastFailing` are the only places a Reverb outage on
 the wall shows. The matching exception is reported, so the Logs dashboard
 has its message.

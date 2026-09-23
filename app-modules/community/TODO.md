@@ -6,8 +6,11 @@
 
 **Pulled forward by slice 25.** Community was a Phase 3 module; ADR-0051 and
 ADR-0052 brought the profile read models, `u/{username}` and its wall into
-release scope. Chat, presence and achievements stay Phase 3 (`docs/ROADMAP.md`),
-and the backlog below is still a starting point for that phase.
+release scope. 0.9.0 brought event chat and presence forward too: the
+shoutbox (ADR-0067, design `docs/superpowers/specs/2026-09-23-shoutbox-design.md`)
+is an event-scoped room with its connection presence and Checked-In badge.
+Achievements stay Phase 3 (`docs/ROADMAP.md`), and the backlog below is still a
+starting point for that phase.
 
 ## Next
 
