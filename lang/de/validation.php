@@ -46,7 +46,7 @@ return [
     'email' => ':Attribute muss eine gültige E-Mail-Adresse sein.',
     'encoding' => ':Attribute muss als :encoding kodiert sein.',
     'ends_with' => ':Attribute muss eine der folgenden Endungen aufweisen: :values',
-    'enum' => 'Der ausgewählte Wert ist ungültig.',
+    'enum' => 'Der gewählte Wert für :attribute ist ungültig.',
     'exists' => 'Der gewählte Wert für :attribute ist ungültig.',
     'extensions' => 'Das Feld :attribute muss eine der folgenden Erweiterungen haben: :values.',
     'file' => ':Attribute muss eine Datei sein.',
@@ -87,7 +87,7 @@ return [
         'numeric' => ':Attribute muss kleiner oder gleich :value sein.',
         'string' => ':Attribute darf maximal :value Zeichen lang sein.',
     ],
-    'mac_address' => 'Der Wert muss eine gültige MAC-Adresse sein.',
+    'mac_address' => ':Attribute muss eine gültige MAC-Adresse sein.',
     'max' => [
         'array' => ':Attribute darf maximal :max Elemente haben.',
         'file' => ':Attribute darf maximal :max Kilobytes groß sein.',
@@ -118,7 +118,7 @@ return [
         'mixed' => ':Attribute muss mindestens einen Großbuchstaben und einen Kleinbuchstaben beinhalten.',
         'numbers' => ':Attribute muss mindestens eine Zahl beinhalten.',
         'symbols' => ':Attribute muss mindestens ein Sonderzeichen beinhalten.',
-        'uncompromised' => ':Attribute wurde in einem Datenleck gefunden. Bitte wählen Sie ein anderes :attribute.',
+        'uncompromised' => ':Attribute wurde in einem Datenleck gefunden. Bitte wähle ein anderes :attribute.',
     ],
     'present' => ':Attribute muss vorhanden sein.',
     'present_if' => 'Das Feld :attribute muss vorhanden sein, wenn :other gleich :value ist.',
@@ -158,5 +158,10 @@ return [
     'uppercase' => ':Attribute muss in Großbuchstaben sein.',
     'url' => ':Attribute muss eine URL sein.',
     'uuid' => ':Attribute muss ein UUID sein.',
+    'custom' => [
+        'attribute-name' => [
+            'rule-name' => 'custom-message',
+        ],
+    ],
     'attributes' => [],
 ];
