@@ -492,6 +492,86 @@ the desk is a follow-up, not a dependency.
 
 ---
 
+## 10a. Hub cards (addendum, 2026-09-23)
+
+The event-hub design (`2026-09-22-event-hub-design.md` §8) gives Competition
+two cards on `/live` and points here for them. Its D-HUB-07:
+
+> "Next Games" is Competition's feature (my upcoming matches, nudging, no
+> enforcement) and works with hand-run servers; GameOps only enriches it with
+> connect details in 0.10+.
+
+The pain behind it: guests enter several competitions, fall behind on their
+matches and hold everyone up. The cards nudge; they never block, and nothing
+is pushed to a phone.
+
+**Registration.** `CompetitionServiceProvider::registerHub()` adds both
+cards under module `competition`, so the registry hides them for a brand
+with the module off (ADR-0003). The hub already limits itself to admitted
+participants, and there is no capability. Orders are 40 and 41, after
+Agenda's *Jetzt / Gleich* (20) and Community's *Shoutbox* (30). Each payload
+is built by an invokable resolver in `src/Hub/` that reads only
+Competition's own tables and returns a `#[TypeScript]` `Data`.
+
+**Nächste Spiele** (`competition.next-games`,
+`competition/hub/NextGamesCard`). Lists the viewer's open matches in the
+active event's competitions. A match counts when one of the viewer's active
+entrants (`registered` or `checked_in`, on a team they are on) holds a slot,
+the match is `pending`, `scheduled` or `live`, and its competition is
+neither a draft nor over. Order: scheduled before unscheduled, then
+soonest `scheduled_at`, then round, then position. Each row shows the
+competition, the round (section and round number, like the match page's
+heading), the opponent's team name or *wartet auf Gegner* while the slot
+waits on an undecided match, the time, a nudge, and a link to the match
+page. The card shows at most five rows and links to *Meine Turniere*.
+
+The nudge comes from data the match page already reads, and the card and
+page ask the same rule for it (`Pages\MatchPowers`), so they cannot
+disagree. When several apply, the first one wins:
+
+1. *Streitfall offen*: the match is disputed and the desk has not decided.
+2. *Ergebnis bestätigen*: the other side reported and the viewer's side may
+   confirm. The controller's list had no name for this state. It was added
+   because it is the case the operator described: the opponent is waiting.
+3. *Wartet auf Bestätigung*: the viewer's side reported and the other side
+   has not answered.
+4. *Jetzt dran*: `scheduled_at` ≤ now and every side has arrived. It outranks
+   *Ergebnis melden*, because the match page carries the report form anyway.
+5. *Ergebnis melden*: the viewer's side may report and the match has no
+   time. With hand-run servers you play when you can and then report.
+
+A match scheduled later, or one still waiting for its opponent, carries no
+nudge.
+
+**Meine Competitions** (`competition.my-competitions`,
+`competition/hub/MyCompetitionsCard`). Lists the viewer's entries in the
+active event's competitions: every slot-holding entrant (`incomplete`,
+`registered`, `checked_in`) of a non-draft competition, with competitions
+that have a start time first, soonest first, then by name. Each row shows
+the name, the status in German (the public pages' labels), the check-in
+state when the competition's `check_in_mode` requires one, and a link to the
+competition page. The card shows at most five rows plus *Meine Turniere*.
+When the viewer has no entries, the card shows one sentence and a link to
+the event's tournament index.
+
+**Time.** The controller asked for the event's timezone (ADR-0027), which
+does not fit this module. `scheduled_at`, like `starts_at` (see the lifecycle
+migration), is an instant: the desk types it in the reader's zone and it is
+stored anchored to UTC. Competition also keeps no event timezone:
+`EventDetailsUpdated`, the payload the backfill replays, does not carry one.
+The cards therefore send ISO-8601 instants and render them with
+`formatDateTime()` in the reader's zone, as the match and team pages do.
+
+**Liveness** (hub design §7.1). *Nächste Spiele* carries `pollSeconds`: 60
+while any competition the viewer has an entry in is `Running`, otherwise
+null. The card then reloads `only: ['hub']`, because Platform's `HubPage`
+puts every card under that one prop and there is no per-card key. Each
+reload therefore rebuilds every visible card, once a minute and only while
+the viewer's competitions are being played. *Meine Competitions* stays fresh
+through the same reload and does not poll on its own. No Reverb in 0.9.0.
+
+---
+
 ## 11. Capabilities and roles (D-CMP-23)
 
 `Permission` gains `ManageSchedule`, `CheckInEntrants`,
