@@ -113,6 +113,34 @@ it('exports the reports, score entries and history rows a person wrote', functio
         ->and($export['match_history'][0]['competition_match_id'])->toBe($person['matchId']);
 });
 
+it('gives a verifier the entry they verified but not the submitter\'s note', function (): void {
+    // Final review, part 2, M1: the note is the submitter's words. A desk
+    // member who verified the entry exports that they did, and no copy of
+    // somebody else's free text.
+    $this->withBrand();
+
+    $person = gdprTestPerson();
+    $verifier = (string) Str::ulid();
+
+    ScoreEntry::query()->where('stage_id', $person['stageId'])->sole()
+        ->forceFill(['verified_by_user_id' => $verifier, 'verified_at' => now()])
+        ->save();
+
+    $export = (new CompetitionGdprHandler)->exportFor(SubjectRef::forUser($verifier));
+
+    expect($export['score_entries'])->toHaveCount(1)
+        ->and($export['score_entries'][0])->toMatchArray([
+            'stage_id' => $person['stageId'],
+            'note' => null,
+            'submitted' => false,
+            'verified' => true,
+        ]);
+
+    // The submitter still gets their own note.
+    expect((new CompetitionGdprHandler)->exportFor(SubjectRef::forUser($person['subject']))['score_entries'][0]['note'])
+        ->toBe('Bestzeit auf der Wüstenstrecke');
+});
+
 it('exports nothing for somebody who never took part', function (): void {
     $this->withBrand();
 

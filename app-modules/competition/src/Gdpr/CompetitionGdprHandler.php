@@ -160,7 +160,10 @@ final class CompetitionGdprHandler implements GdprHandler
                     'entrant_id' => $entry->entrant_id,
                     'heat' => $entry->heat,
                     'value' => (float) $entry->value,
-                    'note' => $entry->note,
+                    // The submitter's own words, and only theirs: a subject
+                    // who verified or rejected the entry gets no copy of
+                    // another person's note (final review, part 2, M1).
+                    'note' => $entry->submitted_by_user_id === $subjectId ? $entry->note : null,
                     'proof_media_id' => $entry->proof_media_id,
                     // Which of the three the person was: an organizer can
                     // be the one who submitted, verified and rejected.
