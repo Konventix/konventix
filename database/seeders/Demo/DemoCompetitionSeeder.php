@@ -21,6 +21,7 @@ use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\CompetitionTeam;
 use Konventix\Competition\Models\Discipline;
+use Konventix\Competition\Models\EligibleRegistration;
 use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\MatchSlot;
 use Konventix\Competition\Models\Stage;
@@ -39,7 +40,8 @@ use Konventix\Registration\Models\Registration;
  * Entry goes through `EnterCompetition`, which checks the eligibility read
  * model — so the entrants are people who actually hold a confirmed
  * registration for this event, and a demo where they did not would be
- * checking nothing. That is also why this slice runs after registrations.
+ * checking nothing. That is also why this slice runs after registrations,
+ * and why the field is drawn through the same gate (#327).
  *
  * Two disciplines, because the kinds behave differently (ADR-0024): a quiz
  * needs no GameOps reference at all, a video game carries one.
@@ -73,10 +75,24 @@ final class DemoCompetitionSeeder
             return;
         }
 
+        // Asked of Competition's own gate, the one `EnterCompetition` applies,
+        // rather than trusted from the confirmed snapshot (#327). A confirmed
+        // registration is not the same fact as being allowed in: the
+        // compliance slice's deletion request anonymizes a registrant, which
+        // leaves their registration confirmed but takes them out of the
+        // eligibility read model — so a re-run of the seed used to hand that
+        // person to `EnterCompetition`, and fail whenever the random draw put
+        // them in the field. On a first run everybody passes and the field is
+        // what it always was.
         $players = $confirmed
             ->pluck('registrant_user_id')
             ->filter()
             ->unique()
+            ->filter(fn (string $userId): bool => EligibleRegistration::userMayEnter(
+                $event->brand_id,
+                (string) $event->getKey(),
+                $userId,
+            ))
             ->values();
 
         if ($players->count() < self::FIELD_SIZE) {
