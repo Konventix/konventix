@@ -1729,3 +1729,28 @@ Two changes close it:
 - Erasing a captain never hands the captaincy to a member who was **erased
   earlier**. Every account gets a participant profile at registration, and
   erasure deletes it, so a member without one is skipped.
+
+### §4/§5.5, 2026-09-23 (fix wave A, round 3) — the first result sweeps out every retired team
+
+Round 2 made a withdrawal or decline **after** a result forfeit. The reverse
+order still stranded the start: a team withdraws while nothing is recorded
+(no forfeit, because the desk can still draw again), and then the desk
+disqualifies a no-show instead of drawing again. That forfeit is the first
+result, redraw and reset are refused from then on, and the withdrawn team
+still held its slot, so `start` refused and told the desk to draw again.
+
+`ForfeitRetiredEntrants` now keeps one invariant: **once a competition has a
+result, no withdrawn or disqualified entrant stands in an open match.** Every
+settle calls it after it has advanced the bracket (`SettlesAMatch`), and so do
+`DisqualifyEntrant`, `WithdrawEntrant` and `DeclineIncompleteEntrant`. With no
+result yet, it does nothing. It loops until nobody is left, because a forfeit
+between two retired teams sends one of them on as the winner. `start`'s
+existing exemption then passes.
+
+`start`'s refusal no longer tells the desk to draw again once the first stage
+has a result. What can still reach it then is a check-in that moved after the
+draw, and the text says to put the check-ins back or withdraw the entrant.
+
+The three retirement Actions also re-read the entrant under the lock after
+the competition lock, so two concurrent submits send one `EntrantWithdrawn`,
+not two.

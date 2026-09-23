@@ -19,11 +19,13 @@ use Konventix\Competition\Models\Stage;
  * Takes a retired entrant out of every open match it still stands in
  * (design §5.5; the three shapes are `DisqualifyEntrant`'s docblock).
  *
- * `DisqualifyEntrant` always runs it. `WithdrawEntrant` and
- * `DeclineIncompleteEntrant` run it once a stage of the competition holds a
- * recorded result: from then on the desk can no longer draw again, so a
- * withdrawn team left standing in its slots would strand the bracket — and,
- * before the start, the start itself (fix wave A round 2, N2).
+ * `DisqualifyEntrant` always runs it for the entrant it disqualifies.
+ * `ForfeitRetiredEntrants` runs it for every withdrawn or disqualified entrant
+ * still in an open match once the competition holds a recorded result — after
+ * a withdrawal, a decline, a disqualification and every settle: from then on
+ * the desk can no longer draw again, so a retired team left standing in its
+ * slots would strand the bracket, and before the start the start itself (fix
+ * wave A rounds 2 and 3, N2 and M-f).
  */
 trait ForfeitsOpenMatches
 {
@@ -35,10 +37,19 @@ trait ForfeitsOpenMatches
      * retired or a slot emptied — in the order every other writer takes its
      * locks (`GuardsCompetitionLifecycle`), so a forfeit pass and a desk
      * write cannot deadlock (fix wave A round 2, M-b).
+     *
+     * Then the entrant is re-read under a lock of its own into the instance
+     * the caller holds (`CheckInEntrant`'s idiom): of two withdraw or
+     * disqualify submits, the second waits here and then finds the entrant
+     * already gone, instead of sending a second `EntrantWithdrawn` and a
+     * second roster notice (fix wave A round 3, M-g).
      */
     protected function lockCompetitionOf(Entrant $entrant): void
     {
         Competition::withoutBrandScope()->whereKey($entrant->competition_id)->lockForUpdate()->firstOrFail();
+
+        $locked = Entrant::withoutBrandScope()->whereKey($entrant->getKey())->lockForUpdate()->firstOrFail();
+        $entrant->setRawAttributes($locked->getAttributes(), true);
     }
 
     /**

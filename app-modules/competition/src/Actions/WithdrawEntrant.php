@@ -53,11 +53,10 @@ final class WithdrawEntrant
 
             // Once a result stands the desk cannot draw again, so the team
             // must not be left in its slots: its open matches are forfeited
-            // as a disqualification's are (fix wave A round 2, N2).
-            if ($this->competitionHasARecordedResult($entrant)) {
-                $this->forfeitOpenMatches($entrant);
-                $this->recomputeCompetition($entrant);
-            }
+            // as a disqualification's are (fix wave A round 2, N2). Without
+            // a result the sweep does nothing, and the first result sweeps
+            // the team out later (round 3, M-f).
+            app(ForfeitRetiredEntrants::class)->handle($entrant->competition_id, $entrant->brand_id);
 
             return $entrant->refresh();
         });

@@ -72,6 +72,10 @@ final class DisqualifyEntrant
 
             $this->recomputeCompetition($entrant);
 
+            // The forfeit may be the competition's first result: a team that
+            // withdrew before it leaves the bracket now (round 3, M-f).
+            app(ForfeitRetiredEntrants::class)->handle($entrant->competition_id, $entrant->brand_id);
+
             return $forfeited;
         });
     }

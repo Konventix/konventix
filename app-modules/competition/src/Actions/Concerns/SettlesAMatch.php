@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Competition\Actions\Concerns;
 
 use Konventix\Competition\Actions\AdvanceBracket;
+use Konventix\Competition\Actions\ForfeitRetiredEntrants;
 use Konventix\Competition\Actions\RecordMatchResult;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
@@ -20,10 +21,11 @@ use Konventix\Competition\Models\MatchSlot;
  * Shared by `ReportMatchResult` (when the second side's report agrees with
  * the first), `ConfirmMatchResult`, `RecordResultAtDesk` and `ResolveDispute`,
  * because all four end in the same place by different routes and a copy each
- * would be four chances to forget the recompute. `DisqualifyEntrant` records
- * and advances each forfeit by hand, because a forfeit against an opponent
- * who is not there yet is not a settle at all, and recomputes every stage
- * once at the end of its pass.
+ * would be four chances to forget the recompute. A forfeit is not settled
+ * here: `Concerns\ForfeitsOpenMatches` records and advances each one itself
+ * (for `DisqualifyEntrant`, and for `ForfeitRetiredEntrants`, which every
+ * settle calls), because a forfeit against an opponent who is not there yet
+ * is not a settle at all, and it recomputes every stage once at the end.
  *
  * It also holds the **position ↔ entrant** translation. A report is keyed by
  * slot position (§8.2) because a correction can re-route who stands in a slot
@@ -73,6 +75,11 @@ trait SettlesAMatch
         );
 
         app(AdvanceBracket::class)->handle($settled);
+
+        // This may be the competition's first result, the moment a redraw
+        // stops being possible: a team that withdrew before it is taken out
+        // of the bracket now (fix wave A round 3, M-f).
+        app(ForfeitRetiredEntrants::class)->handle($settled->competition_id, $settled->brand_id);
 
         $this->recomputeStandings($settled);
 

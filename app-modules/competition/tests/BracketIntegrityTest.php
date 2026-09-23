@@ -35,8 +35,10 @@ use Konventix\Competition\Enums\MatchHistoryKind;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Enums\ResultSubmissionMode;
 use Konventix\Competition\Enums\WithdrawalReason;
+use Konventix\Competition\Events\EntrantWithdrawn;
 use Konventix\Competition\Events\MatchDisputeResolved;
 use Konventix\Competition\Events\MatchFinished;
+use Konventix\Competition\Exceptions\CompetitionEntryException;
 use Konventix\Competition\Exceptions\IllegalCompetitionStateTransitionException;
 use Konventix\Competition\Exceptions\IllegalMatchStateTransitionException;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
@@ -1204,5 +1206,171 @@ describe('a forfeit of a disputed match (round 2, M-a)', function (): void {
             ->toBe(['reported', 'reported', 'disputed', 'resolved', 'recorded']);
 
         Event::assertNotDispatched(MatchDisputeResolved::class);
+    });
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * Round 3, M-f — a withdrawal before the first result is swept out by it
+ * ---------------------------------------------------------------------------
+ *
+ * SE4 throughout: m1 = s1 v s4, m2 = s2 v s3, the final takes m1's winner in
+ * slot 1 and m2's in slot 2.
+ */
+
+describe('the first result sweeps out a team that withdrew before it (round 3, M-f)', function (): void {
+    it('forfeits the withdrawn team when a disqualification makes the first result, and starts', function (): void {
+        $this->withBrand();
+
+        [$competition, [$s1, $s2, $s3, $s4]] = competitionFieldWithRosters(4);
+        $stage = competitionGeneratedStage($competition);
+        $second = competitionMatchAt($stage, 1, 2);
+
+        // s3's captain withdraws while nothing is recorded: no forfeit, the
+        // desk could still draw again. s3 keeps its slot in m2.
+        app(WithdrawEntrant::class)->handle($s3, WithdrawalReason::CaptainWithdrew);
+
+        expect($second->fresh()->state)->toBe(MatchState::Pending)
+            ->and(competitionSidesOf($second))->toBe([1 => $s2->id, 2 => $s3->id]);
+
+        // Instead of drawing again, the desk disqualifies the no-show s4. m1
+        // is forfeited to s1 — the first result, and the redraw is gone. The
+        // sweep then forfeits m2 to s2. Before the fix s3 kept its slot and
+        // start, redraw and reset were all refused.
+        app(DisqualifyEntrant::class)->handle($s4);
+
+        expect($second->fresh()->state)->toBe(MatchState::Finished)
+            ->and($second->fresh()->winner_entrant_id)->toBe($s2->id)
+            ->and(competitionSidesOf(competitionMatchAt($stage, 2, 1)))->toBe([1 => $s1->id, 2 => $s2->id]);
+
+        // Drawn {1,2,3,4}; field {1,2}; retired and in no open match {3,4}.
+        app(StartCompetition::class)->handle($competition->refresh());
+
+        expect($competition->refresh()->status)->toBe(CompetitionStatus::Running);
+    });
+
+    it('takes the withdrawn team back out when the disqualification of its opponent sent it on', function (): void {
+        $this->withBrand();
+
+        [$competition, [$s1, $s2, $s3, $s4]] = competitionFieldWithRosters(4);
+        $stage = competitionGeneratedStage($competition);
+        $final = competitionMatchAt($stage, 2, 1);
+
+        app(WithdrawEntrant::class)->handle($s3, WithdrawalReason::CaptainWithdrew);
+
+        // s2, s3's opponent, is disqualified: m2 is forfeited to s3, which the
+        // winner edge puts in the final's slot 2. The sweep finds s3, retired,
+        // in the final: its slot 1 waits on m1, still pending, so s3 is
+        // emptied out.
+        app(DisqualifyEntrant::class)->handle($s2);
+
+        expect(competitionMatchAt($stage, 1, 2)->winner_entrant_id)->toBe($s3->id)
+            ->and(competitionSidesOf($final->fresh()))->toBe([]);
+
+        // Drawn {1,2,3,4}; field {1,4}; retired and in no open match {2,3}.
+        app(StartCompetition::class)->handle($competition->refresh());
+
+        expect($competition->refresh()->status)->toBe(CompetitionStatus::Running);
+
+        // s1 beats s4 and reaches the final, whose slot 2 sits behind m2,
+        // finished: a bye the desk gives s1.
+        integrityTestWin(competitionMatchAt($stage, 1, 1), $s1->id);
+
+        expect(competitionSidesOf($final->fresh()))->toBe([1 => $s1->id]);
+
+        integrityTestWin($final, $s1->id);
+
+        expect($final->fresh()->winner_entrant_id)->toBe($s1->id);
+    });
+
+    it('sweeps the withdrawn team out when the desk records the first result', function (): void {
+        $this->withBrand();
+
+        [$competition, [$s1, $s2, $s3]] = competitionFieldWithRosters(4);
+        $stage = competitionGeneratedStage($competition);
+
+        app(WithdrawEntrant::class)->handle($s3, WithdrawalReason::CaptainWithdrew);
+
+        // The first result comes from a settle, not a forfeit: s1 beats s4.
+        // The sweep then forfeits m2 to s2.
+        integrityTestWin(competitionMatchAt($stage, 1, 1), $s1->id);
+
+        expect(competitionMatchAt($stage, 1, 2)->state)->toBe(MatchState::Finished)
+            ->and(competitionMatchAt($stage, 1, 2)->winner_entrant_id)->toBe($s2->id)
+            ->and(competitionSidesOf(competitionMatchAt($stage, 2, 1)))->toBe([1 => $s1->id, 2 => $s2->id]);
+
+        expect($competition->refresh()->status)->toBe(CompetitionStatus::SignupClosed);
+    });
+
+    it('stops telling the desk to draw again once a result stands', function (): void {
+        $this->withBrand();
+
+        [$competition, $field] = competitionFieldWithRosters(4, [
+            'check_in_mode' => CheckInMode::Desk,
+            'requires_event_check_in' => false,
+        ]);
+
+        // Three are checked in and drawn. SE3, S(4) = [1, 4, 2, 3]: m1 = seed 1
+        // v bye, m2 = seed 2 v seed 3.
+        foreach (array_slice($field, 0, 3) as $entrant) {
+            app(CheckInEntrant::class)->handle($entrant);
+        }
+
+        $stage = competitionGeneratedStage($competition);
+
+        // The desk settles seed 1's bye: a result. Then the fourth checks in
+        // late: one in the field but not drawn, and no redraw to offer.
+        integrityTestWin(competitionMatchAt($stage, 1, 1), $field[0]->id);
+        app(CheckInEntrant::class)->handle($field[3]->refresh());
+
+        expect(fn () => app(StartCompetition::class)->handle($competition->refresh()))
+            ->toThrow(IllegalCompetitionStateTransitionException::class, '1 in the field but not drawn, 0 drawn but no longer in the field) — the bracket already has a result and cannot be drawn again');
+    });
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * Round 3, M-g — a second withdraw or disqualify on a stale copy
+ * ---------------------------------------------------------------------------
+ */
+
+describe('a second retirement on a stale copy (round 3, M-g)', function (): void {
+    it('disqualifies once and says so once when the desk submits twice', function (): void {
+        $this->withBrand();
+
+        [, [, , , $s4]] = competitionFieldWithRosters(4);
+
+        $firstTab = $s4->fresh();
+        $secondTab = $s4->fresh();
+
+        Event::fake([EntrantWithdrawn::class]);
+
+        app(DisqualifyEntrant::class)->handle($firstTab);
+
+        // Re-read under the lock, the second copy is already disqualified.
+        // Before the fix it still said `registered` and sent a second
+        // `EntrantWithdrawn`.
+        expect(fn () => app(DisqualifyEntrant::class)->handle($secondTab))
+            ->toThrow(CompetitionEntryException::class);
+
+        Event::assertDispatchedTimes(EntrantWithdrawn::class, 1);
+    });
+
+    it('withdraws once and says so once when the captain submits twice', function (): void {
+        $this->withBrand();
+
+        [, [, , $s3]] = competitionFieldWithRosters(4);
+
+        $firstTab = $s3->fresh();
+        $secondTab = $s3->fresh();
+
+        Event::fake([EntrantWithdrawn::class]);
+
+        app(WithdrawEntrant::class)->handle($firstTab, WithdrawalReason::CaptainWithdrew);
+
+        expect(fn () => app(WithdrawEntrant::class)->handle($secondTab, WithdrawalReason::CaptainWithdrew))
+            ->toThrow(CompetitionEntryException::class);
+
+        Event::assertDispatchedTimes(EntrantWithdrawn::class, 1);
     });
 });

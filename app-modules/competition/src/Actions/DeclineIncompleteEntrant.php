@@ -59,10 +59,7 @@ final class DeclineIncompleteEntrant
             // A roster that fell short after the draw can be in the bracket;
             // once a result stands it is forfeited out of it rather than
             // left to strand the start (fix wave A round 2, N2).
-            if ($this->competitionHasARecordedResult($entrant)) {
-                $this->forfeitOpenMatches($entrant);
-                $this->recomputeCompetition($entrant);
-            }
+            app(ForfeitRetiredEntrants::class)->handle($entrant->competition_id, $entrant->brand_id);
 
             // After the commit and only where the brand has the module on,
             // like every other roster notice (final review, part 1).

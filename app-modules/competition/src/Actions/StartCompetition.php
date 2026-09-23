@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Competition\Actions\Concerns\RefusesOnceAResultIsRecorded;
 use Konventix\Competition\Actions\Concerns\TransitionsCompetitionStatus;
 use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
@@ -59,6 +60,7 @@ use Konventix\Competition\Seeding\SignupField;
  */
 final class StartCompetition
 {
+    use RefusesOnceAResultIsRecorded;
     use TransitionsCompetitionStatus;
 
     public function __construct(
@@ -164,12 +166,21 @@ final class StartCompetition
         $gone = array_diff($drawn, $field, $settled);
 
         if ($undrawn !== [] || $gone !== []) {
+            // Once a result stands the bracket cannot be drawn again, so the
+            // refusal must not say so (fix wave A round 3, M-f). With the
+            // retired swept out of it (`ForfeitRetiredEntrants`), what is
+            // left is a check-in that moved after the draw.
+            $remedy = $this->hasRecordedResult($first)
+                ? 'the bracket already has a result and cannot be drawn again: check the entrants in or out to match the draw, or withdraw the ones no longer in the field.'
+                : 'draw the bracket again first.';
+
             throw IllegalCompetitionStateTransitionException::forPrecondition(
                 $competition->id,
                 sprintf(
-                    'the field changed after the bracket was drawn (%d in the field but not drawn, %d drawn but no longer in the field) — draw the bracket again first.',
+                    'the field changed after the bracket was drawn (%d in the field but not drawn, %d drawn but no longer in the field) — %s',
                     count($undrawn),
                     count($gone),
+                    $remedy,
                 ),
             );
         }
