@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Konventix\Competition\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Competition\Actions\Concerns\NotifiesRosterMembers;
+use Konventix\Competition\Data\EntrantNoticeData;
 use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Events\EntrantCheckedIn;
@@ -43,6 +45,8 @@ use Konventix\Competition\Models\ParticipantProfile;
  */
 final class CheckInEntrant
 {
+    use NotifiesRosterMembers;
+
     /**
      * @param  string|null  $selfServiceUserId  the captain checking their own team in; null is the desk
      */
@@ -121,6 +125,21 @@ final class CheckInEntrant
             DB::afterCommit(static function () use ($checkedIn): void {
                 event($checkedIn);
             });
+
+            // §12's "checked in" notice, to the roster. The captain who
+            // pressed the button in the self-service window already knows.
+            $this->notifyRosterAfterCommit(
+                array_values(array_filter($roster, fn (string $userId): bool => $userId !== $selfServiceUserId)),
+                $competition->brand_id,
+                'competition.checked-in',
+                new EntrantNoticeData(
+                    competitionName: $competition->name,
+                    teamName: $team->name ?? '',
+                    detail: $selfServiceUserId === null
+                        ? __('Die Turnierleitung hat euer Team eingecheckt.')
+                        : __('Euer Captain hat euer Team eingecheckt.'),
+                ),
+            );
 
             return $entrant->refresh();
         });

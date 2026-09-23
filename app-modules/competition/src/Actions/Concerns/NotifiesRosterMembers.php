@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Konventix\Competition\Actions\Concerns;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Konventix\Competition\Actions\DeclineIncompleteEntrant;
 use Konventix\Competition\Actions\FillIncompleteEntrant;
 use Konventix\Competition\Data\EntrantNoticeData;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
+use Konventix\Platform\Modules\ModuleGate;
 use Throwable;
 
 /**
@@ -39,6 +41,30 @@ use Throwable;
  */
 trait NotifiesRosterMembers
 {
+    /**
+     * The same send, deferred to the commit and skipped for a brand that has
+     * `competition` switched off (ADR-0003). The two §12 notices use it: a
+     * dispute and a check-in (design §14, "§12 reconciled", fix round). A
+     * refusal later in the caller's transaction then sends nothing, and the
+     * brand is stated because the desk runs where no brand is in context.
+     *
+     * @param  list<string>  $userIds
+     */
+    protected function notifyRosterAfterCommit(
+        array $userIds,
+        string $brandId,
+        string $templateKey,
+        EntrantNoticeData $payload,
+    ): void {
+        DB::afterCommit(function () use ($userIds, $brandId, $templateKey, $payload): void {
+            if (! app(ModuleGate::class)->isActiveForBrand('competition', $brandId)) {
+                return;
+            }
+
+            $this->notifyRoster($userIds, $brandId, $templateKey, $payload);
+        });
+    }
+
     /**
      * @param  list<string>  $userIds
      */

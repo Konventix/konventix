@@ -471,6 +471,69 @@ class CompetitionServiceProvider extends ModuleServiceProvider
             ],
         ));
 
+        // §12's two remaining notices (design §14, "§12 reconciled", fix
+        // round): the other side of a disputed match, and a roster whose team
+        // was checked in.
+        $registry->register(new MessageTemplate(
+            key: 'competition.match-disputed',
+            subjects: [
+                'de' => 'Einspruch gegen euer Ergebnis: {{ $competitionName }}',
+                'en' => 'Your result was disputed: {{ $competitionName }}',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Hallo,</p>
+                    <p>{{ $detail }}</p>
+                    <p>Turnier: <strong>{{ $competitionName }}</strong><br>
+                    Einspruch von: <strong>{{ $teamName }}</strong></p>
+                    <p>Unter „Meine Turniere" siehst du das Spiel und später die Entscheidung.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello,</p>
+                    <p>{{ $detail }}</p>
+                    <p>Tournament: <strong>{{ $competitionName }}</strong><br>
+                    Disputed by: <strong>{{ $teamName }}</strong></p>
+                    <p>The match and, later, the decision are under "My tournaments".</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: [
+                'competitionName' => 'Counter-Strike 2 — 5v5',
+                'teamName' => 'Die Kellerkinder',
+                'detail' => 'Euer Gegner hat Einspruch gegen das Ergebnis eingelegt. Die Turnierleitung entscheidet.',
+            ],
+        ));
+
+        $registry->register(new MessageTemplate(
+            key: 'competition.checked-in',
+            subjects: [
+                'de' => '{{ $teamName }} ist eingecheckt: {{ $competitionName }}',
+                'en' => '{{ $teamName }} is checked in: {{ $competitionName }}',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Hallo,</p>
+                    <p>{{ $detail }}</p>
+                    <p>Turnier: <strong>{{ $competitionName }}</strong><br>
+                    Team: <strong>{{ $teamName }}</strong></p>
+                    <p>Eure Spiele findest du unter „Meine Turniere".</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello,</p>
+                    <p>{{ $detail }}</p>
+                    <p>Tournament: <strong>{{ $competitionName }}</strong><br>
+                    Team: <strong>{{ $teamName }}</strong></p>
+                    <p>Your matches are under "My tournaments".</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: [
+                'competitionName' => 'Counter-Strike 2 — 5v5',
+                'teamName' => 'Die Kellerkinder',
+                'detail' => 'Die Turnierleitung hat euer Team eingecheckt.',
+            ],
+        ));
+
         $registry->register(new MessageTemplate(
             key: 'competition.entry-declined',
             subjects: [

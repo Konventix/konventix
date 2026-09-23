@@ -7,12 +7,16 @@ namespace Konventix\Competition\Actions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Konventix\Competition\Actions\Concerns\GuardsSideMembership;
+use Konventix\Competition\Actions\Concerns\NotifiesRosterMembers;
+use Konventix\Competition\Data\EntrantNoticeData;
 use Konventix\Competition\Data\MatchHistoryPayload;
 use Konventix\Competition\Enums\MatchHistoryKind;
 use Konventix\Competition\Events\MatchDisputed;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
 use Konventix\Competition\Models\CompetitionMatch;
+use Konventix\Competition\Models\CompetitionTeam;
 use Konventix\Competition\Models\Entrant;
+use Konventix\Competition\Models\MatchSlot;
 
 /**
  * A side says the reported result is wrong (design §8.2, §8.4).
@@ -48,6 +52,7 @@ use Konventix\Competition\Models\Entrant;
 final class DisputeMatchResult
 {
     use GuardsSideMembership;
+    use NotifiesRosterMembers;
 
     public function __construct(
         private readonly RecordMatchHistory $history,
@@ -107,7 +112,49 @@ final class DisputeMatchResult
                 event($disputed);
             });
 
+            $this->tellTheOtherSide($match, $entrant);
+
             return $match->refresh();
         });
+    }
+
+    /**
+     * §12's "a match was disputed" notice. Competition keeps no list of who
+     * is on the desk (design §14, §8.4), so it goes to the people the
+     * dispute is about: every roster member of the other side, whose claim or
+     * recorded result has just been contested. The desk hears about it from
+     * its own screen and from `KonventixCompetitionDisputeWaiting`.
+     */
+    private function tellTheOtherSide(CompetitionMatch $match, Entrant $entrant): void
+    {
+        $recipients = [];
+
+        $others = MatchSlot::withoutBrandScope()
+            ->where('competition_match_id', $match->id)
+            ->whereNotNull('entrant_id')
+            ->where('entrant_id', '!=', $entrant->id)
+            ->orderBy('position')
+            ->pluck('entrant_id');
+
+        foreach ($others as $entrantId) {
+            /** @var Entrant|null $side */
+            $side = Entrant::withoutBrandScope()->whereKey((string) $entrantId)->first();
+
+            $recipients = [...$recipients, ...($side?->memberUserIds() ?? [])];
+        }
+
+        /** @var CompetitionTeam|null $team */
+        $team = CompetitionTeam::withoutBrandScope()->whereKey($entrant->competition_team_id)->first();
+
+        $this->notifyRosterAfterCommit(
+            $recipients,
+            $match->brand_id,
+            'competition.match-disputed',
+            new EntrantNoticeData(
+                competitionName: $this->competitionOf($match)->name,
+                teamName: $team->name ?? '',
+                detail: __('Euer Gegner hat Einspruch gegen das Ergebnis eingelegt. Die Turnierleitung entscheidet.'),
+            ),
+        );
     }
 }
