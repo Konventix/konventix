@@ -127,7 +127,7 @@ function orderMailsRecipient(string $brandId, ?string $locale = null): User
         email: $user->email,
         displayName: $user->name,
         username: $user->username,
-        locale: $locale ?? $user->locale,
+        locale: $locale ?? $user->locale ?? 'en',
         registeredAt: now()->toIso8601String(),
     ));
 

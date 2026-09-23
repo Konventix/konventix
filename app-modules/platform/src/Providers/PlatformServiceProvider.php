@@ -46,6 +46,8 @@ use Konventix\Platform\Legal\PublicLegalTexts;
 use Konventix\Platform\Listeners\GuardNonProductionMail;
 use Konventix\Platform\Listeners\ProjectHubAccess;
 use Konventix\Platform\Listeners\ProjectHubLayout;
+use Konventix\Platform\Locales\LocaleResolver;
+use Konventix\Platform\Locales\Locales;
 use Konventix\Platform\Metrics\PlatformMetrics;
 use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Modules\ModuleServiceProvider;
@@ -230,6 +232,12 @@ class PlatformServiceProvider extends ModuleServiceProvider
         // Config-derived and request-free: which kind of instance this is
         // does not change between two requests a worker serves.
         $this->app->singleton(DeploymentEnvironment::class);
+
+        // The locale vocabulary reads config, the resolver reads models it is
+        // handed and the scoped contexts at call time (ADR-0068 §4) — neither
+        // captures anything from a request.
+        $this->app->singleton(Locales::class);
+        $this->app->singleton(LocaleResolver::class);
 
         // Scoped, not singleton: DiskResolver memoizes built filesystems —
         // including a brand's own bucket (ADR-0043 point 6) — and those must

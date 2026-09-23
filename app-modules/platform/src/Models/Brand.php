@@ -26,6 +26,7 @@ use Konventix\Platform\Jobs\PurgeBrandMedia;
  * @property string $name
  * @property string $slug
  * @property string $currency
+ * @property string|null $locale
  * @property array<string, string> $theme_tokens
  * @property array<string, string>|null $theme_tokens_dark
  * @property string|null $logo_media_id
@@ -45,6 +46,7 @@ class Brand extends Model
         'name',
         'slug',
         'currency',
+        'locale',
         'theme_tokens',
         'theme_tokens_dark',
         'logo_media_id',

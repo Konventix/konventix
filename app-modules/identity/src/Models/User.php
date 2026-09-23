@@ -54,7 +54,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property array<string, string>|null $social_links
  * @property ProfileVisibility $profile_visibility
  * @property bool $listed_in_attendees
- * @property string $locale
+ * @property string|null $locale
  * @property string|null $timezone
  * @property AccountState $state
  * @property string|null $merged_into_user_id

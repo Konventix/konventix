@@ -299,7 +299,7 @@ final class DemoRushSeeder
                 email: $user->email,
                 displayName: $user->name,
                 username: $user->username,
-                locale: $user->locale,
+                locale: $user->locale ?? (string) config('app.locale'),
                 registeredAt: $user->created_at?->toIso8601String() ?? now()->toIso8601String(),
             ));
 

@@ -122,7 +122,7 @@ class ProfileController
             socialLinks: $request->user()->social_links ?? [],
             visibility: $request->user()->profile_visibility->value,
             listedInAttendees: $request->user()->listed_in_attendees,
-            locale: $request->user()->locale,
+            locale: $request->user()->locale ?? (string) config('app.locale'),
             updatedAt: now()->toIso8601String(),
         ));
 

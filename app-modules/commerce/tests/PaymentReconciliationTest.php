@@ -353,7 +353,7 @@ function reconciliationTestOperator(string $brandId): User
         email: $user->email,
         displayName: $user->name,
         username: $user->username,
-        locale: $user->locale,
+        locale: $user->locale ?? 'en',
         registeredAt: now()->toIso8601String(),
     ));
 

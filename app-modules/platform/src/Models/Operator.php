@@ -41,6 +41,7 @@ use Konventix\Platform\Database\Factories\OperatorFactory;
  * @property bool $signups_open
  * @property string $date_format
  * @property string $time_format
+ * @property string $locale
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -63,6 +64,7 @@ class Operator extends Model
         'signups_open',
         'date_format',
         'time_format',
+        'locale',
     ];
 
     /**

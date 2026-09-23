@@ -123,6 +123,16 @@ return [
 
     'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
 
+    /*
+    | The locales a person, a brand or the operator may pick (ADR-0068 §8),
+    | and the variants that overlay a base catalog: `de_formal` reads its own
+    | file first and `de` for everything it does not say.
+    */
+    'locales' => ['en', 'de'],
+    'locale_variants' => [
+        // 'de_formal' => 'de',
+    ],
+
     'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),
 
     /*

@@ -37,6 +37,7 @@ class OperatorFactory extends Factory
             'small_business_scheme' => false,
             'date_format' => DateFormat::DayMonthYear->value,
             'time_format' => TimeFormat::TwentyFourHour->value,
+            'locale' => 'en',
         ];
     }
 

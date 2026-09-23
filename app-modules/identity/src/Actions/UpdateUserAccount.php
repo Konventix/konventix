@@ -45,7 +45,7 @@ final class UpdateUserAccount
                 socialLinks: $user->social_links ?? [],
                 visibility: $user->profile_visibility->value,
                 listedInAttendees: $user->listed_in_attendees,
-                locale: $user->locale,
+                locale: $user->locale ?? (string) config('app.locale'),
                 updatedAt: now()->toIso8601String(),
             ));
 
