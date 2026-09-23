@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Competition\Listeners;
 
+use Carbon\CarbonImmutable;
 use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Admission\Events\AdmissionHolderAssigned;
 use Konventix\Admission\Events\AdmissionHolderUnassigned;
@@ -147,7 +148,9 @@ final class ProjectAdmissionPresence
         $row->forceFill([
             'brand_id' => $event->brandId,
             'event_id' => $event->eventId,
-            'checked_in_at' => $row->checked_in_at ?? $event->scannedAt,
+            // Anchored to UTC before the datetime cast formats it: the cast
+            // writes the digits in whatever zone the instant carries.
+            'checked_in_at' => $row->checked_in_at ?? CarbonImmutable::parse($event->scannedAt)->utc(),
         ])->save();
     }
 

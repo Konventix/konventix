@@ -292,6 +292,13 @@ it('renders the create and edit pages with the Data object and the arrows out of
             ->has('events', 1)
             ->has('disciplines', 1));
 
+    // A request boundary. Inertia keeps the server-rendered body in a
+    // `scoped()` `SsrState` that answers once per request, and a test's
+    // requests share one container: without this the edit page would be
+    // served the create page's SSR body wherever an SSR process is up (CI),
+    // and pass wherever none is (locally) — .ai/rules/tests.md.
+    $this->app->forgetScopedInstances();
+
     $this->actingAs($admin)
         ->get('http://admin.tournaments.test/admin/competitions/'.$competition->getKey().'/edit')
         ->assertOk()

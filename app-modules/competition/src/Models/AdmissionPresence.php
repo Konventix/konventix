@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Konventix\Competition\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Carbon;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
 /**
@@ -31,9 +31,9 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $brand_id
  * @property string $event_id
  * @property string|null $holder_user_id
- * @property Carbon|null $checked_in_at
- * @property Carbon|null $created_at
- * @property Carbon|null $updated_at
+ * @property CarbonImmutable|null $checked_in_at
+ * @property CarbonImmutable|null $created_at
+ * @property CarbonImmutable|null $updated_at
  */
 class AdmissionPresence extends Model
 {
@@ -97,5 +97,14 @@ class AdmissionPresence extends Model
         $seen = self::seenAtTheDoor($brandId, $eventId, $userIds);
 
         return array_values(array_filter($userIds, fn (string $userId): bool => ! in_array($userId, $seen, true)));
+    }
+
+    /**
+     * `checked_in_at` is an instant the check-in list and the tests compare;
+     * without the cast it came back as the driver's string.
+     */
+    protected function casts(): array
+    {
+        return ['checked_in_at' => 'datetime'];
     }
 }

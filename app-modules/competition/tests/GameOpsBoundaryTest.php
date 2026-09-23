@@ -129,7 +129,9 @@ it('keeps every Competition contract event final and readonly', function (): voi
             continue;
         }
 
-        expect((string) file_get_contents($file->getPathname()))
-            ->toContain('final readonly class', "{$file->getFilename()} must declare a final readonly class.");
+        // `toContain()` is variadic — a second string is a second needle,
+        // not a failure message — so the message rides on `toBeTrue()`.
+        expect(str_contains((string) file_get_contents($file->getPathname()), 'final readonly class'))
+            ->toBeTrue("{$file->getFilename()} must declare a final readonly class.");
     }
 });
