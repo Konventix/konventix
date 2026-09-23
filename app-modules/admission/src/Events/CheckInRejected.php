@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Konventix\Admission\Events;
 
 /**
- * A scan was refused at a door. Emitted by
- * `Konventix\Admission\Actions\RecordScan`.
+ * A scan was refused at a door. Emitted by the shared check-in core,
+ * `Konventix\Admission\Actions\RecordCheckIn`, which the door reaches
+ * through `RecordScan`.
  *
  * A rejection is a first-class event, not a swallowed error: the Admission
  * backlog asks for a full accepted/rejected audit trail, and door staff

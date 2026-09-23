@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Konventix\Admission\Events;
 
 /**
- * An admission was accepted at a door. Emitted by
- * `Konventix\Admission\Actions\RecordScan`.
+ * An admission was accepted at a door. Emitted by the shared check-in core,
+ * `Konventix\Admission\Actions\RecordCheckIn`, which the door reaches
+ * through `RecordScan`.
  *
  * **`registrationId` is the reason this event's shape matters beyond
  * Admission.** ADR-0037 makes a checked-in admission block a refund, and

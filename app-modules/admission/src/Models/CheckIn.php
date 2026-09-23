@@ -25,16 +25,22 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * (ADR-0033) buffers: a scan can reach the server minutes or hours after it
  * happened, and the audit trail has to say when the person actually walked in.
  *
+ * `actor_user_id` is the admin who checked the holder in from the console, null
+ * for a door scan; `conditions_checked` is the `[{key, outcome}]` list answered
+ * on an accepted check-in (attendee-list design §3.1, ADR-0066 §6.4).
+ *
  * @property string $id
  * @property string $brand_id
  * @property string|null $admission_id
  * @property string|null $registration_id
  * @property string|null $checkpoint_id
  * @property string|null $device_id
+ * @property string|null $actor_user_id
  * @property string|null $event_day_id
  * @property string $direction
  * @property CheckInResult $result
  * @property string|null $reason_code
+ * @property list<array{key: string, outcome: string}>|null $conditions_checked
  * @property Carbon $scanned_at
  * @property Carbon|null $synced_at
  * @property string $client_scan_id
@@ -60,6 +66,8 @@ class CheckIn extends Model
         'scanned_at',
         'synced_at',
         'client_scan_id',
+        'actor_user_id',
+        'conditions_checked',
     ];
 
     /**
@@ -77,6 +85,7 @@ class CheckIn extends Model
     {
         return [
             'result' => CheckInResult::class,
+            'conditions_checked' => 'array',
             'scanned_at' => 'datetime',
             'synced_at' => 'datetime',
         ];
