@@ -204,7 +204,11 @@ it('shows no competition blocks when agenda is off, yet has them ready when it i
 
     $this->app->forgetScopedInstances();
 
-    $this->get("/events/{$event->slug}/programm")
+    // The brand host by name, not a relative path: `prepareUrlForRequest()`
+    // runs a relative path through `url()`, whose root is the *previous*
+    // request's — the admin host after the PUT above — and on the admin host
+    // no brand resolves, so `ensure-module:agenda` answers 404 (pipeline 1987).
+    $this->get("http://localhost/events/{$event->slug}/programm")
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('agenda/Programme')
