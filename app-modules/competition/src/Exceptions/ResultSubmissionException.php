@@ -96,6 +96,23 @@ final class ResultSubmissionException extends RuntimeException
         );
     }
 
+    /**
+     * The upload door once the competition is `finished` or `cancelled`
+     * (final review, part 2, M3): no result can be reported or submitted any
+     * more, so an image could only ever be an orphan on the disk.
+     */
+    public static function takesNoMoreProofs(string $competitionId, string $status): self
+    {
+        return self::refusal(
+            sprintf(
+                'Competition [%s] is `%s`: it takes no more results, so it takes no proof images either.',
+                $competitionId,
+                $status,
+            ),
+            __('Dieses Turnier ist vorbei und nimmt keine Beweisbilder mehr an.'),
+        );
+    }
+
     public static function notASide(string $matchId, string $entrantId): self
     {
         return self::refusal(

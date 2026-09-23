@@ -2,7 +2,11 @@
 
 declare(strict_types=1);
 
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Konventix\Competition\Enums\CompetitionStatus;
+use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Enums\ProofPolicy;
 use Konventix\Competition\Enums\ResultSubmissionMode;
 use Konventix\Competition\Enums\TeamRole;
@@ -78,7 +82,9 @@ it('answers every participant write by id with a 404 while the event is a draft,
     $this->actingAs($reporter)->post($base.'/interest', ['note' => null])->assertNotFound();
     $this->actingAs($captain)->post($base.'/entries', ['teamId' => $a->competition_team_id])->assertNotFound();
     $this->actingAs($captain)->post($base.'/score-entries', ['value' => null])->assertNotFound();
-    $this->actingAs($captain)->withHeader('Accept', 'application/json')->post($base.'/proofs', ['entrant_id' => $a->id])->assertNotFound();
+    // `postJson()`, not a lasting `withHeader()`: the redirects below must
+    // stay redirects with session errors.
+    $this->actingAs($captain)->postJson($base.'/proofs', ['entrant_id' => $a->id])->assertNotFound();
     $this->actingAs($member)->delete($entry)->assertNotFound();
     $this->actingAs($member)->post($entry.'/check-in')->assertNotFound();
 
@@ -98,11 +104,70 @@ it('answers every participant write by id with a 404 while the event is a draft,
     // A value is required: the form's own validation.
     $this->actingAs($captain)->post($base.'/score-entries', ['value' => null])->assertSessionHasErrors('value');
     // No file: validation again, a 422 rather than a 404.
-    $this->actingAs($captain)->withHeader('Accept', 'application/json')->post($base.'/proofs', ['entrant_id' => $a->id])->assertUnprocessable();
+    $this->actingAs($captain)->postJson($base.'/proofs', ['entrant_id' => $a->id])->assertUnprocessable();
     // A member, not the captain: §5.5's 403.
     $this->actingAs($member)->delete($entry)->assertForbidden();
     // No self-service window: the Action's refusal, on the entry.
     $this->actingAs($member)->post($entry.'/check-in')->assertSessionHasErrors('entrant');
 
     expect(MatchResultReport::query()->where('competition_match_id', $match->id)->count())->toBe(1);
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * Item 4, part 2, M3: the proof upload refuses what could never carry a proof
+ * ---------------------------------------------------------------------------
+ */
+
+it('refuses a proof for a finished or cancelled competition and from a team that no longer plays, before a byte is stored', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+
+    Storage::fake('media');
+
+    [$competition, [$a]] = competitionFieldWithRosters(1, [
+        'proof_policy' => ProofPolicy::Optional,
+        'event_id' => competitionPublicEvent($brand->id),
+    ]);
+    $player = writeGuardsTestMember($a);
+
+    $upload = fn () => $this->actingAs($player)
+        ->withHeader('Accept', 'application/json')
+        ->post('/tournaments/'.$competition->id.'/proofs', [
+            'entrant_id' => $a->id,
+            'file' => UploadedFile::fake()->image('scoreboard.png'),
+        ]);
+
+    foreach ([CompetitionStatus::Finished, CompetitionStatus::Cancelled] as $over) {
+        $competition->forceFill(['status' => $over])->save();
+
+        $upload()->assertUnprocessable()
+            ->assertJsonValidationErrors(['file' => 'Dieses Turnier ist vorbei und nimmt keine Beweisbilder mehr an.']);
+    }
+
+    $competition->forceFill(['status' => CompetitionStatus::SignupClosed])->save();
+
+    foreach ([EntrantState::Withdrawn, EntrantState::Disqualified] as $gone) {
+        $a->forceFill(['state' => $gone])->save();
+
+        $upload()->assertUnprocessable()
+            ->assertJsonValidationErrors(['file' => 'Euer Team ist nicht mehr im Turnier und kann keine Ergebnisse mehr einreichen.']);
+    }
+
+    // A draft competition is not there at all (the item 3 rule).
+    $a->forceFill(['state' => EntrantState::Registered])->save();
+    $competition->forceFill(['status' => CompetitionStatus::Draft])->save();
+
+    $upload()->assertNotFound();
+
+    expect(Storage::disk('media')->allFiles())->toBe([]);
+
+    // The control: the same person, the same file, the competition back at
+    // `SignupClosed` and the team playing — stored. Six requests above and
+    // this one stay inside the budget of ten a minute.
+    $competition->forceFill(['status' => CompetitionStatus::SignupClosed])->save();
+
+    $upload()->assertCreated()->assertJsonStructure(['proofMediaId']);
+
+    expect(Storage::disk('media')->allFiles())->not->toBe([]);
 });

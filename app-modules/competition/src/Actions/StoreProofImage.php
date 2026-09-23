@@ -6,6 +6,7 @@ namespace Konventix\Competition\Actions;
 
 use Illuminate\Http\UploadedFile;
 use Konventix\Competition\Actions\Concerns\GuardsSideMembership;
+use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\Entrant;
@@ -68,12 +69,24 @@ final class StoreProofImage
             throw ResultSubmissionException::takesNoProofs($competition->id);
         }
 
+        // Over, or a team that no longer plays: nothing it uploads could be
+        // attached to anything, and each call stores up to 8 MB and cuts
+        // variants (final review, part 2, M3). A draft competition, or one of
+        // a draft event, never reaches here: the controller 404s it.
+        if (in_array($competition->status, [CompetitionStatus::Finished, CompetitionStatus::Cancelled], true)) {
+            throw ResultSubmissionException::takesNoMoreProofs($competition->id, $competition->status->value);
+        }
+
         if ($entrant->competition_id !== $competition->id || $entrant->brand_id !== $competition->brand_id) {
             throw new RuntimeException(sprintf(
                 'Entrant [%s] does not belong to competition [%s].',
                 $entrant->id,
                 $competition->id,
             ));
+        }
+
+        if (! $entrant->isActive()) {
+            throw ResultSubmissionException::noLongerScores($entrant->id, $entrant->state->value);
         }
 
         $this->guardIsOnTheRoster($entrant, $uploadedByUserId);
