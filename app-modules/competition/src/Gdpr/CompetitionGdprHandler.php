@@ -7,6 +7,7 @@ namespace Konventix\Competition\Gdpr;
 use Konventix\Competition\Models\AdmissionPresence;
 use Konventix\Competition\Models\CompetitionInterest;
 use Konventix\Competition\Models\CompetitionTeamMember;
+use Konventix\Competition\Models\EligibleRegistration;
 use Konventix\Competition\Models\LinkedIdentity;
 use Konventix\Competition\Models\MatchHistoryEntry;
 use Konventix\Competition\Models\MatchResultReport;
@@ -17,13 +18,17 @@ use Konventix\Compliance\Gdpr\GdprHandler;
 use Konventix\Compliance\Gdpr\SubjectRef;
 
 /**
- * Competition's contribution to GDPR export and deletion.
+ * Competition's contribution to GDPR export and deletion (design §13).
  *
- * The export shows which teams a person played in, in what role, and which
- * competitions they put their name down for, and which provider accounts
- * this module knows they have linked.
+ * The export shows everything this module holds that a person did or said:
+ * which teams they played in and in what role, which competitions they put
+ * their name down for (with their note), which provider accounts this module
+ * knows they have linked, the result reports they filed for their side, the
+ * score entries they submitted, verified or rejected, and every row of a
+ * match's history that names them as the actor. Proofs are exported as the
+ * media ULID; the image is Platform's and its handler's (ADR-0035).
  *
- * Five things **are** scrubbed on deletion. Two of them hold something other
+ * Six things **are** scrubbed on deletion. Two of them hold something other
  * than ULIDs: the `ParticipantProfile` row, which carries a display name and
  * a username, and the interested-list rows, whose free-text note the person
  * wrote themselves and which are public on the competition page.
@@ -55,6 +60,21 @@ use Konventix\Compliance\Gdpr\SubjectRef;
  * accounts the person has linked, and it is exported and deleted outright.
  * It is a projection of Identity's data that no finished competition depends
  * on, so nothing needs to survive the person.
+ *
+ * The sixth is the **eligibility read model**
+ * (`competition_eligible_registrations.user_id`, D-CMP-05), which ties the
+ * person to a registration at an event. It is nulled and the row stays, as
+ * Resources does for its own registration projection. Registration's handler
+ * deals with the registration itself.
+ *
+ * What erasure does **not** reach is free text. A dispute reason, a
+ * resolution note, a correction note or a score entry's note keeps its words
+ * once its author is nulled. The text is competition history and is no
+ * longer attributable, except where it names its own author ("Tom here, we
+ * won 2:0"). That residual is recorded in the design's §14.
+ *
+ * `competition_event_summaries` (an event's slug, name, state and zone) and
+ * the bracket tables hold no person at all, and are not touched.
  *
  * Nothing else is. Results, standings and team membership are a public record
  * of a competition that took place — removing a player from a finished
@@ -107,6 +127,53 @@ final class CompetitionGdprHandler implements GdprHandler
                     'linked_at' => $identity->linked_at->toIso8601String(),
                 ])
                 ->all(),
+            'result_reports' => MatchResultReport::withoutBrandScope()
+                ->where('reported_by_user_id', $subjectId)
+                ->orderBy('created_at')
+                ->get()
+                ->map(fn (MatchResultReport $report): array => [
+                    'competition_match_id' => $report->competition_match_id,
+                    'entrant_id' => $report->entrant_id,
+                    'scores' => $report->normalisedScores(),
+                    'proof_media_id' => $report->proof_media_id,
+                    'reported_at' => $report->created_at?->toIso8601String(),
+                ])
+                ->all(),
+            'score_entries' => ScoreEntry::withoutBrandScope()
+                ->where(fn ($query) => $query
+                    ->where('submitted_by_user_id', $subjectId)
+                    ->orWhere('verified_by_user_id', $subjectId)
+                    ->orWhere('rejected_by_user_id', $subjectId))
+                ->orderBy('created_at')
+                ->get()
+                ->map(fn (ScoreEntry $entry): array => [
+                    'stage_id' => $entry->stage_id,
+                    'entrant_id' => $entry->entrant_id,
+                    'heat' => $entry->heat,
+                    'value' => (float) $entry->value,
+                    'note' => $entry->note,
+                    'proof_media_id' => $entry->proof_media_id,
+                    // Which of the three the person was: an organizer can
+                    // be the one who submitted, verified and rejected.
+                    'submitted' => $entry->submitted_by_user_id === $subjectId,
+                    'verified' => $entry->verified_by_user_id === $subjectId,
+                    'rejected' => $entry->rejected_by_user_id === $subjectId,
+                    'rejection_note' => $entry->rejected_by_user_id === $subjectId ? $entry->rejection_note : null,
+                    'submitted_at' => $entry->created_at?->toIso8601String(),
+                ])
+                ->all(),
+            'match_history' => MatchHistoryEntry::withoutBrandScope()
+                ->where('actor_user_id', $subjectId)
+                ->orderBy('created_at')
+                ->orderBy('id')
+                ->get()
+                ->map(fn (MatchHistoryEntry $entry): array => [
+                    'competition_match_id' => $entry->competition_match_id,
+                    'kind' => $entry->kind->value,
+                    'payload' => $entry->payload,
+                    'at' => $entry->created_at?->toIso8601String(),
+                ])
+                ->all(),
         ];
     }
 
@@ -129,6 +196,14 @@ final class CompetitionGdprHandler implements GdprHandler
         LinkedIdentity::query()
             ->where('user_id', $subject->userId)
             ->delete();
+
+        // Who may enter (D-CMP-05): a projection of Registration's data, whose
+        // own handler tombstones the registration. The row stays so the
+        // registration keeps its place; the person leaves it, the shape
+        // Resources' `resource_claims.registrant_user_id` has.
+        EligibleRegistration::withoutBrandScope()
+            ->where('user_id', $subject->userId)
+            ->update(['user_id' => null]);
 
         // The door read model follows Admission's own tombstone: the row
         // stays — the scan is the admission's — the person leaves it. The
