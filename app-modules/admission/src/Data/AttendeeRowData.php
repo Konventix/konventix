@@ -71,8 +71,39 @@ final class AttendeeRowData extends Data
     }
 
     /**
+     * The console's actions on one ticket, stated once for the attendee list
+     * and the ticket page so the two cannot drift (Task 5 review M1):
+     *
+     * - `canCheckIn` is `admits()`;
+     * - `canCheckOut` is "in on the current day";
+     * - `owedDoorChecks` is what `OwedDoorChecks` found, but only for a
+     *   ticket that can check in, and never outside every event day — the
+     *   core refuses any check-in then (`outside_event_day`), so the dialog
+     *   asks nothing and shows the core's sentence.
+     *
+     * @param  list<array{key: string, label: string, documentHint: string|null}>  $owed
+     * @return array{canCheckIn: bool, canCheckOut: bool, owedDoorChecks: list<DoorCheckData>}
+     */
+    public static function actions(AdmissionState $state, ?string $lastDirection, bool $outsideEveryDay, array $owed): array
+    {
+        $canCheckIn = self::admits($state, $lastDirection);
+
+        return [
+            'canCheckIn' => $canCheckIn,
+            'canCheckOut' => $lastDirection === 'in',
+            'owedDoorChecks' => $canCheckIn && ! $outsideEveryDay
+                ? array_map(
+                    static fn (array $check): DoorCheckData => new DoorCheckData($check['key'], $check['label'], $check['documentHint']),
+                    $owed,
+                )
+                : [],
+        ];
+    }
+
+    /**
      * A row of `Queries\AttendeeListQuery`, whose joins put the people, the
      * summary and the latest check-in on the model as extra attributes.
+     * `$lastKnown` is `CheckInDay::$outsideEveryDay`.
      *
      * @param  list<array{key: string, label: string, documentHint: string|null}>  $owedDoorChecks
      */
@@ -82,7 +113,7 @@ final class AttendeeRowData extends Data
         $scannedAt = self::nullableString($admission->getAttribute('last_scanned_at'));
         $holderId = $admission->holder_user_id;
         $registrationId = $admission->registration_id;
-        $canCheckIn = self::admits($admission->state, $direction);
+        $actions = self::actions($admission->state, $direction, $lastKnown, $owedDoorChecks);
 
         return new self(
             admissionId: $admission->id,
@@ -109,14 +140,9 @@ final class AttendeeRowData extends Data
                     self::nullableString($admission->getAttribute('last_checkpoint_kind')),
                     $lastKnown,
                 ),
-            canCheckIn: $canCheckIn,
-            canCheckOut: $direction === 'in',
-            owedDoorChecks: $canCheckIn
-                ? array_map(
-                    static fn (array $check): DoorCheckData => new DoorCheckData($check['key'], $check['label'], $check['documentHint']),
-                    $owedDoorChecks,
-                )
-                : [],
+            canCheckIn: $actions['canCheckIn'],
+            canCheckOut: $actions['canCheckOut'],
+            owedDoorChecks: $actions['owedDoorChecks'],
         );
     }
 

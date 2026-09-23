@@ -8,8 +8,10 @@ use Inertia\Testing\AssertableInertia as Assert;
 use Konventix\Admission\Actions\CheckInFromConsole;
 use Konventix\Admission\Enums\CheckInRejectionReason;
 use Konventix\Admission\Enums\CheckInResult;
+use Konventix\Admission\Enums\ReentryPolicy;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\CheckIn;
+use Konventix\Admission\Models\EntranceEventProfile;
 use Konventix\Admission\Models\EventPresence;
 use Konventix\Platform\Models\Operator;
 
@@ -264,4 +266,74 @@ it('shows the ticket as in, from the console, on the list after a check-in', fun
             ->where('attendees.data.0.checkIn.source', 'console')
             ->where('attendees.data.0.canCheckIn', false)
             ->where('attendees.data.0.canCheckOut', true));
+});
+
+it('answers re-entry under once_only with the core\'s sentence, after a check-in and a check-out', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    $dayId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId);
+    EntranceEventProfile::factory()
+        ->policy(ReentryPolicy::OnceOnly)
+        ->withDays([['day_id' => $dayId, 'date' => '2026-10-16', 'sequence' => 1, 'label' => 'Freitag']])
+        ->create(['event_id' => $eventId]);
+    $admission = Admission::factory()->assigned(ticketPerson()->id)->create(['event_id' => $eventId]);
+    $actorId = (string) Str::ulid();
+
+    // 2026-10-16 18:00 UTC is the event's one day: in, then out.
+    app(CheckInFromConsole::class)->handle($admission, $eventId, $actorId, 'in');
+    app(CheckInFromConsole::class)->handle($admission, $eventId, $actorId, 'out');
+
+    [$operator, $admin] = attendeeConsoleOperator($brand);
+
+    // Derivation: the ticket is out, so the console's own "already in" does
+    // not apply; the core sees one accepted `in` already and, under
+    // once_only, refuses a second entry as reentry_not_permitted.
+    $this->actingAs($admin)
+        ->post(attendeeTicketUrl($operator, $admission->id, 'check-in'))
+        ->assertRedirect()
+        ->assertSessionHasErrors(['check_in' => CheckInRejectionReason::ReentryNotPermitted->consoleSentence()]);
+
+    $rejected = CheckIn::withoutBrandScope()->where('admission_id', $admission->id)->where('result', CheckInResult::Rejected)->sole();
+
+    // Derivation: the accepted in and out, plus the one rejected row.
+    expect($rejected->reason_code)->toBe(CheckInRejectionReason::ReentryNotPermitted->value)
+        ->and(consoleRoutesRows($admission))->toBe(3);
+});
+
+it('answers outside every event day with the core\'s sentence, never "already in" or "not in"', function (): void {
+    $brand = $this->withBrand();
+    $event = attendeeFixture($brand);
+    $wasIn = Admission::factory()->assigned(ticketPerson()->id)->create(['event_id' => $event['eventId']]);
+    $neverIn = Admission::factory()->assigned(ticketPerson()->id)->create(['event_id' => $event['eventId']]);
+
+    // In on the event's one day, 2026-10-16.
+    app(CheckInFromConsole::class)->handle($wasIn, $event['eventId'], (string) Str::ulid(), 'in');
+
+    [$operator, $admin] = attendeeConsoleOperator($brand);
+
+    // 2026-10-18 18:00 UTC: the calendar has no day for it.
+    $this->travelTo(CarbonImmutable::parse('2026-10-18 18:00:00', 'UTC'));
+    $sentence = CheckInRejectionReason::OutsideEventDay->consoleSentence();
+
+    // Derivation: read across every day, $wasIn is in (a check-in would have
+    // been "already in") and $neverIn is not (a check-out would have been
+    // "not in"). Outside every day both pre-checks are skipped, and the core
+    // rejects each as outside_event_day, with that sentence.
+    $this->actingAs($admin)
+        ->post(attendeeTicketUrl($operator, $wasIn->id, 'check-in'))
+        ->assertSessionHasErrors(['check_in' => $sentence]);
+
+    $this->app->forgetScopedInstances();
+
+    $this->actingAs($admin)
+        ->post(attendeeTicketUrl($operator, $neverIn->id, 'check-out'))
+        ->assertSessionHasErrors(['check_in' => $sentence]);
+
+    // Derivation: $wasIn has its accepted in plus one rejected row; $neverIn
+    // has the one rejected row.
+    expect(consoleRoutesRows($wasIn))->toBe(2)
+        ->and(consoleRoutesRows($neverIn))->toBe(1)
+        ->and(CheckIn::withoutBrandScope()->where('admission_id', $neverIn->id)->sole()->reason_code)
+        ->toBe(CheckInRejectionReason::OutsideEventDay->value);
 });

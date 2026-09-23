@@ -8,7 +8,6 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Konventix\Admission\Data\AttendeeRowData;
 use Konventix\Admission\Data\CheckInHistoryRowData;
-use Konventix\Admission\Data\DoorCheckData;
 use Konventix\Admission\Data\TicketDetailData;
 use Konventix\Admission\Data\TicketDoorCheckData;
 use Konventix\Admission\Enums\CheckInRejectionReason;
@@ -82,9 +81,11 @@ final class TicketDetailQuery
             ->where('event_id', $admission->event_id)
             ->first();
 
-        $dayId = LatestAcceptedCheckIn::dayFor($brandId, $admission->event_id, $now);
-        $direction = LatestAcceptedCheckIn::direction($brandId, $admission->id, $dayId);
-        $canCheckIn = AttendeeRowData::admits($admission->state, $direction);
+        $day = LatestAcceptedCheckIn::day($brandId, $admission->event_id, $now);
+        $direction = LatestAcceptedCheckIn::direction($brandId, $admission->id, $day->dayId);
+        // The list's own rule (`AttendeeRowData::actions()`), so the page and
+        // the list cannot disagree about what the console offers.
+        $actions = AttendeeRowData::actions($admission->state, $direction, $day->outsideEveryDay, OwedDoorChecks::for($admission, $day->dayId));
 
         $holder = $admission->holder_user_id === null ? null : $people->get($admission->holder_user_id);
         $buyer = $admission->buyer_user_id === null ? null : $people->get($admission->buyer_user_id);
@@ -113,14 +114,9 @@ final class TicketDetailQuery
             doorChecks: $this->doorChecks($admission, $rows),
             history: array_values($rows->map(fn (CheckIn $row): CheckInHistoryRowData => $this->historyRow($row, $checkpoints, $devices, $people))->all()),
             badgeUrl: $canPrintBadge ? route('admin.admissions.badge', ['admission' => $admission->id], absolute: false) : null,
-            canCheckIn: $canCheckIn,
-            canCheckOut: $direction === 'in',
-            owedDoorChecks: $canCheckIn
-                ? array_map(
-                    static fn (array $check): DoorCheckData => new DoorCheckData($check['key'], $check['label'], $check['documentHint']),
-                    OwedDoorChecks::for($admission, $dayId),
-                )
-                : [],
+            canCheckIn: $actions['canCheckIn'],
+            canCheckOut: $actions['canCheckOut'],
+            owedDoorChecks: $actions['owedDoorChecks'],
         );
     }
 
