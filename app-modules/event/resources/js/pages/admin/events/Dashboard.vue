@@ -6,11 +6,13 @@ import {
     MessagesSquare,
     Pencil,
     RefreshCw,
+    Users,
 } from '@lucide/vue';
 import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { edit as editAgenda } from '@/routes/admin/events/agenda';
+import { index as attendeesIndex } from '@/routes/admin/events/attendees';
 import { edit as editHubLayout } from '@/routes/admin/events/hub';
 import { show as showShoutbox } from '@/routes/admin/events/shoutbox';
 
@@ -205,6 +207,15 @@ function refresh(): void {
                     <Link :href="showShoutbox(props.event.id).url">
                         <MessagesSquare class="size-4" />
                         Shoutbox
+                    </Link>
+                </Button>
+                <!-- Admission's attendee list (#329). No module flag:
+                     Admission is Core and cannot be switched off for a
+                     brand, so the page always exists. -->
+                <Button as-child variant="secondary" size="sm">
+                    <Link :href="attendeesIndex(props.event.id).url">
+                        <Users class="size-4" />
+                        Attendees
                     </Link>
                 </Button>
                 <Button

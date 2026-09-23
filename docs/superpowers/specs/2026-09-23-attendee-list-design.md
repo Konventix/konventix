@@ -115,6 +115,7 @@ the registration's details as Admission knows them (type, status, registration i
 
 - Capability `CheckInAttendees` in Admission's Permission enum; `permissions:sync` picks it up.
 - Default role **Einlass** grants only `CheckInAttendees`; the event-administration default role also grants it.
+  *Deferred 2026-09-23: the Einlass role part of D-ATT-06 moves to #334 (operator-scope console roles); 0.9.1 ships the capability only, held by Operator Admin.*
 - Every route: capability, then operator scoping (the event's brand belongs to the admin host's operator — the
   `ScopesToOperator` pattern from Competition), 404 otherwise; the module gate as the admission console already does.
 - Rate limit on the two write routes (a named limiter, as competition's participant writes).

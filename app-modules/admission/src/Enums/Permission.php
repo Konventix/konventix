@@ -32,4 +32,12 @@ enum Permission: string
     // Keeping them apart is why door staff can hold PrintBadge without also
     // being able to redesign the event's badges (D-ADM-05).
     case ManageBadgeTemplates = 'admission.manage-badge-templates';
+    // The console desk (attendee-list design §5, D-ATT-06, #329): the
+    // attendee list plus checking a ticket in or out by hand. Apart from
+    // ScanCheckIn because the door never sees a name (ADR-0033) and this
+    // does. No default role grants it yet: a console role has to live on
+    // the operator's scope (ADR-0029), which ADR-0045 does not allow a
+    // module to declare — #334. Operator Admin holds it through its full
+    // grant.
+    case CheckInAttendees = 'admission.check-in-attendees';
 }

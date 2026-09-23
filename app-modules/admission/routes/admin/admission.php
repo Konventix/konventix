@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Konventix\Admission\Http\Controllers\Admin\AdmissionStatsController;
+use Konventix\Admission\Http\Controllers\Admin\AttendeeListController;
 use Konventix\Admission\Http\Controllers\BadgeController;
 
 Route::get('/events/{event}/admission-stats', AdmissionStatsController::class)
@@ -18,3 +19,8 @@ Route::get('/events/{event}/admission-stats', AdmissionStatsController::class)
 
 Route::get('/admissions/{admission}/badge', [BadgeController::class, 'show'])
     ->name('admin.admissions.badge');
+
+// The attendee list (#329, attendee-list design §4.1): gated by
+// `admission.check-in-attendees`, then scoped to the host's operator.
+Route::get('/events/{event}/attendees', [AttendeeListController::class, 'index'])
+    ->name('admin.events.attendees.index');

@@ -6,18 +6,22 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Konventix\Admission\Actions\RotateEntranceSigningKey;
+use Konventix\Admission\Enums\ReentryPolicy;
 use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\Checkpoint;
 use Konventix\Admission\Models\EntranceDevice;
+use Konventix\Admission\Models\EntranceEventProfile;
 use Konventix\Admission\Models\EntranceSigningKey;
 use Konventix\Admission\Models\EventSummary;
 use Konventix\Admission\Models\Person;
+use Konventix\Admission\Models\RegistrationSummary;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 /**
  * Shared fixtures for this feature's admission tests (#72). Every function
@@ -231,4 +235,100 @@ function presenceScan(Admission $admission, string $direction = 'in', string $at
         direction: $direction,
         scannedAt: $at,
     );
+}
+
+/**
+ * A console account on the brand's operator host for the attendee list
+ * (#329), holding the given capabilities on an operator-scoped role — the
+ * admin host resolves permissions against the operator's team (ADR-0029).
+ * The operator is the brand's own unless another is passed; `$host` must be
+ * distinct per operator (`operators.admin_host` is unique). Every brand-owned
+ * row a test needs must exist before its first admin-host request
+ * (.ai/rules/tests.md).
+ *
+ * @param  list<string>  $permissions
+ * @return array{0: Operator, 1: User}
+ */
+function attendeeConsoleOperator(
+    Brand $brand,
+    array $permissions = ['platform.access-admin', 'admission.check-in-attendees'],
+    ?Operator $operator = null,
+    string $host = 'admin.attendees.test',
+): array {
+    $operator ??= Operator::query()->findOrFail($brand->operator_id);
+    $operator->forceFill(['admin_host' => $host])->save();
+
+    $registrar = app(PermissionRegistrar::class);
+    $previousTeam = $registrar->getPermissionsTeamId();
+    $registrar->setPermissionsTeamId($operator->getKey());
+
+    foreach ($permissions as $name) {
+        PermissionModel::query()->firstOrCreate(['name' => $name, 'guard_name' => 'web']);
+    }
+
+    $role = Role::query()->create([
+        'name' => 'Attendee desk '.Str::lower(Str::random(4)),
+        'guard_name' => 'web',
+        'brand_id' => $operator->getKey(),
+    ]);
+    $role->givePermissionTo($permissions);
+
+    $admin = User::factory()->create();
+    $admin->assignRole($role);
+
+    $registrar->setPermissionsTeamId($previousTeam);
+    $registrar->forgetCachedPermissions();
+
+    return [$operator, $admin];
+}
+
+/**
+ * An event the attendee list can show (#329): Admission's event summary and
+ * an entrance profile with one calendar day, 2026-10-16, so a test frozen on
+ * that date reads "in" on that day (`Support\LatestAcceptedCheckIn`).
+ *
+ * @return array{eventId: string, dayId: string}
+ */
+function attendeeFixture(Brand $brand, string $name = 'Kon Fest 2026'): array
+{
+    $eventId = (string) Str::ulid();
+    $dayId = (string) Str::ulid();
+
+    ticketEventSummary($brand, $eventId, ['name' => $name]);
+    EntranceEventProfile::factory()
+        ->policy(ReentryPolicy::Unlimited)
+        ->withDays([['day_id' => $dayId, 'date' => '2026-10-16', 'sequence' => 1, 'label' => 'Freitag']])
+        ->create(['event_id' => $eventId]);
+
+    return ['eventId' => $eventId, 'dayId' => $dayId];
+}
+
+/**
+ * One ticket of the event, with an optional holder and buyer, and — when
+ * `$typeName` is given — Admission's registration summary for it, written
+ * the way `ProjectRegistrationSummary` would (the brand explicitly, never
+ * mass-assigned).
+ */
+function attendeeTicket(
+    Brand $brand,
+    string $eventId,
+    ?Person $holder = null,
+    ?Person $buyer = null,
+    ?string $typeName = null,
+    string $status = 'confirmed',
+    array $overrides = [],
+): Admission {
+    $admission = Admission::factory()->create(array_merge([
+        'event_id' => $eventId,
+        'holder_user_id' => $holder?->id,
+        'buyer_user_id' => $buyer?->id,
+    ], $overrides));
+
+    if ($typeName !== null && $admission->registration_id !== null) {
+        (new RegistrationSummary(['registration_id' => $admission->registration_id, 'type_name' => $typeName, 'status' => $status]))
+            ->forceFill(['brand_id' => $brand->id])
+            ->save();
+    }
+
+    return $admission;
 }

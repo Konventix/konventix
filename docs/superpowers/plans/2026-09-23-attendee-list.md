@@ -156,6 +156,7 @@ If any of them needs a change to pass, the refactor is wrong. Do not change the 
 
 **Files:**
 - `src/Enums/Permission.php` gains `CheckInAttendees = 'admission.check-in-attendees'`. `defaultRoles()` gains `DefaultRole::of('admission.einlass', 'Einlass', Permission::CheckInAttendees)`.
+  *Revised 2026-09-23: no Einlass role ships in 0.9.1 — D-ATT-06's role part is deferred to #334 (operator-scope console roles). Only the capability ships.*
 - `src/Http/Controllers/Admin/Concerns/ScopesToOperator.php`, a copy of Competition's without the Pennant filter. Its methods are `findEventSummary(string $event): EventSummary` and `ensureOperatorOwns(string $brandId): void`.
 - `src/Http/Controllers/Admin/AttendeeListController.php` (uses `HasDataTableQuery`) and `src/Queries/AttendeeListQuery.php`.
 - `src/Data/{AttendeeRowData,AttendeeCheckInStateData,DoorCheckData}.php` (`#[TypeScript]`).

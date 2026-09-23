@@ -1,6 +1,30 @@
 declare namespace Konventix {
     namespace Admission {
         namespace Data {
+            export type AttendeeCheckInStateData = {
+                readonly direction: 'in' | 'out' | null;
+                readonly at: string | null;
+                readonly source: 'door' | 'console' | null;
+            };
+            export type AttendeeRowData = {
+                readonly admissionId: string;
+                readonly reference: string;
+                readonly state: string;
+                readonly holderUserId: string | null;
+                readonly holderName: string | null;
+                readonly holderUsername: string | null;
+                readonly buyerUserId: string | null;
+                readonly buyerName: string | null;
+                readonly email: string | null;
+                readonly ticketType: string;
+                readonly registrationId: string | null;
+                readonly registrationShortId: string | null;
+                readonly registrationStatus: string | null;
+                readonly checkIn: Konventix.Admission.Data.AttendeeCheckInStateData;
+                readonly canCheckIn: boolean;
+                readonly canCheckOut: boolean;
+                readonly owedDoorChecks: Konventix.Admission.Data.DoorCheckData[];
+            };
             export type BadgeLayoutData = {
                 readonly size: string;
                 readonly orientation: string;
@@ -21,6 +45,11 @@ declare namespace Konventix {
                 readonly expiresAt: string;
                 readonly alreadyHolderOfAnother: boolean;
                 readonly claimUrl: string;
+            };
+            export type DoorCheckData = {
+                readonly key: string;
+                readonly label: string;
+                readonly documentHint: string | null;
             };
             export type InviteData = {
                 readonly email: string | null;
@@ -105,6 +134,7 @@ declare namespace Konventix {
                 | 'reentry_not_permitted'
                 | 'wrong_event';
             export type CheckInResult = 'accepted' | 'rejected';
+            export type CheckpointKind = 'door' | 'console';
             export type HubAccessEndReason =
                 'day_ended' | 'concluded' | 'cancelled' | 'revoked';
             export type Permission =
@@ -117,7 +147,8 @@ declare namespace Konventix {
                 | 'admission.view-check-in-log'
                 | 'admission.scan-check-in'
                 | 'admission.print-badge'
-                | 'admission.manage-badge-templates';
+                | 'admission.manage-badge-templates'
+                | 'admission.check-in-attendees';
             export type ReentryPolicy =
                 'once_only' | 'once_per_day' | 'unlimited';
         }
@@ -176,6 +207,7 @@ declare namespace Konventix {
             };
         }
         namespace Enums {
+            export type CompetitionBlockState = 'published' | 'cancelled';
             export type ItemState = 'draft' | 'published' | 'cancelled';
             export type Permission = 'agenda.manage-agenda';
         }

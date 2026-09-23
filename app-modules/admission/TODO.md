@@ -6,6 +6,30 @@
 
 ## Next (Phase 1 PoC — admissions produced by the one registration flow)
 
+- [x] The attendee list (#329, Task 4). `GET /admin/events/{event}/attendees`
+      (`admin.events.attendees.index`, `AttendeeListController`,
+      `Queries\AttendeeListQuery`, page `admin/attendees/Index`): one row per
+      ticket with holder, buyer, type, reference, registration and today's
+      check-in, one escaped `ILIKE` search over every listed field, the
+      `presence` (in / not in) and `view` (unassigned / revoked) filters, and
+      the Attendees button on the event dashboard. Gated by the new
+      `CheckInAttendees` capability, then scoped to the admin host's operator
+      (`Http\Controllers\Admin\Concerns\ScopesToOperator`, 404 otherwise).
+      "In" is read on the current event day only, through
+      `Support\LatestAcceptedCheckIn`, which `CheckInFromConsole` uses too
+      (Task 3 review I1).
+      Follow-ups: the ticket page and the row actions (Task 5), after which
+      the reference column becomes a link to it.
+
+- [ ] The **Einlass** default role (D-ATT-06) is deferred to #334. Console
+      capabilities resolve against the operator's team (ADR-0029), every
+      console route also needs `platform.access-admin`, and ADR-0045 lets a
+      module declare default roles at brand scope only — so a brand-scoped
+      Einlass would open no page. Until #334 lands operator-scope console
+      roles (it covers Competition's Tournament Desk too), Operator Admin
+      holds `CheckInAttendees` through its full grant, and nothing narrower
+      exists.
+
 - [x] The console check-in core (#329, Task 3). `Actions\CheckInFromConsole`
       re-reads the admission by event under a lock (`wrong_event`
       otherwise), refuses `in` while in and `out` while not in, checks the
