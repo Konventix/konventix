@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { GripVertical, Trash2 } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
@@ -58,17 +59,21 @@ const page = computed(() =>
     props.pages.find((candidate) => candidate.id === props.modelValue.pageId),
 );
 
-const visibilityLabel: Record<PageOption['visibility'], string> = {
-    public: 'Everyone',
-    members: 'Members only',
-    registrants: 'Registrants only',
-};
+function visibilityLabel(visibility: PageOption['visibility']): string {
+    const labels: Record<PageOption['visibility'], string> = {
+        public: trans('Everyone'),
+        members: trans('Members only'),
+        registrants: trans('Registrants only'),
+    };
+
+    return labels[visibility];
+}
 
 const displayName = computed(
     () =>
         props.modelValue.label ||
         page.value?.title ||
-        `entry ${props.index + 1}`,
+        trans('entry :number', { number: String(props.index + 1) }),
 );
 </script>
 
@@ -94,16 +99,21 @@ const displayName = computed(
             >
                 <GripVertical class="size-4" />
                 <span class="sr-only">
-                    Reorder {{ displayName }}, position {{ props.index + 1 }} of
-                    {{ props.count }}
+                    {{
+                        $t('Reorder :name, position :position of :count', {
+                            name: displayName,
+                            position: String(props.index + 1),
+                            count: String(props.count),
+                        })
+                    }}
                 </span>
             </button>
-            Entry {{ props.index + 1 }}
+            {{ $t('Entry :number', { number: String(props.index + 1) }) }}
         </legend>
 
         <div class="grid gap-4 sm:grid-cols-2">
             <div class="grid gap-2">
-                <Label :for="id('kind')">Type</Label>
+                <Label :for="id('kind')">{{ $t('Type') }}</Label>
                 <Select
                     :model-value="props.modelValue.kind"
                     @update:model-value="
@@ -114,22 +124,24 @@ const displayName = computed(
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="page">Page</SelectItem>
-                        <SelectItem value="url">Link</SelectItem>
-                        <SelectItem value="parent">Group</SelectItem>
+                        <SelectItem value="page">{{ $t('Page') }}</SelectItem>
+                        <SelectItem value="url">{{ $t('Link') }}</SelectItem>
+                        <SelectItem value="parent">{{
+                            $t('Group')
+                        }}</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
 
             <div class="grid gap-2">
-                <Label :for="id('label')">Label</Label>
+                <Label :for="id('label')">{{ $t('Label') }}</Label>
                 <Input
                     :id="id('label')"
                     :model-value="props.modelValue.label ?? ''"
                     :placeholder="
                         props.modelValue.kind === 'page'
-                            ? page?.title || 'Page title'
-                            : 'Label'
+                            ? page?.title || $t('Page title')
+                            : $t('Label')
                     "
                     @update:model-value="
                         (value) =>
@@ -146,7 +158,7 @@ const displayName = computed(
         </div>
 
         <div v-if="props.modelValue.kind === 'page'" class="grid gap-2">
-            <Label :for="id('page')">Page</Label>
+            <Label :for="id('page')">{{ $t('Page') }}</Label>
             <Select
                 :model-value="props.modelValue.pageId ?? undefined"
                 @update:model-value="
@@ -154,7 +166,7 @@ const displayName = computed(
                 "
             >
                 <SelectTrigger :id="id('page')">
-                    <SelectValue placeholder="Pick a page" />
+                    <SelectValue :placeholder="$t('Pick a page')" />
                 </SelectTrigger>
                 <SelectContent>
                     <SelectItem
@@ -171,24 +183,24 @@ const displayName = computed(
             </Select>
             <div v-if="page" class="flex flex-wrap items-center gap-2">
                 <Badge variant="outline">
-                    {{ visibilityLabel[page.visibility] }}
+                    {{ visibilityLabel(page.visibility) }}
                 </Badge>
                 <Badge v-if="!page.published" variant="secondary">
-                    Draft — hidden until published
+                    {{ $t('Draft — hidden until published') }}
                 </Badge>
                 <span class="text-xs text-text-muted">
-                    Inherited from the page.
+                    {{ $t('Inherited from the page.') }}
                 </span>
             </div>
             <InputError :message="props.errors.pageId" />
         </div>
 
         <div v-else-if="props.modelValue.kind === 'url'" class="grid gap-2">
-            <Label :for="id('url')">Destination</Label>
+            <Label :for="id('url')">{{ $t('Destination') }}</Label>
             <Input
                 :id="id('url')"
                 :model-value="props.modelValue.url ?? ''"
-                placeholder="/shop or https://…"
+                :placeholder="$t('/shop or https://…')"
                 @update:model-value="
                     (value) =>
                         patch({
@@ -200,7 +212,11 @@ const displayName = computed(
                 "
             />
             <p class="text-xs text-text-muted">
-                A path on this site, an https:// address, or a mailto: address.
+                {{
+                    $t(
+                        'A path on this site, an https:// address, or a mailto: address.',
+                    )
+                }}
             </p>
             <InputError :message="props.errors.url" />
             <div class="flex items-center gap-2">
@@ -213,21 +229,24 @@ const displayName = computed(
                     "
                 />
                 <Label :for="id('newtab')" class="font-normal">
-                    Open in a new tab
+                    {{ $t('Open in a new tab') }}
                 </Label>
             </div>
         </div>
 
         <p v-else class="text-xs text-text-muted">
-            A group navigates nowhere itself; place entries under it with the
-            "Under" field.
+            {{
+                $t(
+                    'A group navigates nowhere itself; place entries under it with the "Under" field.',
+                )
+            }}
         </p>
 
         <div
             v-if="props.modelValue.kind !== 'parent'"
             class="grid gap-2 sm:max-w-xs"
         >
-            <Label :for="id('parent')">Under</Label>
+            <Label :for="id('parent')">{{ $t('Under') }}</Label>
             <Select
                 :model-value="props.modelValue.parentKey ?? NO_PARENT"
                 @update:model-value="
@@ -242,7 +261,9 @@ const displayName = computed(
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                    <SelectItem :value="NO_PARENT">Top level</SelectItem>
+                    <SelectItem :value="NO_PARENT">{{
+                        $t('Top level')
+                    }}</SelectItem>
                     <SelectItem
                         v-for="option in props.parentOptions"
                         :key="option.key"
@@ -260,7 +281,7 @@ const displayName = computed(
                 type="button"
                 variant="ghost"
                 size="icon"
-                :aria-label="`Remove ${displayName}`"
+                :aria-label="$t('Remove :name', { name: displayName })"
                 @click="emit('remove')"
             >
                 <Trash2 class="size-4" />

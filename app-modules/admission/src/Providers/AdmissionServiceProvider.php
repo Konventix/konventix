@@ -389,7 +389,7 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         $this->app->make(HubRegistry::class)->add(new HubCard(
             module: 'admission',
             key: 'admission.my-ticket',
-            label: 'Mein Ticket',
+            label: 'My ticket',
             component: 'admission/hub/MyTicketCard',
             payload: static fn (ActiveEventData $event, Authenticatable $user): MyTicketCardData => app(MyTicketCard::class)($event, $user),
             order: 10,
@@ -418,20 +418,20 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
             key: SendClaimLink::TEMPLATE_KEY,
             subjects: [
-                'de' => 'Ein Ticket wartet auf Sie',
+                'de' => 'Ein Ticket wartet auf dich',
                 'en' => 'A ticket is waiting for you',
             ],
             bodies: [
                 'de' => <<<'BLADE'
                     @if ($managerHandle)
-                    <p>{{ $managerHandle }} hat ein Ticket für Sie reserviert.</p>
+                    <p>{{ $managerHandle }} hat ein Ticket für dich reserviert.</p>
                     @else
-                    <p>Die Veranstalter haben ein Ticket für Sie reserviert.</p>
+                    <p>Die Veranstalter haben ein Ticket für dich reserviert.</p>
                     @endif
                     @if ($eventName)
                     <p>Veranstaltung: {{ $eventName }}</p>
                     @endif
-                    <p>Um es auf Ihren Namen zu übernehmen, melden Sie sich an oder legen Sie ein Konto an, und bestätigen Sie dann:</p>
+                    <p>Um es auf deinen Namen zu übernehmen, logge dich ein oder lege ein Konto an und bestätige dann:</p>
                     <p><a href="{{ $claimUrl }}">Ticket übernehmen</a></p>
                     <p>Der Link gilt bis {{ $expiresAt }} und nur für diese E-Mail-Adresse.</p>
                     BLADE,
@@ -449,7 +449,7 @@ class AdmissionServiceProvider extends ModuleServiceProvider
                     <p>The link is valid until {{ $expiresAt }} and only for this e-mail address.</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'eventName' => 'SXLan 2027',
                 'managerHandle' => '@ada',

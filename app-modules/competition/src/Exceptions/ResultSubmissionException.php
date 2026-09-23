@@ -43,7 +43,7 @@ final class ResultSubmissionException extends RuntimeException
     public function participantMessage(): string
     {
         return $this->participantMessage
-            ?? __('Das hat nicht geklappt. Lade die Seite neu und versuch es noch einmal.');
+            ?? __('That did not work. Reload the page and try again.');
     }
 
     /**
@@ -72,7 +72,7 @@ final class ResultSubmissionException extends RuntimeException
                 .'submit them (design §8.1).',
                 $competitionId,
             ),
-            __('Bei diesem Turnier trägt die Turnierleitung die Ergebnisse ein.'),
+            __('In this tournament, the organizers enter the results.'),
         );
     }
 
@@ -92,7 +92,7 @@ final class ResultSubmissionException extends RuntimeException
                 .'to upload (design §8.1, §8.7).',
                 $competitionId,
             ),
-            __('Dieses Turnier nimmt keine Beweisbilder an.'),
+            __('This tournament does not take proof images.'),
         );
     }
 
@@ -109,7 +109,7 @@ final class ResultSubmissionException extends RuntimeException
                 $competitionId,
                 $status,
             ),
-            __('Dieses Turnier ist vorbei und nimmt keine Beweisbilder mehr an.'),
+            __('This tournament is over and takes no more proof images.'),
         );
     }
 
@@ -121,7 +121,7 @@ final class ResultSubmissionException extends RuntimeException
                 $entrantId,
                 $matchId,
             ),
-            __('Euer Team spielt in diesem Spiel nicht mit.'),
+            __('Your team is not playing in this match.'),
         );
     }
 
@@ -134,7 +134,7 @@ final class ResultSubmissionException extends RuntimeException
                 $userId,
                 $entrantId,
             ),
-            __('Du stehst nicht im Team dieser Seite.'),
+            __('You are not on the team for this side.'),
         );
     }
 
@@ -146,7 +146,7 @@ final class ResultSubmissionException extends RuntimeException
                 .'it (design §8.2).',
                 $matchId,
             ),
-            __('Das Ergebnis dieses Spiels steht schon fest. Ändern kann es nur noch die Turnierleitung.'),
+            __('The result of this match is already settled. Only the organizers can change it now.'),
         );
     }
 
@@ -158,7 +158,7 @@ final class ResultSubmissionException extends RuntimeException
                 $matchId,
                 $state,
             ),
-            __('Für dieses Spiel kann gerade kein Ergebnis gemeldet werden.'),
+            __('No result can be reported for this match right now.'),
         );
     }
 
@@ -170,7 +170,7 @@ final class ResultSubmissionException extends RuntimeException
                 .'be compared with the other side\'s.',
                 $matchId,
             ),
-            __('Trag bitte für beide Seiten ein Ergebnis ein.'),
+            __('Please enter a result for both sides.'),
         );
     }
 
@@ -181,7 +181,7 @@ final class ResultSubmissionException extends RuntimeException
                 'Nobody has reported a result for match [%s] yet, so there is nothing to confirm.',
                 $matchId,
             ),
-            __('Es gibt noch kein Ergebnis, das ihr bestätigen könntet.'),
+            __('There is no result for you to confirm yet.'),
         );
     }
 
@@ -194,7 +194,7 @@ final class ResultSubmissionException extends RuntimeException
                 $entrantId,
                 $matchId,
             ),
-            __('Euer eigenes Ergebnis bestätigt die andere Seite, nicht ihr.'),
+            __('Your own result is confirmed by the other side, not by you.'),
         );
     }
 
@@ -232,7 +232,7 @@ final class ResultSubmissionException extends RuntimeException
                 'Match [%s] is still waiting for a side; record it once both teams are known.',
                 $matchId,
             ),
-            __('Der Gegner steht noch nicht fest: das Spiel davor ist noch nicht entschieden.'),
+            __('The opponent is not known yet: the match before this one is not decided.'),
         );
     }
 
@@ -249,7 +249,7 @@ final class ResultSubmissionException extends RuntimeException
                 $matchId,
                 $format,
             ),
-            __('Ein Unentschieden gibt es in diesem Turnier nicht. Ein Spiel braucht einen Sieger.'),
+            __('This tournament has no draws. A match needs a winner.'),
         );
     }
 
@@ -265,7 +265,7 @@ final class ResultSubmissionException extends RuntimeException
                 $stageId,
                 $format,
             ),
-            __('In diesem Turnier werden keine Ergebnisse in eine Rangliste eingetragen.'),
+            __('This tournament does not enter results into a leaderboard.'),
         );
     }
 
@@ -277,7 +277,7 @@ final class ResultSubmissionException extends RuntimeException
                 $entrantId,
                 $stageId,
             ),
-            __('Euer Team spielt in diesem Turnier nicht mit.'),
+            __('Your team is not playing in this tournament.'),
         );
     }
 
@@ -289,7 +289,7 @@ final class ResultSubmissionException extends RuntimeException
                 $entrantId,
                 $state,
             ),
-            __('Euer Team ist nicht mehr im Turnier und kann keine Ergebnisse mehr einreichen.'),
+            __('Your team is no longer in the tournament and cannot submit results.'),
         );
     }
 
@@ -300,7 +300,7 @@ final class ResultSubmissionException extends RuntimeException
                 'Match [%s] is already disputed and waiting for the desk.',
                 $matchId,
             ),
-            __('Dieses Ergebnis ist schon ein Streitfall. Die Turnierleitung entscheidet.'),
+            __('This result is already disputed. The organizers decide.'),
         );
     }
 
@@ -317,7 +317,7 @@ final class ResultSubmissionException extends RuntimeException
                 $competitionId,
                 $status,
             ),
-            __('Dieses Turnier ist vorbei. Seine Ergebnisse können nicht mehr angefochten werden.'),
+            __('This tournament is over. Its results can no longer be disputed.'),
         );
     }
 }

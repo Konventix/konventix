@@ -23,6 +23,21 @@ enum ElementKind: string
     case Annotation = 'annotation';
 
     /**
+     * The word a person reads for this kind (ADR-0068): a violation message
+     * names it, and the raw value would be English in every locale.
+     */
+    public function label(): string
+    {
+        return match ($this) {
+            self::Zone => __('Zone'),
+            self::Group => __('Group'),
+            self::Place => __('Place'),
+            self::Fixture => __('Fixture'),
+            self::Annotation => __('Annotation'),
+        };
+    }
+
+    /**
      * The parent table of design §5: zone → root or zone; group → root,
      * zone or group; place → root, zone or group; fixture → root, zone or
      * group; annotation → anywhere. `null` is the root.

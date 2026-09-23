@@ -103,14 +103,14 @@ function submitCreate(): void {
 </script>
 
 <template>
-    <Head title="Roles" />
+    <Head :title="$t('Roles')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Roles"
-            description="Per-brand roles and who holds them"
+            :title="$t('Roles')"
+            :description="$t('Per-brand roles and who holds them')"
         >
-            <label for="roles-brand" class="sr-only">Brand</label>
+            <label for="roles-brand" class="sr-only">{{ $t('Brand') }}</label>
             <Select
                 :model-value="props.selectedBrandId ?? undefined"
                 @update:model-value="switchBrand"
@@ -133,19 +133,19 @@ function submitCreate(): void {
                 <DialogTrigger as-child>
                     <Button>
                         <Plus class="size-4" />
-                        New role
+                        {{ $t('New role') }}
                     </Button>
                 </DialogTrigger>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Create role</DialogTitle>
+                        <DialogTitle>{{ $t('Create role') }}</DialogTitle>
                     </DialogHeader>
                     <form
                         class="flex flex-col gap-4"
                         @submit.prevent="submitCreate"
                     >
                         <div class="grid gap-2">
-                            <Label for="new-role-name">Name</Label>
+                            <Label for="new-role-name">{{ $t('Name') }}</Label>
                             <Input
                                 id="new-role-name"
                                 v-model="createForm.name"
@@ -153,11 +153,14 @@ function submitCreate(): void {
                             <InputError :message="createForm.errors.name" />
                         </div>
                         <p class="text-xs text-text-muted">
-                            Created for the selected brand — you grant its
-                            capabilities on the next screen.
+                            {{
+                                $t(
+                                    'Created for the selected brand — you grant its capabilities on the next screen.',
+                                )
+                            }}
                         </p>
                         <Button type="submit" :disabled="createForm.processing">
-                            Create
+                            {{ $t('Create') }}
                         </Button>
                     </form>
                 </DialogContent>
@@ -165,9 +168,12 @@ function submitCreate(): void {
         </AdminPageHeader>
 
         <p v-if="props.roles.length === 0" class="text-sm text-text-muted">
-            This brand has no roles yet — default roles arrive with
-            <code class="rounded bg-subtle px-1">permissions:sync</code>; create
-            your own with New role.
+            {{
+                $t(
+                    'This brand has no roles yet — create your own with “New role”. Default roles arrive with',
+                )
+            }}
+            <code class="rounded bg-subtle px-1">permissions:sync</code>.
         </p>
 
         <Card
@@ -179,22 +185,32 @@ function submitCreate(): void {
                 <CardTitle class="flex items-baseline gap-3">
                     {{ role.name }}
                     <span class="text-xs font-normal text-text-muted">
-                        {{ role.permissions.length }} capabilities
+                        {{
+                            $tChoice(
+                                '{1} :count capability|[0,*] :count capabilities',
+                                role.permissions.length,
+                            )
+                        }}
                     </span>
                     <span
                         v-if="role.defaultKey"
                         class="rounded-full bg-subtle px-2 py-0.5 text-xs font-normal text-text-muted"
-                        :title="`Shipped by the ${role.defaultKey.split('.')[0]} module`"
+                        :title="
+                            $t('Shipped by the :module module', {
+                                module: role.defaultKey.split('.')[0],
+                            })
+                        "
                     >
-                        default · {{ role.defaultKey.split('.')[0] }}
+                        {{ $t('default') }} ·
+                        {{ role.defaultKey.split('.')[0] }}
                         <template v-if="role.customized">
-                            · customized</template
+                            · {{ $t('customized') }}</template
                         >
                     </span>
                     <Button as-child variant="ghost" size="sm" class="ml-auto">
                         <Link :href="editRole(role.id)">
                             <Pencil class="size-4" />
-                            Edit
+                            {{ $t('Edit') }}
                         </Link>
                     </Button>
                 </CardTitle>
@@ -214,13 +230,13 @@ function submitCreate(): void {
                     <span
                         class="text-xs font-medium tracking-wide text-text-muted uppercase"
                     >
-                        Members
+                        {{ $t('Members') }}
                     </span>
                     <p
                         v-if="role.members.length === 0"
                         class="text-sm text-text-muted"
                     >
-                        Nobody holds this role.
+                        {{ $t('Nobody holds this role.') }}
                     </p>
                     <div
                         v-for="member in role.members"
@@ -238,6 +254,9 @@ function submitCreate(): void {
                             @click="submitRevoke(role.id, member)"
                         >
                             <ShieldMinus class="size-4 text-danger" />
+                            <span class="sr-only">{{
+                                $t('Revoke role from :user', { user: member })
+                            }}</span>
                         </Button>
                     </div>
                 </div>
@@ -248,7 +267,11 @@ function submitCreate(): void {
                 >
                     <div class="grid flex-1 gap-1">
                         <Label :for="`assign-${role.id}`" class="text-xs">
-                            Assign by user ULID (copy from the Users page)
+                            {{
+                                $t(
+                                    'Assign by user ULID (copy from the Users page)',
+                                )
+                            }}
                         </Label>
                         <Input
                             :id="`assign-${role.id}`"
@@ -269,7 +292,7 @@ function submitCreate(): void {
                         variant="secondary"
                         :disabled="form.processing"
                     >
-                        Assign
+                        {{ $t('Assign') }}
                     </Button>
                 </form>
             </CardContent>

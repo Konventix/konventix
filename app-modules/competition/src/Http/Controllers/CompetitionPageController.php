@@ -70,7 +70,7 @@ final class CompetitionPageController
         foreach ($roster as $memberId) {
             if (! EligibleRegistration::userMayEnter($model->brand_id, $model->event_id, $memberId)) {
                 throw ValidationException::withMessages([
-                    'teamId' => __('Alle im Team brauchen eine bestätigte Anmeldung zur Veranstaltung oder ein Ticket auf ihren Namen, bevor ihr euch anmelden könnt.'),
+                    'teamId' => __('Everyone on the team needs a confirmed registration for the event or a ticket in their name before you can sign up.'),
                 ]);
             }
         }
@@ -80,7 +80,7 @@ final class CompetitionPageController
         // `attempt()` answers it in German and says "du" to the captain.
         $this->attempt(fn () => $enter->handle($model, $team, $roster), 'teamId', $userId);
 
-        return $this->done(__('Euer Team ist angemeldet.'));
+        return $this->done(__('Your team is signed up.'));
     }
 
     /**
@@ -100,7 +100,7 @@ final class CompetitionPageController
 
         $this->attempt(fn () => $submit->handle($stage, $entrant, $data, $userId), 'value');
 
-        return $this->done(__('Ergebnis eingereicht. Es zählt, sobald die Turnierleitung es bestätigt hat.'));
+        return $this->done(__('Result submitted. It counts once the organizers have confirmed it.'));
     }
 
     /**

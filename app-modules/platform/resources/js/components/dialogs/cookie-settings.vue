@@ -51,17 +51,26 @@ function save(): void {
     <Dialog :open="open" @update:open="(value) => !value && emit('close')">
         <DialogContent>
             <DialogHeader>
-                <DialogTitle>Cookie settings</DialogTitle>
+                <DialogTitle>{{ $t('Cookie settings') }}</DialogTitle>
                 <DialogDescription>
-                    What this site stores on your device, and the one choice
-                    that is yours to make.
+                    {{
+                        $t(
+                            'What this site stores on your device, and the one choice that is yours to make.',
+                        )
+                    }}
                 </DialogDescription>
             </DialogHeader>
 
             <section class="flex flex-col gap-2">
-                <h3 class="text-sm font-semibold text-text">Necessary</h3>
+                <h3 class="text-sm font-semibold text-text">
+                    {{ $t('Necessary') }}
+                </h3>
                 <p class="text-xs text-text-muted">
-                    Required for the site to work at all; set without asking.
+                    {{
+                        $t(
+                            'Required for the site to work at all; set without asking.',
+                        )
+                    }}
                 </p>
                 <ul class="flex flex-col gap-1 text-sm">
                     <li v-for="cookie in declared.necessary" :key="cookie.name">
@@ -86,13 +95,16 @@ function save(): void {
                                 (form.functional = value === true)
                         "
                     />
-                    <Label for="cookie-functional" class="font-semibold"
-                        >Allow functional cookies</Label
-                    >
+                    <Label for="cookie-functional" class="font-semibold">{{
+                        $t('Allow functional cookies')
+                    }}</Label>
                 </div>
                 <p class="text-xs text-text-muted">
-                    Preferences you set yourself, remembered beyond this visit.
-                    Turned off, they are kept only until you close the browser.
+                    {{
+                        $t(
+                            'Preferences you set yourself, remembered beyond this visit. Turned off, they are kept only until you close the browser.',
+                        )
+                    }}
                 </p>
                 <ul class="flex flex-col gap-1 text-sm">
                     <li
@@ -111,11 +123,17 @@ function save(): void {
             </section>
 
             <DialogFooter>
-                <Button type="button" variant="secondary" @click="emit('close')"
-                    >Close</Button
+                <Button
+                    type="button"
+                    variant="secondary"
+                    @click="emit('close')"
+                    >{{ $t('Close') }}</Button
                 >
-                <Button type="button" :disabled="form.processing" @click="save"
-                    >Save</Button
+                <Button
+                    type="button"
+                    :disabled="form.processing"
+                    @click="save"
+                    >{{ $t('Save') }}</Button
                 >
             </DialogFooter>
         </DialogContent>

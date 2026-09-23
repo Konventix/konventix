@@ -2,6 +2,7 @@
 import { Head, router } from '@inertiajs/vue3';
 import { Check, Download } from '@lucide/vue';
 import type { SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -21,6 +22,10 @@ import {
 import ReduceQuantityDialog from '../../../components/registrations/ReduceQuantityDialog.vue';
 import { registrationColumns } from '../../../components/registrations/rows';
 import type { RegistrationRow } from '../../../components/registrations/rows';
+import {
+    assertionStateLabel,
+    registrationStatusLabel,
+} from '../../../lib/labels';
 
 interface PaginatedRegistrations {
     data: RegistrationRow[];
@@ -89,7 +94,7 @@ function onFilterChange(name: string, value: string | null): void {
 const filterDefs = computed<DataTableFilterDef[]>(() => [
     {
         name: 'brand',
-        label: 'Brands',
+        label: trans('Brands'),
         value: props.filters.brand,
         options: props.brands.map((brand) => ({
             value: brand.id,
@@ -99,7 +104,7 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
     },
     {
         name: 'event',
-        label: 'Events',
+        label: trans('Events'),
         value: props.filters.event,
         options: props.events.map((event) => ({
             value: event.id,
@@ -109,11 +114,11 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
     },
     {
         name: 'status',
-        label: 'Status',
+        label: trans('Status'),
         value: props.filters.status,
         options: props.statuses.map((status) => ({
             value: status,
-            label: status[0].toUpperCase() + status.slice(1),
+            label: registrationStatusLabel(status),
         })),
     },
     // D-REG-22: for an `operator_checked` condition this filter **is** the
@@ -121,14 +126,14 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
     // gates nothing.
     {
         name: 'condition',
-        label: 'Entry condition',
+        label: trans('Entry condition'),
         value: props.filters.condition,
         options: props.conditionStates.map((state) => ({
             value: state,
             label:
                 state === 'none'
-                    ? 'Nothing declared'
-                    : state[0].toUpperCase() + state.slice(1),
+                    ? trans('Nothing declared')
+                    : assertionStateLabel(state),
         })),
     },
 ]);
@@ -204,19 +209,19 @@ const columns = computed(() =>
 </script>
 
 <template>
-    <Head title="Registrations" />
+    <Head :title="$t('Registrations')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Registrations"
-            description="Submissions, approvals and the waitlist"
+            :title="$t('Registrations')"
+            :description="$t('Submissions, approvals and the waitlist')"
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
             :filters="filterDefs"
-            search-placeholder="Search registrant, organization, email…"
+            :search-placeholder="$t('Search registrant, organization, email…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
             @update:filter="onFilterChange"
@@ -228,7 +233,7 @@ const columns = computed(() =>
                     @click="approveSelected"
                 >
                     <Check class="size-4" />
-                    Approve {{ selected.size }}
+                    {{ $t('Approve :count', { count: String(selected.size) }) }}
                 </Button>
                 <a :href="exportHref">
                     <Button variant="outline">
@@ -245,8 +250,8 @@ const columns = computed(() =>
             :data="props.registrations.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="registrations"
-            empty-message="No registrations match."
+            :items-label="$t('registrations')"
+            :empty-message="$t('No registrations match.')"
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />

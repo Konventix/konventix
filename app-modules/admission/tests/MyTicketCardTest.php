@@ -47,7 +47,7 @@ it('builds the ticket card for the admitted admission', function (): void {
         ->and($payload->eventName)->toBe('Kon Fest 2026')
         ->and($payload->qrSvg)->toContain('<svg')
         ->and($payload->ticketUrl)->toBe('/my/tickets/'.$admission->id)
-        ->and($payload->reentryHint)->toContain('täglich');
+        ->and($payload->reentryHint)->toContain('every day');
 });
 
 it('falls back to the open-door hint when the event carries no profile', function (): void {
@@ -61,7 +61,7 @@ it('falls back to the open-door hint when the event carries no profile', functio
     $payload = ($card->payload)(hubActiveEventFor($brand, $user, $eventId, $admission->id), $user);
 
     expect($payload->eventName)->toBeNull()
-        ->and($payload->reentryHint)->toContain('jederzeit');
+        ->and($payload->reentryHint)->toContain('any time');
 });
 
 /**
@@ -136,5 +136,5 @@ it('renders on /live against the registry every module filled at boot', function
             ->where('hub.cards.0.key', 'admission.my-ticket')
             ->where('hub.cards.0.payload.admissionId', $admission->id)
             ->where('hub.cards.0.payload.qrSvg', fn (string $svg): bool => str_contains($svg, '<svg'))
-            ->where('hub.cards.0.payload.reentryHint', fn (string $hint): bool => str_contains($hint, 'täglich')));
+            ->where('hub.cards.0.payload.reentryHint', fn (string $hint): bool => str_contains($hint, 'every day')));
 });

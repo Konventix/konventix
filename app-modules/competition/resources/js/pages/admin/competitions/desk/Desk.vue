@@ -17,6 +17,7 @@ import ScheduleMatchDialog from '../../../../components/admin/desk/ScheduleMatch
 import SeedingPanel from '../../../../components/admin/desk/SeedingPanel.vue';
 import StandingsTable from '../../../../components/admin/desk/StandingsTable.vue';
 import VerificationQueue from '../../../../components/admin/desk/VerificationQueue.vue';
+import { consoleStatusLabel } from '../../../../components/public/labels';
 
 /**
  * The tournament desk (design §9, D-CMP-20, D-CMP-21): one competition as
@@ -69,51 +70,66 @@ const stage = computed(() => props.desk.stage);
 </script>
 
 <template>
-    <Head :title="`Desk — ${props.desk.name}`" />
+    <Head :title="$t('Desk — :name', { name: props.desk.name })" />
 
     <div class="flex w-full flex-col gap-6 p-4">
         <Heading
             as="h1"
-            :title="`Desk — ${props.desk.name}`"
-            :description="`Status: ${props.desk.status.replace('_', ' ')}. ${props.desk.field.length} in the field, ${props.desk.checkedIn} checked in.`"
+            :title="$t('Desk — :name', { name: props.desk.name })"
+            :description="
+                $t(
+                    'Status: :status. :field in the field, :checkedIn checked in.',
+                    {
+                        status: consoleStatusLabel(props.desk.status),
+                        field: String(props.desk.field.length),
+                        checkedIn: String(props.desk.checkedIn),
+                    },
+                )
+            "
         />
 
-        <nav class="flex flex-wrap gap-4 text-sm" aria-label="Competition">
+        <nav
+            class="flex flex-wrap gap-4 text-sm"
+            :aria-label="$t('Competition')"
+        >
             <Link
                 :href="editCompetition(props.desk.competitionId).url"
                 class="underline underline-offset-4 hover:text-accent"
-                >Settings</Link
+                >{{ $t('Settings') }}</Link
             >
             <Link
                 :href="competitionEntrants(props.desk.competitionId).url"
                 class="underline underline-offset-4 hover:text-accent"
-                >Entrants and rosters</Link
+                >{{ $t('Entrants and rosters') }}</Link
             >
             <Link
                 v-if="props.desk.powers.checkInEntrants"
                 :href="competitionCheckIn(props.desk.competitionId).url"
                 class="underline underline-offset-4 hover:text-accent"
-                >Check-in desk</Link
+                >{{ $t('Check-in desk') }}</Link
             >
         </nav>
 
         <p class="text-sm text-text-muted">
             <template v-if="props.desk.startsAt">
-                Starts {{ formatDateTime(props.desk.startsAt) }}.
+                {{
+                    $t('Starts :time.', {
+                        time: formatDateTime(props.desk.startsAt),
+                    })
+                }}
             </template>
-            <template v-else>No start time set.</template>
-            Results:
+            <template v-else>{{ $t('No start time set.') }}</template>
             {{
                 props.desk.resultSubmissionMode === 'desk_only'
-                    ? 'recorded by the desk only'
-                    : 'reported by the teams'
-            }}.
+                    ? $t('Results: recorded by the desk only.')
+                    : $t('Results: reported by the teams.')
+            }}
         </p>
 
         <InputError :message="deskError" role="alert" />
 
         <p v-if="stage === null" class="text-sm text-text-muted">
-            This competition has no stage to run.
+            {{ $t('This competition has no stage to run.') }}
         </p>
 
         <template v-else>

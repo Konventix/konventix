@@ -62,7 +62,7 @@ const linkAttributes = computed(() =>
         <dl class="mt-4 grid gap-4 sm:grid-cols-2">
             <div>
                 <dt class="text-xs tracking-wide text-text-muted uppercase">
-                    When
+                    {{ $t('When') }}
                 </dt>
                 <dd class="mt-1 text-sm text-text">
                     {{ startsLabel
@@ -74,7 +74,7 @@ const linkAttributes = computed(() =>
             </div>
             <div v-if="venueCity">
                 <dt class="text-xs tracking-wide text-text-muted uppercase">
-                    Where
+                    {{ $t('Where') }}
                 </dt>
                 <dd class="mt-1 text-sm text-text">{{ venueCity }}</dd>
             </div>

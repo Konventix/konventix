@@ -44,7 +44,11 @@ usePollWhile(() => props.page.pollSeconds);
                 :href="tournaments(props.page.event.slug).url"
                 class="text-sm text-text-muted underline-offset-4 hover:underline"
             >
-                Alle Turniere – {{ props.page.event.name }}
+                {{
+                    $t('All tournaments – :event', {
+                        event: props.page.event.name,
+                    })
+                }}
             </Link>
             <Heading
                 as="h1"
@@ -61,18 +65,27 @@ usePollWhile(() => props.page.pollSeconds);
                     >{{ statusLabel(props.page.competition.status) }}</span
                 >
                 ·
-                {{ props.page.competition.entrants
-                }}<template v-if="props.page.competition.maxEntrants !== null">
-                    / {{ props.page.competition.maxEntrants }}</template
-                >
-                Teams
+                <template v-if="props.page.competition.maxEntrants !== null">{{
+                    $t(':count / :max teams', {
+                        count: String(props.page.competition.entrants),
+                        max: String(props.page.competition.maxEntrants),
+                    })
+                }}</template>
+                <template v-else>{{
+                    $tChoice(
+                        '{1} :count team|[0,*] :count teams',
+                        props.page.competition.entrants,
+                    )
+                }}</template>
                 <template v-if="props.page.competition.startsAt">
-                    · Start
+                    ·
                     {{
-                        formatEventDateTime(
-                            props.page.competition.startsAt,
-                            props.page.event.timezone,
-                        )
+                        $t('Start :time', {
+                            time: formatEventDateTime(
+                                props.page.competition.startsAt,
+                                props.page.event.timezone,
+                            ),
+                        })
                     }}
                 </template>
             </p>
@@ -90,7 +103,7 @@ usePollWhile(() => props.page.pollSeconds);
             class="rounded-xl border border-border p-4"
         >
             <summary class="cursor-pointer font-medium text-text">
-                Regeln
+                {{ $t('Rules') }}
             </summary>
             <!-- eslint-disable-next-line vue/no-v-html -->
             <div
@@ -122,9 +135,11 @@ usePollWhile(() => props.page.pollSeconds);
                 "
                 class="text-sm text-text"
             >
-                Für dieses Turnier ist zu jedem Ergebnis ein Nachweis Pflicht.
-                Die Turnierleitung nimmt Ergebnis und Nachweis am Turnier-Desk
-                entgegen.
+                {{
+                    $t(
+                        'This tournament requires proof with every result. The organizers take the result and the proof at the tournament desk.',
+                    )
+                }}
             </p>
 
             <section
@@ -132,7 +147,7 @@ usePollWhile(() => props.page.pollSeconds);
                 aria-labelledby="board-heading"
             >
                 <h2 id="board-heading" class="text-lg font-medium text-text">
-                    Bestenliste
+                    {{ $t('Leaderboard') }}
                 </h2>
                 <Standings
                     :standings="props.page.standings"
@@ -148,7 +163,7 @@ usePollWhile(() => props.page.pollSeconds);
                 aria-labelledby="bracket-heading"
             >
                 <h2 id="bracket-heading" class="text-lg font-medium text-text">
-                    Turnierbaum
+                    {{ $t('Bracket') }}
                 </h2>
                 <BracketView
                     v-if="props.page.bracket"
@@ -158,7 +173,7 @@ usePollWhile(() => props.page.pollSeconds);
                     :event-timezone="props.page.event.timezone"
                 />
                 <p v-else class="text-sm text-text-muted">
-                    Der Turnierbaum wird nach dem Anmeldeschluss ausgelost.
+                    {{ $t('The bracket is drawn after signup closes.') }}
                 </p>
             </section>
 
@@ -178,7 +193,7 @@ usePollWhile(() => props.page.pollSeconds);
                     id="standings-heading"
                     class="text-lg font-medium text-text"
                 >
-                    Platzierungen
+                    {{ $t('Standings') }}
                 </h2>
                 <Standings :standings="props.page.standings" :unit="null" />
             </section>

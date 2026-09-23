@@ -68,7 +68,7 @@ final class CreateTeam
             } catch (QueryException $e) {
                 if (str_contains($e->getMessage(), 'competition_teams_brand_id_event_id_name_unique')) {
                     throw ValidationException::withMessages([
-                        'name' => __('Diesen Teamnamen gibt es bei dieser Veranstaltung schon.'),
+                        'name' => __('This team name is already taken at this event.'),
                     ]);
                 }
 

@@ -13,6 +13,7 @@ import {
     index as typesIndex,
     update as updateType,
 } from '@/routes/admin/resource-types';
+import { capacityModeLabel } from '../../../components/plan/labels';
 
 /**
  * One category (design §4.1): identity, hold minutes for clocked holds,
@@ -79,7 +80,7 @@ function submit(): void {
 </script>
 
 <template>
-    <Head :title="`${props.type.name} — Category`" />
+    <Head :title="$t(':name — Category', { name: props.type.name })" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
@@ -90,12 +91,16 @@ function submit(): void {
                 v-if="frozen"
                 class="inline-flex rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning"
             >
-                {{ props.places }} bookable places — event and mode frozen
+                {{
+                    $t(':count bookable places — event and mode frozen', {
+                        count: String(props.places),
+                    })
+                }}
             </span>
             <Button variant="outline" as-child>
                 <Link :href="typesIndex().url">
                     <ArrowLeft class="size-4" />
-                    All categories
+                    {{ $t('All categories') }}
                 </Link>
             </Button>
         </AdminPageHeader>
@@ -104,21 +109,23 @@ function submit(): void {
             <div class="flex flex-col gap-6 lg:col-span-2">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Identity</CardTitle>
+                        <CardTitle>{{ $t('Identity') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="grid gap-4 sm:grid-cols-2">
                         <div class="grid gap-2">
-                            <Label for="category-name">Name</Label>
+                            <Label for="category-name">{{ $t('Name') }}</Label>
                             <Input id="category-name" v-model="form.name" />
                             <InputError :message="form.errors.name" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="category-slug">Slug</Label>
+                            <Label for="category-slug">{{ $t('Slug') }}</Label>
                             <Input id="category-slug" v-model="form.slug" />
                             <InputError :message="form.errors.slug" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="category-event">Event</Label>
+                            <Label for="category-event">{{
+                                $t('Event')
+                            }}</Label>
                             <select
                                 id="category-event"
                                 v-model="form.eventId"
@@ -136,7 +143,7 @@ function submit(): void {
                             <InputError :message="form.errors.eventId" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="category-mode">Mode</Label>
+                            <Label for="category-mode">{{ $t('Mode') }}</Label>
                             <select
                                 id="category-mode"
                                 v-model="form.mode"
@@ -148,13 +155,15 @@ function submit(): void {
                                     :key="value"
                                     :value="value"
                                 >
-                                    {{ value }}
+                                    {{ capacityModeLabel(value) }}
                                 </option>
                             </select>
                             <InputError :message="form.errors.mode" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="category-hold">Hold minutes</Label>
+                            <Label for="category-hold">{{
+                                $t('Hold minutes')
+                            }}</Label>
                             <Input
                                 id="category-hold"
                                 v-model.number="form.holdMinutes"
@@ -162,14 +171,17 @@ function submit(): void {
                                 min="1"
                             />
                             <p class="text-xs text-text-muted">
-                                For clocked holds only; a picked seat is
-                                confirmed in the same transaction as its hold.
+                                {{
+                                    $t(
+                                        'For clocked holds only; a picked seat is confirmed in the same transaction as its hold.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.holdMinutes" />
                         </div>
                         <div class="grid gap-2 sm:col-span-2">
                             <Label for="category-description">
-                                Description
+                                {{ $t('Description') }}
                             </Label>
                             <textarea
                                 id="category-description"
@@ -178,7 +190,11 @@ function submit(): void {
                                 class="rounded-md border border-border bg-surface px-3 py-2 text-sm"
                             />
                             <p class="text-xs text-text-muted">
-                                Shown to the registrant in the seat picker.
+                                {{
+                                    $t(
+                                        'Shown to the registrant in the seat picker.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.description" />
                         </div>
@@ -189,11 +205,13 @@ function submit(): void {
             <div class="flex flex-col gap-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Appearance</CardTitle>
+                        <CardTitle>{{ $t('Appearance') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <div class="grid gap-2">
-                            <Label for="category-token">Colour token</Label>
+                            <Label for="category-token">{{
+                                $t('Colour token')
+                            }}</Label>
                             <div class="flex items-center gap-2">
                                 <span
                                     class="size-4 shrink-0 rounded-full border border-border"
@@ -219,20 +237,29 @@ function submit(): void {
                             <InputError :message="form.errors.token" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="category-symbol">Symbol</Label>
+                            <Label for="category-symbol">{{
+                                $t('Symbol')
+                            }}</Label>
                             <Input
                                 id="category-symbol"
                                 v-model="form.symbol"
-                                placeholder="lucide icon key, e.g. armchair"
+                                :placeholder="
+                                    $t('lucide icon key, e.g. armchair')
+                                "
                             />
                             <p class="text-xs text-text-muted">
-                                Mandatory for the picker: a state is never told
-                                by colour alone.
+                                {{
+                                    $t(
+                                        'Mandatory for the picker: a state is never told by colour alone.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.symbol" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="category-order">Sort order</Label>
+                            <Label for="category-order">{{
+                                $t('Sort order')
+                            }}</Label>
                             <Input
                                 id="category-order"
                                 v-model.number="form.sortOrder"
@@ -246,17 +273,19 @@ function submit(): void {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Default place size</CardTitle>
+                        <CardTitle>{{ $t('Default place size') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <p class="text-sm text-text-muted">
-                            Millimetres. The editor uses this rectangle for new
-                            places of this category; leave both empty for the
-                            editor's own default.
+                            {{
+                                $t(
+                                    "Millimetres. The editor uses this rectangle for new places of this category; leave both empty for the editor's own default.",
+                                )
+                            }}
                         </p>
                         <div class="grid grid-cols-2 gap-4">
                             <div class="grid gap-2">
-                                <Label for="shape-w">Width</Label>
+                                <Label for="shape-w">{{ $t('Width') }}</Label>
                                 <Input
                                     id="shape-w"
                                     v-model.number="shapeWidth"
@@ -266,7 +295,7 @@ function submit(): void {
                                 />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="shape-h">Height</Label>
+                                <Label for="shape-h">{{ $t('Height') }}</Label>
                                 <Input
                                     id="shape-h"
                                     v-model.number="shapeHeight"
@@ -282,14 +311,14 @@ function submit(): void {
 
                 <div class="flex items-center gap-3">
                     <Button type="submit" :disabled="form.processing">
-                        Save
+                        {{ $t('Save') }}
                     </Button>
                     <span
                         v-if="form.isDirty"
                         role="status"
                         class="text-sm text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
             </div>

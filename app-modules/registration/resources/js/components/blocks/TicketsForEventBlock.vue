@@ -36,6 +36,6 @@ const props = defineProps<{
     <EventOffers
         v-if="props.found"
         :offers="props.offers"
-        :heading="props.heading ?? props.eventName ?? 'Register'"
+        :heading="props.heading ?? props.eventName ?? $t('Register')"
     />
 </template>

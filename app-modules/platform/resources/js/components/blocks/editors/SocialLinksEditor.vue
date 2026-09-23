@@ -66,13 +66,15 @@ function removeLink(index: number): void {
         >
             <div class="flex items-center justify-between">
                 <p class="text-sm font-medium text-text">
-                    Link {{ index + 1 }}
+                    {{ $t('Link :number', { number: String(index + 1) }) }}
                 </p>
                 <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    :aria-label="`Remove link ${index + 1}`"
+                    :aria-label="
+                        $t('Remove link :number', { number: String(index + 1) })
+                    "
                     @click="removeLink(index)"
                 >
                     <Trash2 class="size-4" />
@@ -80,7 +82,9 @@ function removeLink(index: number): void {
             </div>
 
             <div class="grid gap-2">
-                <Label :for="`${id}-network-${index}`">Network</Label>
+                <Label :for="`${id}-network-${index}`">{{
+                    $t('Network')
+                }}</Label>
                 <select
                     :id="`${id}-network-${index}`"
                     class="rounded-md border border-border bg-surface px-3 py-2 text-sm"
@@ -105,7 +109,7 @@ function removeLink(index: number): void {
             </div>
 
             <div class="grid gap-2">
-                <Label :for="`${id}-url-${index}`">URL</Label>
+                <Label :for="`${id}-url-${index}`">{{ $t('URL') }}</Label>
                 <Input
                     :id="`${id}-url-${index}`"
                     :model-value="link.url"
@@ -118,7 +122,9 @@ function removeLink(index: number): void {
             </div>
 
             <div class="grid gap-2">
-                <Label :for="`${id}-label-${index}`">Label (optional)</Label>
+                <Label :for="`${id}-label-${index}`">{{
+                    $t('Label (optional)')
+                }}</Label>
                 <Input
                     :id="`${id}-label-${index}`"
                     :model-value="link.label ?? ''"
@@ -138,7 +144,7 @@ function removeLink(index: number): void {
             @click="addLink"
         >
             <Plus class="size-4" />
-            Add link
+            {{ $t('Add link') }}
         </Button>
     </div>
 </template>

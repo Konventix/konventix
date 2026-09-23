@@ -38,20 +38,26 @@ function switchBrand(value: unknown): void {
 </script>
 
 <template>
-    <Head title="Menu" />
+    <Head :title="$t('Menu')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Menu"
-            description="The entries a brand shows in its topbar, after the module entries"
+            :title="$t('Menu')"
+            :description="
+                $t(
+                    'The entries a brand shows in its topbar, after the module entries',
+                )
+            "
         >
-            <Label for="menu-brand" class="sr-only">Brand to edit</Label>
+            <Label for="menu-brand" class="sr-only">{{
+                $t('Brand to edit')
+            }}</Label>
             <Select
                 :model-value="props.brand?.id ?? undefined"
                 @update:model-value="switchBrand"
             >
                 <SelectTrigger id="menu-brand" class="w-56">
-                    <SelectValue placeholder="Pick a brand…" />
+                    <SelectValue :placeholder="$t('Pick a brand…')" />
                 </SelectTrigger>
                 <SelectContent>
                     <SelectItem
@@ -66,11 +72,11 @@ function switchBrand(value: unknown): void {
         </AdminPageHeader>
 
         <p class="text-sm text-text-muted">
-            A <em>page</em> entry links one of the brand's own pages and shows
-            only to people who may read that page — its label falls back to the
-            page's title. A <em>link</em> entry goes anywhere. A
-            <em>group</em> is a heading that opens the entries placed under it;
-            one level only. Drag entries to reorder them.
+            {{
+                $t(
+                    'A “page” entry links one of the brand’s own pages and shows only to people who may read that page — its label falls back to the page’s title. A “link” entry goes anywhere. A “group” is a heading that opens the entries placed under it; one level only. Drag entries to reorder them.',
+                )
+            }}
         </p>
 
         <BrandMenuForm
@@ -83,7 +89,7 @@ function switchBrand(value: unknown): void {
         />
 
         <p v-else class="text-sm text-text-muted">
-            Pick a brand above to edit its menu.
+            {{ $t('Pick a brand above to edit its menu.') }}
         </p>
     </div>
 </template>

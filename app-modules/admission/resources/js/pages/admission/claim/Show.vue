@@ -56,42 +56,44 @@ function claim(): void {
 </script>
 
 <template>
-    <Head title="Claim your ticket" />
+    <Head :title="$t('Claim your ticket')" />
 
     <div class="mx-auto w-full max-w-xl px-4 py-6">
         <Heading
             as="h1"
-            title="A ticket is waiting for you"
+            :title="$t('A ticket is waiting for you')"
             :description="
                 props.managerUsername
-                    ? `@${props.managerUsername} has reserved it for you.`
-                    : 'It has been reserved for you.'
+                    ? $t(':handle has reserved it for you.', {
+                          handle: `@${props.managerUsername}`,
+                      })
+                    : $t('It has been reserved for you.')
             "
         />
 
         <dl
             class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 rounded-xl border border-border bg-surface-raised p-4 text-sm"
         >
-            <dt class="text-text-muted">Event</dt>
+            <dt class="text-text-muted">{{ $t('Event') }}</dt>
             <dd class="font-medium text-text">
                 <Link
                     v-if="props.eventSlug"
                     :href="showEvent(props.eventSlug).url"
                     class="hover:text-accent"
                 >
-                    {{ props.eventName ?? 'This event' }}
+                    {{ props.eventName ?? $t('This event') }}
                 </Link>
                 <template v-else>{{
-                    props.eventName ?? 'This event'
+                    props.eventName ?? $t('This event')
                 }}</template>
             </dd>
-            <dt class="text-text-muted">Ticket</dt>
+            <dt class="text-text-muted">{{ $t('Ticket') }}</dt>
             <dd class="capitalize">{{ props.role }}</dd>
             <template v-if="props.intendedEmail">
-                <dt class="text-text-muted">Meant for</dt>
+                <dt class="text-text-muted">{{ $t('Meant for') }}</dt>
                 <dd>{{ props.intendedEmail }}</dd>
             </template>
-            <dt class="text-text-muted">Offer closes</dt>
+            <dt class="text-text-muted">{{ $t('Offer closes') }}</dt>
             <!-- datetime-raw: props.expiresAt — already formatted on the
                  server in the brand's zone, the way the invitation mail
                  printed it. -->
@@ -103,20 +105,25 @@ function claim(): void {
             role="status"
             class="mt-4 rounded-md bg-subtle px-3 py-2 text-sm text-text"
         >
-            You already hold a ticket for this event. Claiming this one puts a
-            second ticket in your name.
+            {{
+                $t(
+                    'You already hold a ticket for this event. Claiming this one puts a second ticket in your name.',
+                )
+            }}
         </p>
 
         <p class="mt-4 text-sm text-text-muted">
-            Claiming puts the ticket in your name: it appears under
-            <strong>My tickets</strong>, and only you can download it or choose
-            its seat.
+            {{
+                $t(
+                    'Claiming puts the ticket in your name: it appears under My tickets, and only you can download it or choose its seat.',
+                )
+            }}
         </p>
 
         <div class="mt-6">
             <Button type="button" :disabled="claiming" @click="claim">
                 <TicketIcon class="size-4" />
-                Claim this ticket
+                {{ $t('Claim this ticket') }}
             </Button>
         </div>
     </div>

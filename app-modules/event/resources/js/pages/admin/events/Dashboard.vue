@@ -8,6 +8,7 @@ import {
     RefreshCw,
     Users,
 } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
@@ -15,6 +16,7 @@ import { edit as editAgenda } from '@/routes/admin/events/agenda';
 import { index as attendeesIndex } from '@/routes/admin/events/attendees';
 import { edit as editHubLayout } from '@/routes/admin/events/hub';
 import { show as showShoutbox } from '@/routes/admin/events/shoutbox';
+import { eventStateLabel, eventTransitionLabel } from '../../../lib/labels';
 
 /**
  * Composes Event's own header with contributions from other modules'
@@ -70,21 +72,13 @@ const props = defineProps<{
  * each maps to one lifecycle endpoint (one Action each — the guards live
  * there). Cancel additionally asks for a reason code.
  */
-const transitionLabels: Record<string, string> = {
-    announce: 'Announce',
-    publish: 'Publish',
-    unpublish: 'Unpublish',
-    start: 'Start',
-    conclude: 'Conclude',
-    cancel: 'Cancel event',
-    archive: 'Archive',
-};
-
 function runTransition(transition: string): void {
     const payload: Record<string, string> = {};
 
     if (transition === 'cancel') {
-        const reason = window.prompt('Reason code for the cancellation:');
+        const reason = window.prompt(
+            trans('Reason code for the cancellation:'),
+        );
 
         if (!reason) {
             return;
@@ -149,7 +143,7 @@ function refresh(): void {
                             'bg-surface-muted text-text-muted'
                         "
                     >
-                        {{ event.state }}
+                        {{ eventStateLabel(event.state) }}
                     </span>
                 </div>
                 <p class="text-sm text-text-muted">
@@ -169,18 +163,18 @@ function refresh(): void {
                     size="sm"
                     @click="runTransition(transition)"
                 >
-                    {{ transitionLabels[transition] ?? transition }}
+                    {{ eventTransitionLabel(transition) }}
                 </Button>
                 <Link :href="`/admin/events/${props.event.id}/edit`">
                     <Button variant="outline" size="sm">
                         <Pencil class="size-4" />
-                        Edit
+                        {{ $t('Edit') }}
                     </Button>
                 </Link>
                 <Button as-child variant="secondary" size="sm">
                     <Link :href="editHubLayout(props.event.id).url">
                         <LayoutGrid class="size-4" />
-                        Live hub
+                        {{ $t('Live hub') }}
                     </Link>
                 </Button>
                 <!-- Agenda's editor. A plain link, not a slot
@@ -197,7 +191,7 @@ function refresh(): void {
                 >
                     <Link :href="editAgenda(props.event.id).url">
                         <CalendarClock class="size-4" />
-                        Programme
+                        {{ $t('Programme') }}
                     </Link>
                 </Button>
                 <!-- Community's shoutbox desk, on the same terms as the
@@ -211,7 +205,7 @@ function refresh(): void {
                 >
                     <Link :href="showShoutbox(props.event.id).url">
                         <MessagesSquare class="size-4" />
-                        Shoutbox
+                        {{ $t('Shoutbox') }}
                     </Link>
                 </Button>
                 <!-- Admission's attendee list (#329). No module flag:
@@ -226,7 +220,7 @@ function refresh(): void {
                 >
                     <Link :href="attendeesIndex(props.event.id).url">
                         <Users class="size-4" />
-                        Attendees
+                        {{ $t('Attendees') }}
                     </Link>
                 </Button>
                 <Button
@@ -239,7 +233,7 @@ function refresh(): void {
                         class="size-4"
                         :class="{ 'animate-spin': refreshing }"
                     />
-                    Refresh
+                    {{ $t('Refresh') }}
                 </Button>
             </div>
         </div>

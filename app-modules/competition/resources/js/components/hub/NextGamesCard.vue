@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { onMounted, onUnmounted, ref } from 'vue';
 import { Badge } from '@/components/ui/badge';
 import { sectionLabel } from '../bracket/bracketModel';
 import { formatEventDateTime } from '../public/eventTime';
 
 /**
- * The live hub's "Nächste Spiele" card (competition design §10a, D-HUB-07):
+ * The live hub's "Next games" card (competition design §10a, D-HUB-07):
  * the viewer's open matches at the running event, soonest first, each with
  * the one nudge that matters most — "your round is due, your opponent is
  * waiting". It nudges and never blocks.
@@ -113,26 +114,35 @@ onUnmounted(() => {
     }
 });
 
-const NUDGES: Record<Konventix.Competition.Enums.NextGameNudge, string> = {
-    disputed: 'Streitfall offen',
-    confirm: 'Ergebnis bestätigen',
-    awaiting_confirmation: 'Wartet auf Bestätigung',
-    due: 'Jetzt dran',
-    report: 'Ergebnis melden',
-};
+function nudgeLabel(nudge: Konventix.Competition.Enums.NextGameNudge): string {
+    const labels: Record<Konventix.Competition.Enums.NextGameNudge, string> = {
+        disputed: trans('Dispute open'),
+        confirm: trans('Confirm result'),
+        awaiting_confirmation: trans('Waiting for confirmation'),
+        due: trans('Your turn now'),
+        report: trans('Report result'),
+    };
+
+    return labels[nudge];
+}
 
 function roundLabel(game: Konventix.Competition.Data.NextGameData): string {
-    return [sectionLabel(game.bracket), `Runde ${game.round}`]
+    return [
+        sectionLabel(game.bracket),
+        trans('Round :round', { round: String(game.round) }),
+    ]
         .filter((part) => part !== null)
         .join(' · ');
 }
 
 function opponentLabel(game: Konventix.Competition.Data.NextGameData): string {
     if (game.opponentName !== null) {
-        return `gegen ${game.opponentName}`;
+        return trans('vs :opponent', { opponent: game.opponentName });
     }
 
-    return game.awaitingOpponent ? 'wartet auf Gegner' : 'Freilos';
+    return game.awaitingOpponent
+        ? trans('waiting for an opponent')
+        : trans('Bye');
 }
 </script>
 
@@ -164,7 +174,7 @@ function opponentLabel(game: Konventix.Competition.Data.NextGameData): string {
                                       : 'default'
                             "
                         >
-                            {{ NUDGES[game.nudge] }}
+                            {{ nudgeLabel(game.nudge) }}
                         </Badge>
                     </span>
                     <span class="text-sm text-text-muted">
@@ -177,14 +187,14 @@ function opponentLabel(game: Konventix.Competition.Data.NextGameData): string {
                                       game.scheduledAt,
                                       card.eventTimezone,
                                   )
-                                : 'Noch nicht angesetzt'
+                                : $t('Not scheduled yet')
                         }}
                     </span>
                 </component>
             </li>
         </ul>
         <p v-else class="text-sm text-text-muted">
-            Gerade steht kein Spiel für dich an.
+            {{ $t('You have no match coming up right now.') }}
         </p>
 
         <Link
@@ -193,8 +203,8 @@ function opponentLabel(game: Konventix.Competition.Data.NextGameData): string {
         >
             {{
                 card.hasMore
-                    ? 'Alle Spiele in Meine Turniere'
-                    : 'Meine Turniere'
+                    ? $t('All matches in My tournaments')
+                    : $t('My tournaments')
             }}
         </Link>
     </div>

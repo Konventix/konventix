@@ -26,6 +26,19 @@ enum CompetitionStatus: string
     case Finished = 'finished';
     case Cancelled = 'cancelled';
 
+    /** The state as a word for the console, in the reader's locale (ADR-0068). */
+    public function label(): string
+    {
+        return match ($this) {
+            self::Draft => __('draft'),
+            self::Published => __('published'),
+            self::SignupClosed => __('signup closed'),
+            self::Running => __('running'),
+            self::Finished => __('finished'),
+            self::Cancelled => __('cancelled'),
+        };
+    }
+
     /**
      * The states this one may legally move to (design §4).
      *

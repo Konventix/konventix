@@ -72,17 +72,23 @@ function submit(): void {
     <div class="flex flex-col gap-6">
         <AdminPageHeader
             :title="role.name"
-            :description="`Role of ${role.brandName} — ${form.permissions.length} capabilities granted`"
+            :description="
+                $tChoice(
+                    '{1} Role of :brand — :count capability granted|[0,*] Role of :brand — :count capabilities granted',
+                    form.permissions.length,
+                    { brand: role.brandName },
+                )
+            "
         />
 
         <form class="flex flex-col gap-6" @submit.prevent="submit">
             <Card>
                 <CardHeader>
-                    <CardTitle>Name</CardTitle>
+                    <CardTitle>{{ $t('Name') }}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div class="grid max-w-md gap-2">
-                        <Label for="role-name">Role name</Label>
+                        <Label for="role-name">{{ $t('Role name') }}</Label>
                         <Input id="role-name" v-model="form.name" />
                         <InputError :message="form.errors.name" />
                         <p
@@ -91,9 +97,16 @@ function submit(): void {
                             "
                             class="text-xs text-text-muted"
                         >
-                            This is {{ moduleLabel(defaultModule ?? '') }}'s
-                            default role. Once you save an edit,
-                            permissions:sync will not change it again.
+                            {{
+                                $t(
+                                    'This is the :module module’s default role. Once you save an edit, permissions:sync will not change it again.',
+                                    {
+                                        module: moduleLabel(
+                                            defaultModule ?? '',
+                                        ),
+                                    },
+                                )
+                            }}
                         </p>
                     </div>
                 </CardContent>
@@ -101,7 +114,7 @@ function submit(): void {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Capabilities</CardTitle>
+                    <CardTitle>{{ $t('Capabilities') }}</CardTitle>
                 </CardHeader>
                 <CardContent class="flex flex-col gap-6">
                     <InputError :message="form.errors.permissions" />
@@ -141,14 +154,14 @@ function submit(): void {
 
             <div class="flex items-center gap-3">
                 <Button type="submit" :disabled="form.processing">
-                    Save role
+                    {{ $t('Save role') }}
                 </Button>
                 <span
                     v-if="form.isDirty"
                     role="status"
                     class="text-sm text-warning"
                 >
-                    Unsaved changes
+                    {{ $t('Unsaved changes') }}
                 </span>
             </div>
         </form>

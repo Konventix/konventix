@@ -136,8 +136,8 @@ final class CheckInEntrant
                     competitionName: $competition->name,
                     teamName: $team->name ?? '',
                     detail: $selfServiceUserId === null
-                        ? __('Die Turnierleitung hat euer Team eingecheckt.')
-                        : __('Euer Captain hat euer Team eingecheckt.'),
+                        ? __('The organizers checked your team in.')
+                        : __('Your captain checked your team in.'),
                 ),
             );
 

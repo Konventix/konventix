@@ -66,12 +66,12 @@ function hubRenderedLinks(User $viewer): array
 
 /**
  * Resources' contribution is the one that depends on the *member*, not on
- * the brand: `Mein Sitzplatz` names a seat claim behind the admission, and
+ * the brand: `My seat` names a seat claim behind the admission, and
  * a crew badge has no registration and therefore never a claim. The link
  * withdraws itself for them (`HubLink`) instead of offering the picker's
  * 404 — which is what it did before the whole-branch review.
  */
-it('shows Mein Sitzplatz to a member with a seat claim', function (): void {
+it('shows My seat to a member with a seat claim', function (): void {
     $brand = $this->withBrand();
     $this->activateModule('resources', $brand);
 
@@ -89,10 +89,10 @@ it('shows Mein Sitzplatz to a member with a seat claim', function (): void {
 
     expect($links)->toHaveKey('resources.my-seat')
         ->and($links['resources.my-seat']['url'])->toBe('/my/admissions/'.$admission->id.'/seat')
-        ->and($links['resources.my-seat']['label'])->toBe('Mein Sitzplatz');
+        ->and($links['resources.my-seat']['label'])->toBe('My seat');
 });
 
-it('hides Mein Sitzplatz from a crew admission, which can never have a claim', function (): void {
+it('hides My seat from a crew admission, which can never have a claim', function (): void {
     $brand = $this->withBrand();
     $this->activateModule('resources', $brand);
 

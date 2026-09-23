@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,11 +33,17 @@ const emit = defineEmits<{
     resolve: [resolutions: Resolution[]];
 }>();
 
-const reasons: Record<Conflict['reason'], string> = {
-    deleted: 'deleted',
-    category_changed: 'moved to another category',
-    blocked: 'blocked',
-};
+// A lookup at call time, never a module constant: the words are catalog
+// entries (ADR-0068).
+function reasonText(reason: Conflict['reason']): string {
+    const reasons: Record<Conflict['reason'], string> = {
+        deleted: trans('deleted'),
+        category_changed: trans('moved to another category'),
+        blocked: trans('blocked'),
+    };
+
+    return reasons[reason];
+}
 
 const bookingCount = computed(() =>
     props.conflicts.reduce(
@@ -60,14 +67,23 @@ function releaseAll(): void {
     <Dialog :open="open" @update:open="(value) => emit('update:open', value)">
         <DialogContent class="max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-                <DialogTitle>Occupied places affected</DialogTitle>
+                <DialogTitle>{{ $t('Occupied places affected') }}</DialogTitle>
                 <DialogDescription>
-                    {{ conflicts.length }}
-                    {{ conflicts.length === 1 ? 'place' : 'places' }} with
-                    {{ bookingCount }} active
-                    {{ bookingCount === 1 ? 'booking' : 'bookings' }} would
-                    change. Releasing sends the registrants back to choosing a
-                    seat; no mail is sent.
+                    {{
+                        $t(
+                            ':places with :bookings would change. Releasing sends the registrants back to choosing a seat; no mail is sent.',
+                            {
+                                places: $tChoice(
+                                    '{1} :count place|[0,*] :count places',
+                                    conflicts.length,
+                                ),
+                                bookings: $tChoice(
+                                    '{1} :count active booking|[0,*] :count active bookings',
+                                    bookingCount,
+                                ),
+                            },
+                        )
+                    }}
                 </DialogDescription>
             </DialogHeader>
 
@@ -80,7 +96,7 @@ function releaseAll(): void {
                     <div class="font-medium text-text">
                         {{ conflict.ref ?? conflict.label ?? conflict.placeId }}
                         <span class="font-normal text-text-muted"
-                            >— {{ reasons[conflict.reason] }}</span
+                            >— {{ reasonText(conflict.reason) }}</span
                         >
                     </div>
                     <ul class="mt-1 text-xs text-text-muted">
@@ -90,8 +106,8 @@ function releaseAll(): void {
                         >
                             {{
                                 booking.holderType === 'operator'
-                                    ? 'Organisation reservation'
-                                    : 'Registration'
+                                    ? $t('Organisation reservation')
+                                    : $t('Registration')
                             }}
                             <span
                                 v-if="booking.registrationId"
@@ -109,7 +125,7 @@ function releaseAll(): void {
                     variant="outline"
                     :disabled="processing"
                     @click="emit('update:open', false)"
-                    >Keep the plan as saved</Button
+                    >{{ $t('Keep the plan as saved') }}</Button
                 >
                 <Button
                     type="button"
@@ -117,8 +133,12 @@ function releaseAll(): void {
                     :disabled="processing"
                     @click="releaseAll"
                 >
-                    Release {{ bookingCount }}
-                    {{ bookingCount === 1 ? 'booking' : 'bookings' }} and save
+                    {{
+                        $tChoice(
+                            '{1} Release :count booking and save|[0,*] Release :count bookings and save',
+                            bookingCount,
+                        )
+                    }}
                 </Button>
             </DialogFooter>
         </DialogContent>

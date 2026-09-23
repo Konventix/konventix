@@ -25,17 +25,17 @@ const props = defineProps<{
 </script>
 
 <template>
-    <Head title="My tickets" />
+    <Head :title="$t('My tickets')" />
 
     <div class="mx-auto w-full max-w-3xl px-4 py-6">
         <Heading
             as="h1"
-            title="My tickets"
-            description="Every admission claimed under your account"
+            :title="$t('My tickets')"
+            :description="$t('Every admission claimed under your account')"
         />
 
         <p v-if="props.tickets.length === 0" class="text-sm text-text-muted">
-            No ticket has been claimed to your account yet.
+            {{ $t('No ticket has been claimed to your account yet.') }}
         </p>
 
         <ul v-else class="flex flex-col gap-3">
@@ -70,7 +70,7 @@ const props = defineProps<{
                     "
                     class="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-3 text-sm font-medium text-text hover:border-accent"
                 >
-                    Ticket
+                    {{ $t('Ticket') }}
                     <ChevronRight
                         class="size-4 shrink-0 text-text-muted"
                         aria-hidden="true"
@@ -85,11 +85,14 @@ const props = defineProps<{
             aria-labelledby="managed-tickets"
         >
             <h2 id="managed-tickets" class="text-lg font-medium">
-                Tickets you manage
+                {{ $t('Tickets you manage') }}
             </h2>
             <p class="text-sm text-text-muted">
-                Bought by you, held by somebody else or nobody yet. Assign them
-                from the registration they belong to.
+                {{
+                    $t(
+                        'Bought by you, held by somebody else or nobody yet. Assign them from the registration they belong to.',
+                    )
+                }}
             </p>
             <ul class="flex flex-col gap-3">
                 <li
@@ -112,7 +115,7 @@ const props = defineProps<{
                             {{
                                 ticket.holderUsername
                                     ? `@${ticket.holderUsername}`
-                                    : 'Not yet assigned'
+                                    : $t('Not yet assigned')
                             }}
                             ·
                             <span class="capitalize">{{ ticket.role }}</span>
@@ -127,7 +130,7 @@ const props = defineProps<{
                         "
                         class="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-3 text-sm font-medium text-text hover:border-accent"
                     >
-                        Ticket
+                        {{ $t('Ticket') }}
                         <ChevronRight
                             class="size-4 shrink-0 text-text-muted"
                             aria-hidden="true"

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link, router } from '@inertiajs/vue3';
 import { Armchair, Check, Copy, Ticket as TicketIcon, X } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import HolderController from '@/actions/Konventix/Admission/Http/Controllers/HolderController';
 import InviteController from '@/actions/Konventix/Admission/Http/Controllers/InviteController';
@@ -57,20 +58,27 @@ const inviteNote = computed(() => {
 
     // datetime-raw: invite.expiresAt — formatted on the server in the brand's zone
     return invite.intendedEmail
-        ? `Invitation sent to ${invite.intendedEmail}, valid until ${invite.expiresAt}.`
-        : `Invite link created, valid until ${invite.expiresAt}.`;
+        ? trans('Invitation sent to :email, valid until :date.', {
+              email: invite.intendedEmail,
+              date: invite.expiresAt,
+          })
+        : trans('Invite link created, valid until :date.', {
+              date: invite.expiresAt,
+          });
 });
 
 const holderLabel = computed(() => {
     if (props.admission.isSelf) {
-        return 'You';
+        return trans('You');
     }
 
     if (props.admission.holderUsername) {
         return `@${props.admission.holderUsername}`;
     }
 
-    return props.admission.holderUserId ? 'Assigned' : 'Not yet assigned';
+    return props.admission.holderUserId
+        ? trans('Assigned')
+        : trans('Not yet assigned');
 });
 
 function run(request: () => void): void {
@@ -151,7 +159,7 @@ async function copyInviteLink(): Promise<void> {
                         v-if="props.admission.checkedIn"
                         class="rounded-full bg-success/15 px-2 py-0.5 text-xs font-medium text-success"
                     >
-                        Checked in
+                        {{ $t('Checked in') }}
                     </span>
                 </span>
                 <span
@@ -159,7 +167,11 @@ async function copyInviteLink(): Promise<void> {
                     class="flex items-center gap-1 text-sm text-text-muted"
                 >
                     <Armchair class="size-4" aria-hidden="true" />
-                    Seat {{ props.admission.seat.placeLabel }}
+                    {{
+                        $t('Seat :seat', {
+                            seat: props.admission.seat.placeLabel,
+                        })
+                    }}
                 </span>
                 <span
                     v-else-if="props.admission.invite"
@@ -179,7 +191,7 @@ async function copyInviteLink(): Promise<void> {
                     class="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-3 text-sm font-medium text-text hover:border-accent"
                 >
                     <TicketIcon class="size-4" aria-hidden="true" />
-                    Ticket
+                    {{ $t('Ticket') }}
                 </Link>
 
                 <template
@@ -194,7 +206,7 @@ async function copyInviteLink(): Promise<void> {
                         :disabled="busy"
                         @click="claimForMyself"
                     >
-                        This one is mine
+                        {{ $t('This one is mine') }}
                     </Button>
                     <Button
                         type="button"
@@ -203,7 +215,7 @@ async function copyInviteLink(): Promise<void> {
                         :aria-expanded="inviting"
                         @click="inviting = !inviting"
                     >
-                        Invite
+                        {{ $t('Invite') }}
                     </Button>
                 </template>
 
@@ -225,7 +237,7 @@ async function copyInviteLink(): Promise<void> {
                             aria-hidden="true"
                         />
                         <Copy v-else class="size-4" aria-hidden="true" />
-                        {{ copied ? 'Copied' : 'Copy link' }}
+                        {{ copied ? $t('Copied') : $t('Copy link') }}
                     </Button>
                     <Button
                         type="button"
@@ -235,7 +247,7 @@ async function copyInviteLink(): Promise<void> {
                         @click="withdrawInvite"
                     >
                         <X class="size-4" aria-hidden="true" />
-                        Withdraw
+                        {{ $t('Withdraw') }}
                     </Button>
                 </template>
 
@@ -247,7 +259,7 @@ async function copyInviteLink(): Promise<void> {
                     :disabled="busy"
                     @click="takeBack"
                 >
-                    Take back
+                    {{ $t('Take back') }}
                 </Button>
             </span>
         </div>
@@ -262,7 +274,11 @@ async function copyInviteLink(): Promise<void> {
             "
             class="flex flex-col gap-1 text-xs text-text-muted"
         >
-            Invite link — anyone who opens it first can take this ticket
+            {{
+                $t(
+                    'Invite link — anyone who opens it first can take this ticket',
+                )
+            }}
             <input
                 type="text"
                 readonly

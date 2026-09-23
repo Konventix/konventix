@@ -511,7 +511,7 @@ it('shows the desk every open dispute with both claims and resolves it with a no
             ->component('admin/competitions/desk/Desk')
             ->has('desk.disputes', 1)
             ->where('desk.disputes.0.matchId', $match->getKey())
-            ->where('desk.disputes.0.reason', 'Die beiden Seiten haben unterschiedliche Ergebnisse gemeldet.')
+            ->where('desk.disputes.0.reason', 'The two sides reported different results.')
             ->where('desk.disputes.0.recorded', false)
             ->has('desk.disputes.0.reports', 2)
             ->where('desk.disputes.0.reports.0.entrantId', $a->id)

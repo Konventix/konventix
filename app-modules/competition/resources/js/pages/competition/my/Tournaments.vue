@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -17,7 +18,7 @@ import { formatEventDateTime } from '../../../components/public/eventTime';
 import { usePollWhile } from '../../../components/public/usePollWhile';
 
 /**
- * "Meine Turniere" (design §10): the teams this person is on, the entries
+ * "My tournaments" (design §10): the teams this person is on, the entries
  * those teams hold, and the four things a participant may do — start a team,
  * share its invite code, leave, and (as captain) withdraw an entry.
  *
@@ -28,7 +29,7 @@ import { usePollWhile } from '../../../components/public/usePollWhile';
  * `incomplete` is shown as a state to be proud of rather than an error: a
  * roster below the team size still holds its slot, and the organizer will
  * either fill it from the interested list or ask (§5.4). Telling people their
- * entry is "unvollständig" without saying that it still counts is how a team
+ * entry is "incomplete" without saying that it still counts is how a team
  * signs up twice.
  *
  * **Check-in (§6) appears here only when the captain may actually do it.**
@@ -55,7 +56,7 @@ import { usePollWhile } from '../../../components/public/usePollWhile';
  * their leaderboard scores with the desk's verdict. Polled every 30 s while
  * one of their competitions runs.
  *
- * Participant copy is German (ADR-0001). Names come from the server's
+ * Copy comes from the catalog (ADR-0068). Names come from the server's
  * `ParticipantProfile` read model, never from Identity.
  */
 type Member = { userId: string; displayName: string; isYou: boolean };
@@ -94,11 +95,15 @@ const props = defineProps<{
 
 usePollWhile(() => props.pollSeconds);
 
-const scoreStates: Record<string, string> = {
-    pending: 'Wartet auf die Turnierleitung',
-    verified: 'Bestätigt',
-    rejected: 'Abgelehnt',
-};
+function scoreStateLabel(state: string): string {
+    const labels: Record<string, string> = {
+        pending: trans('Waiting for the organizers'),
+        verified: trans('Confirmed'),
+        rejected: trans('Rejected'),
+    };
+
+    return labels[state] ?? state;
+}
 
 function confirmationHref(
     item: Konventix.Competition.Data.PendingConfirmationData,
@@ -118,16 +123,16 @@ function claim(scores: Record<number, number | null>): string {
         .join(' : ');
 }
 
-const stateLabels: Record<string, string> = {
-    incomplete: 'Noch nicht vollzählig',
-    registered: 'Angemeldet',
-    checked_in: 'Eingecheckt',
-    withdrawn: 'Zurückgezogen',
-    disqualified: 'Disqualifiziert',
-};
-
 function stateLabel(state: string): string {
-    return stateLabels[state] ?? state;
+    const labels: Record<string, string> = {
+        incomplete: trans('Not complete yet'),
+        registered: trans('Signed up'),
+        checked_in: trans('Checked in'),
+        withdrawn: trans('Withdrawn'),
+        disqualified: trans('Disqualified'),
+    };
+
+    return labels[state] ?? state;
 }
 
 function stateClass(state: string): string {
@@ -147,7 +152,7 @@ function stateClass(state: string): string {
  * whether the whole roster has been through the event door, which only the
  * Action can answer. So the button is offered and the check-in can still
  * refuse — and the controller answers with a field error on `entrant`
- * naming who is still outside. Without this the captain clicks "Einchecken"
+ * naming who is still outside. Without this the captain clicks "Check in"
  * and nothing whatsoever happens, which reads as a broken page.
  *
  * Keyed by entry, so the message lands on the entry it belongs to. Same
@@ -170,12 +175,16 @@ const {
 
 function leave(team: Team): void {
     ask({
-        title: `${team.name} verlassen?`,
+        title: trans('Leave :team?', { team: team.name }),
         description: team.isCaptain
-            ? 'Du gibst damit auch die Captain-Rolle ab. Zurück ins Team kommst du nur mit dem Einladungscode vom neuen Captain.'
-            : 'Zurück ins Team kommst du nur mit dem Einladungscode vom Captain.',
-        confirmLabel: 'Team verlassen',
-        cancelLabel: 'Abbrechen',
+            ? trans(
+                  'This also hands over the captain role. You can only get back on the team with the invite code from the new captain.',
+              )
+            : trans(
+                  'You can only get back on the team with the invite code from the captain.',
+              ),
+        confirmLabel: trans('Leave team'),
+        cancelLabel: trans('Cancel'),
         run: () =>
             router.delete(leaveTeam(team.id).url, {
                 preserveScroll: true,
@@ -189,11 +198,14 @@ function regenerate(team: Team): void {
 
 function withdraw(entry: Entry): void {
     ask({
-        title: `Von ${entry.competitionName} abmelden?`,
-        description:
-            'Euer Platz wird frei. Ist das Feld danach voll oder die Anmeldung geschlossen, kommt ihr nicht wieder hinein.',
-        confirmLabel: 'Anmeldung zurückziehen',
-        cancelLabel: 'Abbrechen',
+        title: trans('Withdraw from :competition?', {
+            competition: entry.competitionName,
+        }),
+        description: trans(
+            'Your slot becomes free. If the field is full or signup has closed by then, you cannot get back in.',
+        ),
+        confirmLabel: trans('Withdraw entry'),
+        cancelLabel: trans('Cancel'),
         run: () => {
             refusals.value = { ...refusals.value, [entry.id]: undefined };
 
@@ -239,17 +251,24 @@ function checkIn(entry: Entry): void {
  */
 function checkInHint(entry: Entry, team: Team): string {
     if (entry.state === 'checked_in') {
-        return 'Ihr seid eingecheckt.';
+        return trans('Your team is checked in.');
     }
 
     if (entry.checkInMode === 'desk') {
-        return 'Die Turnierleitung checkt euch am Turnier-Desk ein.';
+        return trans('The organizers check you in at the tournament desk.');
     }
 
     if (entry.checkInMode === 'self_service' && !entry.canCheckIn) {
         return entry.checkInOpensAt
-            ? `Check-in ab ${formatEventDateTime(entry.checkInOpensAt, team.eventTimezone)}.`
-            : 'Der Check-in öffnet, sobald die Turnierleitung eine Startzeit gesetzt hat.';
+            ? trans('Check-in from :time.', {
+                  time: formatEventDateTime(
+                      entry.checkInOpensAt,
+                      team.eventTimezone,
+                  ),
+              })
+            : trans(
+                  'Check-in opens once the organizers have set a start time.',
+              );
     }
 
     return '';
@@ -268,19 +287,22 @@ function canWithdraw(entry: Entry): boolean {
 </script>
 
 <template>
-    <Head title="Meine Turniere" />
+    <Head :title="$t('My tournaments')" />
 
     <div class="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
         <Heading
             as="h1"
-            title="Meine Turniere"
-            description="Deine Teams, eure Anmeldungen und der Einladungscode zum Teilen."
+            :title="$t('My tournaments')"
+            :description="
+                $t('Your teams, their entries and the invite code to share.')
+            "
         />
 
         <p class="text-sm text-text-muted">
-            Du hast einen Code bekommen?
-            <Link :href="join().url" class="underline underline-offset-4"
-                >Hier beitreten</Link
+            {{ $t('Got a code?') }}
+            <Link :href="join().url" class="underline underline-offset-4">{{
+                $t('Join here')
+            }}</Link
             >.
         </p>
 
@@ -290,7 +312,7 @@ function canWithdraw(entry: Entry): boolean {
             aria-labelledby="pending-heading"
         >
             <h2 id="pending-heading" class="text-lg font-medium text-text">
-                Ergebnisse zum Bestätigen
+                {{ $t('Results to confirm') }}
             </h2>
             <ul class="flex flex-col gap-1">
                 <li
@@ -298,13 +320,18 @@ function canWithdraw(entry: Entry): boolean {
                     :key="item.matchId"
                     class="text-sm text-text"
                 >
-                    {{ item.competitionName }}: {{ item.opponentName }} meldet
-                    {{ claim(item.scores) }}.
+                    {{
+                        $t(':competition: :opponent reports :score.', {
+                            competition: item.competitionName,
+                            opponent: item.opponentName,
+                            score: claim(item.scores),
+                        })
+                    }}
                     <Link
                         v-if="confirmationHref(item)"
                         :href="confirmationHref(item)!"
                         class="underline underline-offset-4"
-                        >Bestätigen oder widersprechen</Link
+                        >{{ $t('Confirm or dispute') }}</Link
                     >
                 </li>
             </ul>
@@ -316,7 +343,7 @@ function canWithdraw(entry: Entry): boolean {
             aria-labelledby="scores-heading"
         >
             <h2 id="scores-heading" class="text-lg font-medium text-text">
-                Eingereichte Ergebnisse
+                {{ $t('Submitted results') }}
             </h2>
             <ul class="flex flex-col gap-1">
                 <li
@@ -326,7 +353,10 @@ function canWithdraw(entry: Entry): boolean {
                 >
                     {{ entry.competitionName }} · {{ entry.teamName }}
                     <template v-if="entry.heat !== null">
-                        · Lauf {{ entry.heat }}</template
+                        ·
+                        {{
+                            $t('Heat :heat', { heat: String(entry.heat) })
+                        }}</template
                     >
                     · {{ entry.value }} ·
                     <span
@@ -337,7 +367,7 @@ function canWithdraw(entry: Entry): boolean {
                                   ? 'text-danger'
                                   : 'text-text-muted'
                         "
-                        >{{ scoreStates[entry.state] ?? entry.state }}</span
+                        >{{ scoreStateLabel(entry.state) }}</span
                     >
                     <template v-if="entry.rejectionNote">
                         – {{ entry.rejectionNote }}</template
@@ -347,8 +377,11 @@ function canWithdraw(entry: Entry): boolean {
         </section>
 
         <p v-if="props.teams.length === 0" class="text-sm text-text-muted">
-            Du bist noch in keinem Team. Melde dich auf der Turnierseite an, um
-            eins zu gründen, oder tritt mit einem Einladungscode bei.
+            {{
+                $t(
+                    'You are not on a team yet. Sign up on the tournament page to start one, or join with an invite code.',
+                )
+            }}
         </p>
 
         <section
@@ -358,24 +391,26 @@ function canWithdraw(entry: Entry): boolean {
         >
             <div class="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 class="text-lg font-medium text-text">{{ team.name }}</h2>
-                <span v-if="team.isCaptain" class="text-xs text-text-muted"
-                    >Du bist Captain</span
-                >
+                <span v-if="team.isCaptain" class="text-xs text-text-muted">{{
+                    $t('You are captain')
+                }}</span>
             </div>
 
             <div
                 v-if="team.inviteCode"
                 class="flex flex-wrap items-center gap-3"
             >
-                <span class="text-sm text-text-muted">Einladungscode</span>
+                <span class="text-sm text-text-muted">{{
+                    $t('Invite code')
+                }}</span>
                 <code
                     class="rounded bg-surface px-2 py-1 font-mono tracking-[0.3em] text-text"
                 >
                     {{ team.inviteCode }}
                 </code>
-                <Button variant="outline" size="sm" @click="regenerate(team)"
-                    >Neuen Code erzeugen</Button
-                >
+                <Button variant="outline" size="sm" @click="regenerate(team)">{{
+                    $t('Generate a new code')
+                }}</Button>
             </div>
 
             <ul class="flex flex-col gap-1">
@@ -386,7 +421,7 @@ function canWithdraw(entry: Entry): boolean {
                 >
                     {{ member.displayName }}
                     <span v-if="member.isYou" class="text-text-muted"
-                        >(du)</span
+                        >({{ $t('you') }})</span
                     >
                 </li>
             </ul>
@@ -421,7 +456,7 @@ function canWithdraw(entry: Entry): boolean {
                             v-if="entry.canCheckIn"
                             size="sm"
                             @click="checkIn(entry)"
-                            >Einchecken</Button
+                            >{{ $t('Check in') }}</Button
                         >
 
                         <Button
@@ -430,7 +465,7 @@ function canWithdraw(entry: Entry): boolean {
                             size="sm"
                             @click="withdraw(entry)"
                         >
-                            Anmeldung zurückziehen
+                            {{ $t('Withdraw entry') }}
                         </Button>
                     </div>
 
@@ -443,13 +478,13 @@ function canWithdraw(entry: Entry): boolean {
             </ul>
 
             <p v-else class="text-sm text-text-muted">
-                Dieses Team ist noch für kein Turnier angemeldet.
+                {{ $t('This team is not signed up for any tournament yet.') }}
             </p>
 
             <div>
-                <Button variant="ghost" size="sm" @click="leave(team)"
-                    >Team verlassen</Button
-                >
+                <Button variant="ghost" size="sm" @click="leave(team)">{{
+                    $t('Leave team')
+                }}</Button>
             </div>
         </section>
 

@@ -29,12 +29,12 @@ enum LeaderboardDirection: string
             : $candidate > $incumbent;
     }
 
-    /** Console copy is English (ADR-0001 is about brand sites, not this). */
+    /** In the reader's locale (ADR-0068); the English is the catalog key. */
     public function label(): string
     {
         return match ($this) {
-            self::Higher => 'Higher is better',
-            self::Lower => 'Lower is better',
+            self::Higher => __('Higher is better'),
+            self::Lower => __('Lower is better'),
         };
     }
 }

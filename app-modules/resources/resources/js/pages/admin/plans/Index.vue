@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed, h } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -57,7 +58,7 @@ const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
 const filterDefs = computed<DataTableFilterDef[]>(() => [
     {
         name: 'event',
-        label: 'Events',
+        label: trans('Events'),
         value: props.filters.event,
         options: props.events.map((event) => ({
             value: event.id,
@@ -93,7 +94,7 @@ function togglePublish(row: PlanRow): void {
 const columns: ColumnDef<PlanRow>[] = [
     {
         accessorKey: 'name',
-        header: 'Name',
+        header: trans('Name'),
         enableSorting: true,
         cell: ({ row }) =>
             h('div', { class: 'flex flex-col' }, [
@@ -109,24 +110,24 @@ const columns: ColumnDef<PlanRow>[] = [
     },
     {
         id: 'event',
-        header: 'Event',
+        header: trans('Event'),
         cell: ({ row }) =>
             h('span', { class: 'text-text-muted' }, row.original.eventName),
     },
     {
         id: 'places',
-        header: 'Places',
+        header: trans('Places'),
         cell: ({ row }) => String(row.original.places),
     },
     {
         accessorKey: 'version',
-        header: 'Version',
+        header: trans('Version'),
         enableSorting: true,
         cell: ({ row }) => String(row.original.version),
     },
     {
         accessorKey: 'published_at',
-        header: 'Published',
+        header: trans('Published'),
         enableSorting: true,
         cell: ({ row }) =>
             row.original.publishedAt === null
@@ -135,7 +136,7 @@ const columns: ColumnDef<PlanRow>[] = [
                       {
                           class: 'rounded-full bg-subtle px-2 py-0.5 text-xs text-text-muted',
                       },
-                      'Draft',
+                      trans('Draft'),
                   )
                 : h(
                       'span',
@@ -154,7 +155,7 @@ const columns: ColumnDef<PlanRow>[] = [
                         href: editPlan(row.original.id).url,
                         class: 'inline-flex h-8 items-center rounded-md border border-border px-3 text-sm hover:bg-subtle',
                     },
-                    () => 'Edit',
+                    () => trans('Edit'),
                 ),
                 h(
                     Button,
@@ -166,8 +167,8 @@ const columns: ColumnDef<PlanRow>[] = [
                     },
                     () =>
                         row.original.publishedAt === null
-                            ? 'Publish'
-                            : 'Unpublish',
+                            ? trans('Publish')
+                            : trans('Unpublish'),
                 ),
                 h(
                     'a',
@@ -176,7 +177,7 @@ const columns: ColumnDef<PlanRow>[] = [
                         download: '',
                         class: 'inline-flex h-8 items-center rounded-md border border-border px-3 text-sm hover:bg-subtle',
                     },
-                    'Export',
+                    trans('Export'),
                 ),
             ]),
     },
@@ -184,19 +185,23 @@ const columns: ColumnDef<PlanRow>[] = [
 </script>
 
 <template>
-    <Head title="Seating plans" />
+    <Head :title="$t('Seating plans')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Seating plans"
-            description="Hall plans per event: draw or import, publish when the picker may show them"
+            :title="$t('Seating plans')"
+            :description="
+                $t(
+                    'Hall plans per event: draw or import, publish when the picker may show them',
+                )
+            "
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
             :filters="filterDefs"
-            search-placeholder="Search plans…"
+            :search-placeholder="$t('Search plans…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
             @update:filter="setFilter"
@@ -219,8 +224,10 @@ const columns: ColumnDef<PlanRow>[] = [
             :data="props.plans.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="plans"
-            empty-message="No plans yet — create one or import a document."
+            :items-label="$t('plans')"
+            :empty-message="
+                $t('No plans yet — create one or import a document.')
+            "
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />

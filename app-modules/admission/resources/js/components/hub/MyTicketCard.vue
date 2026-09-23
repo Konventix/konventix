@@ -40,7 +40,7 @@ const props = defineProps<Props>();
     <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
         <div
             role="img"
-            aria-label="Scan-Code für den Einlass"
+            :aria-label="$t('Scan code for admission')"
             class="size-40 shrink-0 rounded-lg bg-surface p-2 [&>svg]:size-full"
             v-html="props.qrSvg"
         />
@@ -56,7 +56,7 @@ const props = defineProps<Props>();
                 :href="props.ticketUrl"
                 class="mt-1 self-start text-sm text-accent underline-offset-4 hover:underline"
             >
-                Ticket öffnen
+                {{ $t('Open ticket') }}
             </Link>
         </div>
     </div>

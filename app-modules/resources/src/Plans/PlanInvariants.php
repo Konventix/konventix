@@ -49,7 +49,7 @@ final class PlanInvariants
 
         foreach ($document->elements as $index => $element) {
             if (isset($byId[$element->id])) {
-                $violations[] = self::violation($index, 'id', 'Element id is used more than once.');
+                $violations[] = self::violation($index, 'id', __('Element id is used more than once.'));
 
                 continue;
             }
@@ -64,21 +64,22 @@ final class PlanInvariants
                 $parent = $byId[$element->parentId] ?? null;
 
                 if ($parent === null) {
-                    $violations[] = self::violation($index, 'parentId', 'Parent element does not exist.');
+                    $violations[] = self::violation($index, 'parentId', __('Parent element does not exist.'));
                 } elseif (! $element->kind->allowsParent($parent->kind)) {
-                    $violations[] = self::violation($index, 'parentId', sprintf(
-                        'A %s may not be placed inside a %s.',
-                        $element->kind->value,
-                        $parent->kind->value,
+                    $violations[] = self::violation($index, 'parentId', __(
+                        'A :kind may not be placed inside a :parent.',
+                        // Lower-cased for the English sentence; a catalog that
+                        // capitalises nouns writes `:Kind`/`:Parent` (ADR-0068).
+                        ['kind' => mb_strtolower($element->kind->label()), 'parent' => mb_strtolower($parent->kind->label())],
                     ));
                 } elseif (self::isOwnAncestor($element, $byId)) {
-                    $violations[] = self::violation($index, 'parentId', 'Element is its own ancestor.');
+                    $violations[] = self::violation($index, 'parentId', __('Element is its own ancestor.'));
                 }
             }
 
             if ($element->ref !== null) {
                 if (isset($refs[$element->ref])) {
-                    $violations[] = self::violation($index, 'ref', 'Ref is used more than once.');
+                    $violations[] = self::violation($index, 'ref', __('Ref is used more than once.'));
                 }
 
                 $refs[$element->ref] = true;
@@ -86,17 +87,17 @@ final class PlanInvariants
 
             if ($element->kind === ElementKind::Place) {
                 if ($element->resourceTypeId === null) {
-                    $violations[] = self::violation($index, 'resourceTypeId', 'A place needs a category.');
+                    $violations[] = self::violation($index, 'resourceTypeId', __('A place needs a category.'));
                 } elseif (! isset($categories[$element->resourceTypeId])) {
-                    $violations[] = self::violation($index, 'resourceTypeId', "Category does not belong to this plan's event.");
+                    $violations[] = self::violation($index, 'resourceTypeId', __("Category does not belong to this plan's event."));
                 } elseif ($categories[$element->resourceTypeId] !== CapacityMode::Unit) {
-                    $violations[] = self::violation($index, 'resourceTypeId', 'Category must be in unit mode to hold a place.');
+                    $violations[] = self::violation($index, 'resourceTypeId', __('Category must be in unit mode to hold a place.'));
                 }
             }
 
             if ($element->shape->type === ShapeKind::Polygon
                 && count($element->shape->points ?? []) < self::POLYGON_MIN_POINTS) {
-                $violations[] = self::violation($index, 'shape.points', 'A polygon needs at least three points.');
+                $violations[] = self::violation($index, 'shape.points', __('A polygon needs at least three points.'));
             }
         }
 

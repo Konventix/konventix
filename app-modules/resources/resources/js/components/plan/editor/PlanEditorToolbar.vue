@@ -9,6 +9,8 @@ import {
     Type,
     Undo2,
 } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
+import { computed } from 'vue';
 import { Button } from '@/components/ui/button';
 import type { SnapStep } from './snap';
 import { SNAP_STEPS } from './snap';
@@ -25,18 +27,36 @@ const emit = defineEmits<{ 'update:snapStep': [step: SnapStep]; fit: [] }>();
 
 const store = props.store;
 
-const tools: {
-    tool: Tool;
-    label: string;
-    key: string;
-    icon: typeof MousePointer2;
-}[] = [
-    { tool: 'select', label: 'Select (V)', key: 'V', icon: MousePointer2 },
-    { tool: 'place', label: 'Add place (S)', key: 'S', icon: Square },
-    { tool: 'annotation', label: 'Add annotation (L)', key: 'L', icon: Type },
-    { tool: 'delete', label: 'Delete on click (D)', key: 'D', icon: Ban },
-    { tool: 'pan', label: 'Pan (hold Space)', key: 'Space', icon: Hand },
-];
+// Computed, not a module constant: the labels are catalog lookups (ADR-0068).
+const tools = computed<
+    {
+        tool: Tool;
+        label: string;
+        key: string;
+        icon: typeof MousePointer2;
+    }[]
+>(() => [
+    {
+        tool: 'select',
+        label: trans('Select (V)'),
+        key: 'V',
+        icon: MousePointer2,
+    },
+    { tool: 'place', label: trans('Add place (S)'), key: 'S', icon: Square },
+    {
+        tool: 'annotation',
+        label: trans('Add annotation (L)'),
+        key: 'L',
+        icon: Type,
+    },
+    {
+        tool: 'delete',
+        label: trans('Delete on click (D)'),
+        key: 'D',
+        icon: Ban,
+    },
+    { tool: 'pan', label: trans('Pan (hold Space)'), key: 'Space', icon: Hand },
+]);
 
 function onSnapChange(event: Event): void {
     emit(
@@ -50,7 +70,7 @@ function onSnapChange(event: Event): void {
     <div
         class="flex flex-wrap items-center gap-2"
         role="toolbar"
-        aria-label="Editor tools"
+        :aria-label="$t('Editor tools')"
     >
         <Button
             v-for="entry in tools"
@@ -72,7 +92,7 @@ function onSnapChange(event: Event): void {
             type="button"
             size="icon-sm"
             variant="outline"
-            aria-label="Undo (Ctrl+Z)"
+            :aria-label="$t('Undo (Ctrl+Z)')"
             :disabled="!store.canUndo.value"
             @click="store.undo()"
         >
@@ -82,7 +102,7 @@ function onSnapChange(event: Event): void {
             type="button"
             size="icon-sm"
             variant="outline"
-            aria-label="Redo (Shift+Ctrl+Z)"
+            :aria-label="$t('Redo (Shift+Ctrl+Z)')"
             :disabled="!store.canRedo.value"
             @click="store.redo()"
         >
@@ -92,17 +112,17 @@ function onSnapChange(event: Event): void {
             type="button"
             size="icon-sm"
             variant="outline"
-            aria-label="Fit plan into view"
+            :aria-label="$t('Fit plan into view')"
             @click="emit('fit')"
         >
             <Maximize class="size-4" />
         </Button>
 
         <label class="ml-auto flex items-center gap-2 text-sm text-text-muted">
-            Grid
+            {{ $t('Grid') }}
             <select
                 :value="snapStep"
-                aria-label="Snap step in millimetres"
+                :aria-label="$t('Snap step in millimetres')"
                 class="h-8 rounded-md border border-border bg-surface px-2 text-sm text-text"
                 @change="onSnapChange"
             >

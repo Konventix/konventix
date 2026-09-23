@@ -88,7 +88,7 @@ class TournamentDeskController
 
         $this->attempt(fn () => $seed->handle($model, new ManualSeedSource(array_values($data->entrantIds))));
 
-        return $this->done('Seed order saved.');
+        return $this->done(__('Seed order saved.'));
     }
 
     /** A fresh random order — the default seed source (D-CMP-20). */
@@ -100,7 +100,7 @@ class TournamentDeskController
 
         $this->attempt(fn () => $seed->handle($model));
 
-        return $this->done('Field shuffled.');
+        return $this->done(__('Field shuffled.'));
     }
 
     public function generate(string $stage, GenerateBracket $generate): RedirectResponse
@@ -111,7 +111,7 @@ class TournamentDeskController
 
         $this->attempt(fn () => $generate->handle($model));
 
-        return $this->done('Bracket generated.');
+        return $this->done(__('Bracket generated.'));
     }
 
     /** Reset and draw again from the current seed order, in one step (§7.5). */
@@ -123,7 +123,7 @@ class TournamentDeskController
 
         $this->attempt(fn () => $regenerate->handle($model));
 
-        return $this->done('Bracket drawn again.');
+        return $this->done(__('Bracket drawn again.'));
     }
 
     /** Back to undrawn; allowed until the first recorded result (§7.5). */
@@ -135,7 +135,7 @@ class TournamentDeskController
 
         $this->attempt(fn () => $reset->handle($model));
 
-        return $this->done('Bracket reset.');
+        return $this->done(__('Bracket reset.'));
     }
 
     /** "Schedule all at" for one round (D-CMP-21). */
@@ -154,7 +154,7 @@ class TournamentDeskController
             $this->actorId($request),
         ));
 
-        return $this->done($moved === 1 ? '1 match scheduled.' : "{$moved} matches scheduled.");
+        return $this->done(trans_choice('{0} No matches scheduled.|{1} :count match scheduled.|[2,*] :count matches scheduled.', $moved));
     }
 
     /** One match's `scheduled_at` (D-CMP-21). */
@@ -175,7 +175,7 @@ class TournamentDeskController
             scheduledByUserId: $this->actorId($request),
         ));
 
-        return $this->done('Match scheduled.');
+        return $this->done(__('Match scheduled.'));
     }
 
     private function findStage(string $stage): Stage

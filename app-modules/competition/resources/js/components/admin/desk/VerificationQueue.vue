@@ -78,12 +78,12 @@ function enter(): void {
 <template>
     <section class="flex flex-col gap-4" aria-labelledby="desk-queue">
         <h2 id="desk-queue" class="text-lg font-medium text-text">
-            Verification queue
+            {{ $t('Verification queue') }}
             <span class="text-text-muted">({{ props.queue.length }})</span>
         </h2>
 
         <p v-if="props.queue.length === 0" class="text-sm text-text-muted">
-            Nothing waits for verification.
+            {{ $t('Nothing waits for verification.') }}
         </p>
 
         <ul v-else class="flex flex-col divide-y divide-border">
@@ -96,7 +96,10 @@ function enter(): void {
                     <span class="text-sm text-text">
                         <strong>{{ entry.teamName }}</strong>
                         <template v-if="entry.heat !== null">
-                            · heat {{ entry.heat }}</template
+                            ·
+                            {{
+                                $t('heat :heat', { heat: String(entry.heat) })
+                            }}</template
                         >
                         · {{ entry.value }} {{ props.stage.unit }}
                         <span class="text-text-muted">
@@ -113,17 +116,17 @@ function enter(): void {
                             target="_blank"
                             rel="noopener"
                             class="text-sm underline underline-offset-4 hover:text-accent"
-                            >View proof</a
+                            >{{ $t('View proof') }}</a
                         >
                         <Button size="sm" @click="verify(entry.id)">
-                            Verify
+                            {{ $t('Accept') }}
                         </Button>
                         <Button
                             size="sm"
                             variant="outline"
                             @click="rejecting = entry.id"
                         >
-                            Reject
+                            {{ $t('Reject') }}
                         </Button>
                     </div>
                 </div>
@@ -135,7 +138,7 @@ function enter(): void {
                 >
                     <div class="grid flex-1 gap-1">
                         <Label :for="`desk-reject-${entry.id}`">
-                            Why (the participant sees this)
+                            {{ $t('Why (the participant sees this)') }}
                         </Label>
                         <Input
                             :id="`desk-reject-${entry.id}`"
@@ -146,7 +149,7 @@ function enter(): void {
                         <InputError :message="rejectionError" />
                     </div>
                     <Button type="submit" size="sm" variant="destructive">
-                        Reject score
+                        {{ $t('Reject score') }}
                     </Button>
                 </form>
             </li>
@@ -156,10 +159,12 @@ function enter(): void {
             class="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface-raised p-4"
             @submit.prevent="enter"
         >
-            <h3 class="w-full font-medium text-text">Enter a score</h3>
+            <h3 class="w-full font-medium text-text">
+                {{ $t('Enter a score') }}
+            </h3>
 
             <div class="grid gap-1">
-                <Label for="desk-score-entrant">Team</Label>
+                <Label for="desk-score-entrant">{{ $t('Team') }}</Label>
                 <select
                     id="desk-score-entrant"
                     v-model="form.entrantId"
@@ -176,7 +181,7 @@ function enter(): void {
             </div>
 
             <div v-if="props.stage.heats !== null" class="grid gap-1">
-                <Label for="desk-score-heat">Heat</Label>
+                <Label for="desk-score-heat">{{ $t('Heat') }}</Label>
                 <select
                     id="desk-score-heat"
                     v-model.number="form.heat"
@@ -193,9 +198,9 @@ function enter(): void {
             </div>
 
             <div class="grid gap-1">
-                <Label for="desk-score-value"
-                    >Score ({{ props.stage.unit }})</Label
-                >
+                <Label for="desk-score-value">{{
+                    $t('Score (:unit)', { unit: props.stage.unit ?? '' })
+                }}</Label>
                 <Input
                     id="desk-score-value"
                     v-model.number="form.value"
@@ -206,7 +211,7 @@ function enter(): void {
             </div>
 
             <div class="grid flex-1 gap-1">
-                <Label for="desk-score-note">Note</Label>
+                <Label for="desk-score-note">{{ $t('Note') }}</Label>
                 <Input
                     id="desk-score-note"
                     v-model="form.note"
@@ -215,14 +220,14 @@ function enter(): void {
             </div>
 
             <Button type="submit" size="sm" :disabled="form.processing">
-                Enter score
+                {{ $t('Enter score') }}
             </Button>
             <span
                 v-if="form.isDirty"
                 role="status"
                 class="text-sm text-warning"
             >
-                Unsaved changes
+                {{ $t('Unsaved changes') }}
             </span>
 
             <div class="w-full">

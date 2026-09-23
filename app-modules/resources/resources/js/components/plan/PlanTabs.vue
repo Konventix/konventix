@@ -45,7 +45,7 @@ function onKeydown(event: KeyboardEvent, index: number): void {
 <template>
     <div
         role="tablist"
-        aria-label="Plans"
+        :aria-label="$t('Plans')"
         class="flex flex-wrap gap-1 border-b border-border"
     >
         <button

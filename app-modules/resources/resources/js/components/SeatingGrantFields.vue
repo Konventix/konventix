@@ -64,13 +64,18 @@ function setMode(mode: string): void {
 <template>
     <div class="grid gap-4 rounded-md bg-subtle/40 p-3 sm:grid-cols-2">
         <fieldset class="grid gap-2">
-            <legend class="text-sm font-medium">Seat categories</legend>
+            <legend class="text-sm font-medium">
+                {{ $t('Seat categories') }}
+            </legend>
             <p
                 v-if="props.categories.length === 0"
                 class="text-sm text-text-muted"
             >
-                This event has no categories yet — create them under Categories
-                first.
+                {{
+                    $t(
+                        'This event has no categories yet — create them under Categories first.',
+                    )
+                }}
             </p>
             <div
                 v-for="category in props.categories"
@@ -103,7 +108,11 @@ function setMode(mode: string): void {
                         {{ category.symbol }}
                     </span>
                     <span class="ml-auto text-xs text-text-muted">
-                        {{ category.bookablePlaces }} bookable
+                        {{
+                            $t(':count bookable', {
+                                count: String(category.bookablePlaces),
+                            })
+                        }}
                     </span>
                 </Label>
             </div>
@@ -111,7 +120,7 @@ function setMode(mode: string): void {
 
         <div class="grid content-start gap-2">
             <Label :for="`seating-mode-${props.modelValue.role || 'grant'}`">
-                Seating mode
+                {{ $t('Seating mode') }}
             </Label>
             <select
                 :id="`seating-mode-${props.modelValue.role || 'grant'}`"
@@ -120,13 +129,19 @@ function setMode(mode: string): void {
                 class="h-9 rounded-md border border-border bg-surface px-3 text-sm disabled:opacity-60"
                 @change="setMode(($event.target as HTMLSelectElement).value)"
             >
-                <option value="pick">pick — the registrant chooses</option>
-                <option value="assign">assign — the operator seats them</option>
+                <option value="pick">
+                    {{ $t('pick — the registrant chooses') }}
+                </option>
+                <option value="assign">
+                    {{ $t('assign — the operator seats them') }}
+                </option>
             </select>
             <p class="text-xs text-text-muted">
-                The quantity in this row is the maximum number of places.
-                Categories freeze with the other terms once anyone has
-                registered.
+                {{
+                    $t(
+                        'The quantity in this row is the maximum number of places. Categories freeze with the other terms once anyone has registered.',
+                    )
+                }}
             </p>
         </div>
     </div>

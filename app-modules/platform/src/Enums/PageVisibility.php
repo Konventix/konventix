@@ -41,9 +41,9 @@ enum PageVisibility: string
     public function label(): string
     {
         return match ($this) {
-            self::Public => 'Everyone',
-            self::Members => 'Members',
-            self::Registrants => 'Registrants',
+            self::Public => __('Everyone'),
+            self::Members => __('Members'),
+            self::Registrants => __('Registrants'),
         };
     }
 }

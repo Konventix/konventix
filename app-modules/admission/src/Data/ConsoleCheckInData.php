@@ -62,7 +62,7 @@ final class ConsoleCheckInData extends Data
 
         foreach ($this->conditions as $index => $answer) {
             if (! in_array($answer['key'], $owedKeys, true)) {
-                $errors["conditions.{$index}.key"] = 'This ticket does not owe that door check. Reload the ticket and try again.';
+                $errors["conditions.{$index}.key"] = __('This ticket does not owe that door check. Reload the ticket and try again.');
             }
         }
 

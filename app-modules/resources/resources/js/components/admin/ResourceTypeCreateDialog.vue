@@ -14,6 +14,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { store as storeType } from '@/routes/admin/resource-types';
+import { capacityModeLabel } from '../plan/labels';
 
 /**
  * Creating a category asks for its identity only — brand, event, name,
@@ -84,16 +85,16 @@ function submit(): void {
         <DialogTrigger as-child>
             <Button>
                 <Plus class="size-4" />
-                New category
+                {{ $t('New category') }}
             </Button>
         </DialogTrigger>
         <DialogContent class="max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-                <DialogTitle>Create category</DialogTitle>
+                <DialogTitle>{{ $t('Create category') }}</DialogTitle>
             </DialogHeader>
             <form class="flex flex-col gap-4" @submit.prevent="submit">
                 <div class="grid gap-2">
-                    <Label for="category-brand">Brand</Label>
+                    <Label for="category-brand">{{ $t('Brand') }}</Label>
                     <select
                         id="category-brand"
                         v-model="form.brand_id"
@@ -111,13 +112,15 @@ function submit(): void {
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="category-event">Event</Label>
+                    <Label for="category-event">{{ $t('Event') }}</Label>
                     <select
                         id="category-event"
                         v-model="form.eventId"
                         class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                     >
-                        <option value="" disabled>Choose an event</option>
+                        <option value="" disabled>
+                            {{ $t('Choose an event') }}
+                        </option>
                         <option
                             v-for="event in eventsForBrand"
                             :key="event.id"
@@ -130,13 +133,13 @@ function submit(): void {
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="category-name">Name</Label>
+                    <Label for="category-name">{{ $t('Name') }}</Label>
                     <Input id="category-name" v-model="form.name" />
                     <InputError :message="form.errors.name" />
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="category-slug">Slug</Label>
+                    <Label for="category-slug">{{ $t('Slug') }}</Label>
                     <Input
                         id="category-slug"
                         v-model="form.slug"
@@ -147,7 +150,7 @@ function submit(): void {
 
                 <div class="grid grid-cols-2 gap-4">
                     <div class="grid gap-2">
-                        <Label for="category-mode">Mode</Label>
+                        <Label for="category-mode">{{ $t('Mode') }}</Label>
                         <select
                             id="category-mode"
                             v-model="form.mode"
@@ -158,13 +161,15 @@ function submit(): void {
                                 :key="value"
                                 :value="value"
                             >
-                                {{ value }}
+                                {{ capacityModeLabel(value) }}
                             </option>
                         </select>
                         <InputError :message="form.errors.mode" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="category-token">Colour token</Label>
+                        <Label for="category-token">{{
+                            $t('Colour token')
+                        }}</Label>
                         <select
                             id="category-token"
                             v-model="form.token"
@@ -183,13 +188,15 @@ function submit(): void {
                 </div>
 
                 <p class="text-sm text-text-muted">
-                    Seat categories are unit mode: one row per place. Symbol,
-                    description and the default place size come next, on the
-                    category's own screen.
+                    {{
+                        $t(
+                            "Seat categories are unit mode: one row per place. Symbol, description and the default place size come next, on the category's own screen.",
+                        )
+                    }}
                 </p>
 
                 <Button type="submit" :disabled="form.processing">
-                    Create
+                    {{ $t('Create') }}
                 </Button>
             </form>
         </DialogContent>

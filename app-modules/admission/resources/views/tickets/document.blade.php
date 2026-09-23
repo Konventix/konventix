@@ -26,10 +26,10 @@
     of the opaque QR box too.
 --}}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="utf-8">
-    <title>Ticket</title>
+    <title>{{ __('Ticket') }}</title>
     <style>
         @page { margin: 0; }
         body { margin: 0; font-family: 'DejaVu Sans', sans-serif; color: #111827; }
@@ -206,7 +206,7 @@
             <div class="holder-band">
                 <div class="qr-box"><img src="{{ $page['qr'] }}" alt=""></div>
 
-                @if ($page['holderName'] === 'Unassigned')
+                @if ($page['holderName'] === null)
                     <div class="holder-name unassigned">{{ __('Unassigned') }}</div>
                 @else
                     <div class="holder-name">{{ $page['holderName'] }}</div>

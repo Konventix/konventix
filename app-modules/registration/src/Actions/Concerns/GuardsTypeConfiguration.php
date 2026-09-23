@@ -44,9 +44,9 @@ trait GuardsTypeConfiguration
 
         if ($priced && $data->priceDeclaration === null) {
             throw ValidationException::withMessages([
-                'priceDeclaration' => __('A :settlement type needs a price declaration.', [
-                    'settlement' => $data->settlement->value,
-                ]),
+                // No `:settlement` placeholder: the enum value is a wire
+                // value, not a word a translation could use (ADR-0068).
+                'priceDeclaration' => __('A type that asks for payment needs a price declaration.'),
             ]);
         }
 

@@ -9,8 +9,12 @@
  * grand final, or one group of a group stage. Sections keep the server's
  * play order; rounds run in ascending order and matches by position.
  *
- * Copy is German: these labels are read on the public pages (ADR-0001).
+ * The labels are catalog lookups (ADR-0068), made when a label is asked
+ * for — never at import time, because the catalog is loaded after the
+ * modules are imported.
  */
+import { trans } from 'laravel-vue-i18n';
+
 type BracketData = Konventix.Competition.Data.BracketData;
 type BracketMatch = Konventix.Competition.Data.BracketMatchData;
 
@@ -27,15 +31,17 @@ export type BracketSection = {
     rounds: BracketRound[];
 };
 
-const SECTION_LABELS: Record<string, string> = {
-    winners: 'Winner-Bracket',
-    losers: 'Loser-Bracket',
-    grand_final: 'Grand Final',
-};
+function sectionLabels(): Record<string, string> {
+    return {
+        winners: trans('Winners bracket'),
+        losers: trans('Losers bracket'),
+        grand_final: trans('Grand final'),
+    };
+}
 
 /**
  * The heading of a section: null for a one-bracket format, which needs
- * none; "Gruppe A" for a group stage's `group-a`.
+ * none; "Group A" for a group stage's `group-a`.
  */
 export function sectionLabel(bracket: string | null): string | null {
     if (bracket === null) {
@@ -43,17 +49,17 @@ export function sectionLabel(bracket: string | null): string | null {
     }
 
     return (
-        SECTION_LABELS[bracket] ??
+        sectionLabels()[bracket] ??
         bracket.replace(/^group-(.+)$/, (_, name: string) => {
-            return `Gruppe ${name.toUpperCase()}`;
+            return trans('Group :name', { name: name.toUpperCase() });
         })
     );
 }
 
 /**
  * A round's name. Only a single-elimination bracket has rounds with names of
- * their own — counted back from its last round: Finale, Halbfinale,
- * Viertelfinale. Everything else, and every earlier round, is "Runde n".
+ * their own — counted back from its last round: Final, Semi-final,
+ * Quarter-final. Everything else, and every earlier round, is "Round n".
  */
 export function roundLabel(
     format: string,
@@ -63,14 +69,18 @@ export function roundLabel(
 ): string {
     if (format === 'single_elimination' && bracket === null) {
         const fromTheEnd = lastRound - round;
-        const named = ['Finale', 'Halbfinale', 'Viertelfinale'][fromTheEnd];
+        const named = [
+            trans('Final round'),
+            trans('Semi-final'),
+            trans('Quarter-final'),
+        ][fromTheEnd];
 
         if (named !== undefined) {
             return named;
         }
     }
 
-    return `Runde ${round}`;
+    return trans('Round :round', { round: String(round) });
 }
 
 export function bracketSections(bracket: BracketData): BracketSection[] {
@@ -227,7 +237,7 @@ export function sideName(
     side: Konventix.Competition.Data.BracketSideData | undefined,
 ): string {
     if (side === undefined || side.teamName === null) {
-        return side?.awaiting ? 'Offen' : 'Freilos';
+        return side?.awaiting ? trans('Open') : trans('Bye');
     }
 
     return side.teamName;

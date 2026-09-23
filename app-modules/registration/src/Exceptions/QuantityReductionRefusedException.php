@@ -20,23 +20,22 @@ final class QuantityReductionRefusedException extends RuntimeException
 {
     public static function notConfirmed(string $registrationId): self
     {
-        return new self(sprintf(
-            'Registration [%s] is not confirmed; only a confirmed registration has units to give back.',
-            $registrationId,
+        return new self(__(
+            'Registration :id is not confirmed; only a confirmed registration has units to give back.',
+            ['id' => $registrationId],
         ));
     }
 
     public static function notPositive(): self
     {
-        return new self('Reduce the registration by at least one unit.');
+        return new self(__('Reduce the registration by at least one unit.'));
     }
 
     public static function wholeRegistration(int $units, int $quantity): self
     {
-        return new self(sprintf(
-            'Removing %d of %d units leaves nothing — cancel the registration instead.',
-            $units,
-            $quantity,
+        return new self(__(
+            'Removing :units of :quantity units leaves nothing — cancel the registration instead.',
+            ['units' => $units, 'quantity' => $quantity],
         ));
     }
 }

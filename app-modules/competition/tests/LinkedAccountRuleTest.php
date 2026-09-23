@@ -337,7 +337,7 @@ it('tells the viewer on the competition page, and refuses the entry in German na
     $this->actingAs($captain)
         ->post('/tournaments/'.$competition->id.'/entries', ['teamId' => $team->id])
         ->assertSessionHasErrors([
-            'teamId' => 'Für dieses Turnier brauchen alle im Team ein verknüpftes Steam-Konto – noch ohne: du, Mitspielerin Mia.',
+            'teamId' => 'This tournament needs a linked Steam account for everyone on the team – still missing: you, Mitspielerin Mia.',
         ]);
 
     linkedRuleLinkSteam((string) $mate->getKey());
@@ -346,7 +346,7 @@ it('tells the viewer on the competition page, and refuses the entry in German na
     $this->actingAs($captain)
         ->post('/tournaments/'.$competition->id.'/entries', ['teamId' => $team->id])
         ->assertSessionHasErrors([
-            'teamId' => 'Für dieses Turnier brauchst du ein verknüpftes Steam-Konto.',
+            'teamId' => 'This tournament needs you to have a linked Steam account.',
         ]);
 
     expect(Entrant::query()->where('competition_id', $competition->id)->exists())->toBeFalse();
@@ -384,7 +384,7 @@ it('answers a refused join by code in German with the link marker, and keeps one
     $this->actingAs($joiner)
         ->post('/my/tournaments/join', ['code' => $team->refresh()->invite_code])
         ->assertSessionHasErrors([
-            'code' => 'Für dieses Team brauchst du ein verknüpftes Steam-Konto. Verknüpfe es und gib den Code dann noch einmal ein.',
+            'code' => 'This team needs you to have a linked Steam account. Link it, then enter the code again.',
             'linkedAccount' => 'Steam',
         ]);
 

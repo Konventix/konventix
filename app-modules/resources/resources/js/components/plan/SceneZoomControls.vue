@@ -14,7 +14,7 @@ defineEmits<{ zoomIn: []; zoomOut: []; reset: [] }>();
         <button
             type="button"
             class="inline-flex size-11 items-center justify-center rounded-md border border-border bg-surface text-text hover:bg-subtle"
-            aria-label="Zoom in"
+            :aria-label="$t('Zoom in')"
             @click="$emit('zoomIn')"
         >
             <Plus class="size-4" />
@@ -22,7 +22,7 @@ defineEmits<{ zoomIn: []; zoomOut: []; reset: [] }>();
         <button
             type="button"
             class="inline-flex size-11 items-center justify-center rounded-md border border-border bg-surface text-text hover:bg-subtle"
-            aria-label="Zoom out"
+            :aria-label="$t('Zoom out')"
             @click="$emit('zoomOut')"
         >
             <Minus class="size-4" />
@@ -30,7 +30,7 @@ defineEmits<{ zoomIn: []; zoomOut: []; reset: [] }>();
         <button
             type="button"
             class="inline-flex size-11 items-center justify-center rounded-md border border-border bg-surface text-text hover:bg-subtle"
-            aria-label="Show the whole plan"
+            :aria-label="$t('Show the whole plan')"
             @click="$emit('reset')"
         >
             <Scan class="size-4" />

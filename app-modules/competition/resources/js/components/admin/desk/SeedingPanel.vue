@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { router } from '@inertiajs/vue3';
 import { ArrowDown, ArrowUp, GripVertical } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -93,11 +94,12 @@ const {
 
 function drawAgain(): void {
     ask({
-        title: 'Draw the bracket again?',
-        description:
+        title: trans('Draw the bracket again?'),
+        description: trans(
             'Every match of this bracket is drawn anew from the current seed order.',
-        confirmLabel: 'Draw again',
-        cancelLabel: 'Keep the draw',
+        ),
+        confirmLabel: trans('Draw again'),
+        cancelLabel: trans('Keep the draw'),
         run: () =>
             router.post(regenerateStage(props.stage.id).url, {}, options),
     });
@@ -105,11 +107,12 @@ function drawAgain(): void {
 
 function reset(): void {
     ask({
-        title: 'Reset this bracket?',
-        description:
+        title: trans('Reset this bracket?'),
+        description: trans(
             'Every match of this bracket is deleted and the stage is undrawn again. The seeds are kept.',
-        confirmLabel: 'Reset',
-        cancelLabel: 'Keep the draw',
+        ),
+        confirmLabel: trans('Reset'),
+        cancelLabel: trans('Keep the draw'),
         run: () => router.post(resetStage(props.stage.id).url, {}, options),
     });
 }
@@ -122,15 +125,19 @@ function reset(): void {
     >
         <div class="flex flex-wrap items-baseline justify-between gap-2">
             <h2 id="desk-seeding" class="text-lg font-medium text-text">
-                Seeding
+                {{ $t('Seeding') }}
             </h2>
             <p v-if="props.stage.hasResult" class="text-sm text-text-muted">
-                A result is recorded; the seeding and the draw are final.
+                {{
+                    $t(
+                        'A result is recorded; the seeding and the draw are final.',
+                    )
+                }}
             </p>
         </div>
 
         <p v-if="order.length === 0" class="text-sm text-text-muted">
-            Nobody is in the field yet.
+            {{ $t('Nobody is in the field yet.') }}
         </p>
 
         <ol v-else class="flex flex-col gap-1">
@@ -158,9 +165,9 @@ function reset(): void {
                         @click="move(index, index - 1)"
                     >
                         <ArrowUp class="size-4" />
-                        <span class="sr-only"
-                            >Move {{ entrant.teamName }} up</span
-                        >
+                        <span class="sr-only">{{
+                            $t('Move :team up', { team: entrant.teamName })
+                        }}</span>
                     </Button>
                     <Button
                         size="icon"
@@ -169,9 +176,11 @@ function reset(): void {
                         @click="move(index, index + 1)"
                     >
                         <ArrowDown class="size-4" />
-                        <span class="sr-only"
-                            >Move {{ entrant.teamName }} down</span
-                        >
+                        <span class="sr-only">{{
+                            $t('Move :team down', {
+                                team: entrant.teamName,
+                            })
+                        }}</span>
                     </Button>
                 </template>
             </li>
@@ -179,7 +188,7 @@ function reset(): void {
 
         <div v-if="!locked" class="flex flex-wrap gap-2">
             <Button size="sm" :disabled="!dirty" @click="save">
-                Save order
+                {{ $t('Save order') }}
             </Button>
             <Button
                 size="sm"
@@ -188,7 +197,7 @@ function reset(): void {
                     router.post(shuffleStage(props.stage.id).url, {}, options)
                 "
             >
-                Shuffle
+                {{ $t('Shuffle') }}
             </Button>
 
             <Button
@@ -199,7 +208,7 @@ function reset(): void {
                     router.post(generateStage(props.stage.id).url, {}, options)
                 "
             >
-                Generate bracket
+                {{ $t('Generate bracket') }}
             </Button>
             <template v-else>
                 <Button
@@ -208,15 +217,15 @@ function reset(): void {
                     :disabled="dirty"
                     @click="drawAgain"
                 >
-                    Draw again
+                    {{ $t('Draw again') }}
                 </Button>
                 <Button size="sm" variant="destructive" @click="reset">
-                    Reset
+                    {{ $t('Reset') }}
                 </Button>
             </template>
         </div>
         <p v-if="dirty" class="text-sm text-warning" role="status">
-            Save the order before drawing.
+            {{ $t('Save the order before drawing.') }}
         </p>
 
         <ConfirmDialog

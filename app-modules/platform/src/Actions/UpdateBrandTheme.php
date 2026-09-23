@@ -58,7 +58,7 @@ final class UpdateBrandTheme
 
         if ($unknown !== []) {
             throw ValidationException::withMessages([
-                $field => sprintf('Unknown token name(s): %s.', implode(', ', $unknown)),
+                $field => __('Unknown token name(s): :names.', ['names' => implode(', ', $unknown)]),
             ]);
         }
     }
@@ -71,7 +71,7 @@ final class UpdateBrandTheme
         foreach ($tokens as $name => $value) {
             if (! ContrastRatio::isColor($value)) {
                 throw ValidationException::withMessages([
-                    "{$field}.{$name}" => "The value for '{$name}' is not a recognized CSS color (hex, rgb(), or hsl()).",
+                    "{$field}.{$name}" => __("The value for ':name' is not a recognized CSS color (hex, rgb(), or hsl()).", ['name' => $name]),
                 ]);
             }
         }
@@ -109,13 +109,16 @@ final class UpdateBrandTheme
 
             if ($ratio < TokenCatalog::MIN_CONTRAST_RATIO) {
                 throw ValidationException::withMessages([
-                    $field => sprintf(
-                        "In %s mode, '%s' on '%s' has a contrast ratio of %.2f:1, below the %.1f:1 BFSG minimum (ADR-0008).",
-                        $scheme,
-                        $pair['text'],
-                        $pair['surface'],
-                        $ratio,
-                        TokenCatalog::MIN_CONTRAST_RATIO,
+                    $field => __(
+                        $scheme === 'dark'
+                            ? "In dark mode, ':text' on ':surface' has a contrast ratio of :ratio:1, below the :minimum:1 BFSG minimum (ADR-0008)."
+                            : "In light mode, ':text' on ':surface' has a contrast ratio of :ratio:1, below the :minimum:1 BFSG minimum (ADR-0008).",
+                        [
+                            'text' => $pair['text'],
+                            'surface' => $pair['surface'],
+                            'ratio' => sprintf('%.2f', $ratio),
+                            'minimum' => sprintf('%.1f', TokenCatalog::MIN_CONTRAST_RATIO),
+                        ],
                     ),
                 ]);
             }

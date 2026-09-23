@@ -64,7 +64,7 @@ class DeskResultController
             $this->actorId($request),
         ));
 
-        return $this->done('Result recorded.');
+        return $this->done(__('Result recorded.'));
     }
 
     /**
@@ -87,7 +87,7 @@ class DeskResultController
             $data->note,
         ));
 
-        return $this->done('Result corrected.');
+        return $this->done(__('Result corrected.'));
     }
 
     /**
@@ -116,7 +116,7 @@ class DeskResultController
             (string) $data->note,
         ));
 
-        return $this->done('Dispute resolved.');
+        return $this->done(__('Dispute resolved.'));
     }
 
     /** A score the desk enters itself is verified on creation (§8.3). */
@@ -140,7 +140,7 @@ class DeskResultController
 
         $this->attempt(fn () => $submit->handle($stageModel, $entrant, $data, $this->actorId($request), asOrganizer: true));
 
-        return $this->done('Score entered.');
+        return $this->done(__('Score entered.'));
     }
 
     public function verify(Request $request, string $entry, VerifyScoreEntry $verify): RedirectResponse
@@ -151,7 +151,7 @@ class DeskResultController
 
         $this->attempt(fn () => $verify->handle($model, $this->actorId($request)));
 
-        return $this->done('Score verified.');
+        return $this->done(__('Score verified.'));
     }
 
     public function reject(Request $request, string $entry, RejectScoreEntry $reject): RedirectResponse
@@ -163,7 +163,7 @@ class DeskResultController
 
         $this->attempt(fn () => $reject->handle($model, $this->actorId($request), $note));
 
-        return $this->done('Score rejected; the participant sees why.');
+        return $this->done(__('Score rejected; the participant sees why.'));
     }
 
     private function findMatch(string $match): CompetitionMatch

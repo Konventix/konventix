@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeft } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DateTimeField from '@/components/datetime/DateTimeField.vue';
@@ -23,6 +24,13 @@ import {
 } from '@/routes/admin/competitions';
 import ConfirmDialog from '../../../components/confirm/ConfirmDialog.vue';
 import { useConfirmation } from '../../../components/confirm/useConfirmation';
+import {
+    checkInModeLabel,
+    consoleStatusLabel,
+    formatLabel,
+    proofPolicyLabel,
+    resultSubmissionModeLabel,
+} from '../../../components/public/labels';
 
 /**
  * One competition and its first stage (design §7.1, §9), plus the lifecycle
@@ -119,24 +127,28 @@ const {
     confirm,
 } = useConfirmation();
 
-const terminalQuestions: Record<
+function terminalQuestions(): Record<
     string,
     { title: string; description: string }
-> = {
-    cancelled: {
-        title: 'Cancel this competition?',
-        description:
-            'It will not be played. The public page stays up, marked as cancelled, and nothing moves from here: it cannot be reopened.',
-    },
-    finished: {
-        title: 'Finish this competition?',
-        description:
-            'The standings become final and nothing moves from here. Open matches stay unplayed.',
-    },
-};
+> {
+    return {
+        cancelled: {
+            title: trans('Cancel this competition?'),
+            description: trans(
+                'It will not be played. The public page stays up, marked as cancelled, and nothing moves from here: it cannot be reopened.',
+            ),
+        },
+        finished: {
+            title: trans('Finish this competition?'),
+            description: trans(
+                'The standings become final and nothing moves from here. Open matches stay unplayed.',
+            ),
+        },
+    };
+}
 
 function choose(option: { status: string; label: string }): void {
-    const question = terminalQuestions[option.status];
+    const question = terminalQuestions()[option.status];
 
     if (question === undefined) {
         move(option.status);
@@ -147,7 +159,7 @@ function choose(option: { status: string; label: string }): void {
     ask({
         ...question,
         confirmLabel: option.label,
-        cancelLabel: 'Keep it',
+        cancelLabel: trans('Keep it'),
         destructive: option.status === 'cancelled',
         run: () => move(option.status),
     });
@@ -170,7 +182,9 @@ function move(status: string): void {
 </script>
 
 <template>
-    <Head :title="`${props.competition.name} — Competition`" />
+    <Head
+        :title="$t(':name — Competition', { name: props.competition.name })"
+    />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
@@ -180,35 +194,48 @@ function move(status: string): void {
             <span
                 class="inline-flex rounded-full bg-subtle px-2 py-0.5 text-xs font-medium text-text-muted"
             >
-                {{ props.competition.status.replace('_', ' ') }}
+                {{ consoleStatusLabel(props.competition.status) }}
             </span>
             <Button variant="outline" as-child>
                 <Link :href="competitionsIndex().url">
                     <ArrowLeft class="size-4" />
-                    All competitions
+                    {{ $t('All competitions') }}
                 </Link>
             </Button>
             <Button as-child>
                 <Link :href="competitionDesk(props.competition.id).url">
-                    Tournament desk
+                    {{ $t('Tournament desk') }}
                 </Link>
             </Button>
         </AdminPageHeader>
 
         <Card>
             <CardHeader>
-                <CardTitle>Lifecycle</CardTitle>
+                <CardTitle>{{ $t('Lifecycle') }}</CardTitle>
             </CardHeader>
             <CardContent class="flex flex-col gap-3">
                 <p class="text-sm text-text-muted">
-                    {{ props.competition.entrants }} entrant(s), incomplete
-                    rosters included.
+                    {{
+                        $tChoice(
+                            '{1} :count entrant, incomplete rosters included.|[0,*] :count entrants, incomplete rosters included.',
+                            props.competition.entrants,
+                        )
+                    }}
                     <template v-if="props.competition.publishedAt">
-                        Published
-                        {{ formatDateTime(props.competition.publishedAt) }}.
+                        {{
+                            $t('Published :time.', {
+                                time: formatDateTime(
+                                    props.competition.publishedAt,
+                                ),
+                            })
+                        }}
                     </template>
                     <template v-if="!props.competition.stageGenerated">
-                        The bracket has not been drawn yet, so it cannot start.
+                        {{
+                            $t(
+                                'The bracket has not been drawn yet, so it cannot start.',
+                            )
+                        }}
                     </template>
                 </p>
                 <div class="flex flex-wrap items-center gap-2">
@@ -230,7 +257,11 @@ function move(status: string): void {
                         v-if="props.transitions.length === 0"
                         class="text-sm text-text-muted"
                     >
-                        This competition is history — nothing moves from here.
+                        {{
+                            $t(
+                                'This competition is history — nothing moves from here.',
+                            )
+                        }}
                     </span>
                 </div>
                 <InputError :message="transitionError" role="alert" />
@@ -246,21 +277,27 @@ function move(status: string): void {
             <div class="flex flex-col gap-6 lg:col-span-2">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Identity</CardTitle>
+                        <CardTitle>{{ $t('Identity') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="grid gap-4 sm:grid-cols-2">
                         <div class="grid gap-2">
-                            <Label for="competition-name">Name</Label>
+                            <Label for="competition-name">{{
+                                $t('Name')
+                            }}</Label>
                             <Input id="competition-name" v-model="form.name" />
                             <InputError :message="form.errors.name" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="competition-slug">Slug</Label>
+                            <Label for="competition-slug">{{
+                                $t('Slug')
+                            }}</Label>
                             <Input id="competition-slug" v-model="form.slug" />
                             <InputError :message="form.errors.slug" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="competition-event">Event</Label>
+                            <Label for="competition-event">{{
+                                $t('Event')
+                            }}</Label>
                             <select
                                 id="competition-event"
                                 v-model="form.eventId"
@@ -275,14 +312,17 @@ function move(status: string): void {
                                 </option>
                             </select>
                             <p class="text-xs text-text-muted">
-                                Frozen once teams have entered — teams belong to
-                                one event.
+                                {{
+                                    $t(
+                                        'Frozen once teams have entered — teams belong to one event.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.eventId" />
                         </div>
                         <div class="grid gap-2">
                             <Label for="competition-discipline">
-                                Discipline
+                                {{ $t('Discipline') }}
                             </Label>
                             <select
                                 id="competition-discipline"
@@ -294,17 +334,19 @@ function move(status: string): void {
                                     :key="discipline.id"
                                     :value="discipline.id"
                                 >
-                                    {{ discipline.name }} ({{
-                                        discipline.teamSize
+                                    {{
+                                        $t(':name (:size per team)', {
+                                            name: discipline.name,
+                                            size: String(discipline.teamSize),
+                                        })
                                     }}
-                                    per team)
                                 </option>
                             </select>
                             <InputError :message="form.errors.disciplineId" />
                         </div>
                         <div class="grid gap-2 sm:col-span-2">
                             <Label for="competition-description">
-                                Description
+                                {{ $t('Description') }}
                             </Label>
                             <textarea
                                 id="competition-description"
@@ -313,12 +355,18 @@ function move(status: string): void {
                                 class="rounded-md border border-border bg-surface px-3 py-2 text-sm"
                             />
                             <p class="text-xs text-text-muted">
-                                Markdown. Shown on the public competition page.
+                                {{
+                                    $t(
+                                        'Markdown. Shown on the public competition page.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.description" />
                         </div>
                         <div class="grid gap-2 sm:col-span-2">
-                            <Label for="competition-rules">Rules</Label>
+                            <Label for="competition-rules">{{
+                                $t('Rules')
+                            }}</Label>
                             <textarea
                                 id="competition-rules"
                                 v-model="form.rules"
@@ -332,28 +380,36 @@ function move(status: string): void {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>When</CardTitle>
+                        <CardTitle>{{ $t('When') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <DateTimeField
                             id="competition-signup-opens"
                             v-model="form.signupOpensAt"
-                            label="Signup opens"
-                            hint="Empty means no lower bound."
+                            :label="$t('Signup opens')"
+                            :hint="$t('Empty means no lower bound.')"
                             :error="form.errors.signupOpensAt"
                         />
                         <DateTimeField
                             id="competition-signup-closes"
                             v-model="form.signupClosesAt"
-                            label="Signup closes"
-                            hint="Empty means no upper bound; closing signup by hand works regardless."
+                            :label="$t('Signup closes')"
+                            :hint="
+                                $t(
+                                    'Empty means no upper bound; closing signup by hand works regardless.',
+                                )
+                            "
                             :error="form.errors.signupClosesAt"
                         />
                         <DateTimeField
                             id="competition-starts"
                             v-model="form.startsAt"
-                            label="Starts"
-                            hint="What the published programme shows as this contest's start."
+                            :label="$t('Starts')"
+                            :hint="
+                                $t(
+                                    'What the published programme shows as this contest\'s start.',
+                                )
+                            "
                             :error="form.errors.startsAt"
                         />
                     </CardContent>
@@ -363,16 +419,18 @@ function move(status: string): void {
             <div class="flex flex-col gap-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>First stage</CardTitle>
+                        <CardTitle>{{ $t('First stage') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <div class="grid gap-2">
-                            <Label for="stage-name">Stage name</Label>
+                            <Label for="stage-name">{{
+                                $t('Stage name')
+                            }}</Label>
                             <Input id="stage-name" v-model="form.stageName" />
                             <InputError :message="form.errors.stageName" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="stage-format">Format</Label>
+                            <Label for="stage-format">{{ $t('Format') }}</Label>
                             <select
                                 id="stage-format"
                                 v-model="form.stageFormat"
@@ -384,27 +442,31 @@ function move(status: string): void {
                                     :key="value"
                                     :value="value"
                                 >
-                                    {{ value.replace(/_/g, ' ') }}
+                                    {{ formatLabel(value) }}
                                 </option>
                             </select>
                             <p
                                 v-if="props.competition.stageGenerated"
                                 class="text-xs text-text-muted"
                             >
-                                The bracket is drawn; its format is frozen.
+                                {{
+                                    $t(
+                                        'The bracket is drawn; its format is frozen.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.stageFormat" />
                         </div>
                         <div class="grid gap-2">
                             <Label for="competition-max">
-                                Participant limit
+                                {{ $t('Participant limit') }}
                             </Label>
                             <Input
                                 id="competition-max"
                                 v-model.number="form.maxEntrants"
                                 type="number"
                                 min="2"
-                                placeholder="No limit"
+                                :placeholder="$t('No limit')"
                             />
                             <InputError :message="form.errors.maxEntrants" />
                         </div>
@@ -413,11 +475,11 @@ function move(status: string): void {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Check-in</CardTitle>
+                        <CardTitle>{{ $t('Check-in') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <div class="grid gap-2">
-                            <Label for="check-in-mode">Mode</Label>
+                            <Label for="check-in-mode">{{ $t('Mode') }}</Label>
                             <select
                                 id="check-in-mode"
                                 v-model="form.checkInMode"
@@ -428,18 +490,25 @@ function move(status: string): void {
                                     :key="value"
                                     :value="value"
                                 >
-                                    {{ value.replace('_', ' ') }}
+                                    {{ checkInModeLabel(value) }}
                                 </option>
                             </select>
                             <p class="text-xs text-text-muted">
-                                None means every registered entrant counts as
-                                ready. The desk can always check a team in.
+                                {{
+                                    $t(
+                                        'No check-in means every registered entrant counts as ready. The desk can always check a team in.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.checkInMode" />
                         </div>
                         <div class="grid gap-2">
                             <Label for="check-in-minutes">
-                                Self-service opens (minutes before start)
+                                {{
+                                    $t(
+                                        'Self-service opens (minutes before start)',
+                                    )
+                                }}
                             </Label>
                             <Input
                                 id="check-in-minutes"
@@ -457,7 +526,11 @@ function move(status: string): void {
                                 type="checkbox"
                                 class="size-4 rounded border-border"
                             />
-                            Every roster member must be through the event door
+                            {{
+                                $t(
+                                    'Every roster member must be through the event door',
+                                )
+                            }}
                         </label>
                         <InputError
                             :message="form.errors.requiresEventCheckIn"
@@ -467,11 +540,13 @@ function move(status: string): void {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Results</CardTitle>
+                        <CardTitle>{{ $t('Results') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <div class="grid gap-2">
-                            <Label for="result-mode">Who reports</Label>
+                            <Label for="result-mode">{{
+                                $t('Who reports')
+                            }}</Label>
                             <select
                                 id="result-mode"
                                 v-model="form.resultSubmissionMode"
@@ -483,18 +558,22 @@ function move(status: string): void {
                                     :key="value"
                                     :value="value"
                                 >
-                                    {{ value.replace('_', ' ') }}
+                                    {{ resultSubmissionModeLabel(value) }}
                                 </option>
                             </select>
                             <p class="text-xs text-text-muted">
-                                The desk can always record, whatever this says.
+                                {{
+                                    $t(
+                                        'The desk can always record, whatever this says.',
+                                    )
+                                }}
                             </p>
                             <InputError
                                 :message="form.errors.resultSubmissionMode"
                             />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="proof-policy">Proof</Label>
+                            <Label for="proof-policy">{{ $t('Proof') }}</Label>
                             <select
                                 id="proof-policy"
                                 v-model="form.proofPolicy"
@@ -505,7 +584,7 @@ function move(status: string): void {
                                     :key="value"
                                     :value="value"
                                 >
-                                    {{ value }}
+                                    {{ proofPolicyLabel(value) }}
                                 </option>
                             </select>
                             <InputError :message="form.errors.proofPolicy" />
@@ -515,14 +594,14 @@ function move(status: string): void {
 
                 <div class="flex items-center gap-3">
                     <Button type="submit" :disabled="form.processing">
-                        Save
+                        {{ $t('Save') }}
                     </Button>
                     <span
                         v-if="form.isDirty"
                         role="status"
                         class="text-sm text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
             </div>

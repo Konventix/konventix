@@ -777,7 +777,7 @@ describe('a dispute ends when its match is settled (part 1, I5)', function (): v
 
         expect($corrected->winner_entrant_id)->toBe($sides[2])
             ->and($corrected->isDisputed())->toBeFalse()
-            ->and($resolved->payload['note'] ?? null)->toBe('Die Turnierleitung hat das Ergebnis korrigiert.');
+            ->and($resolved->payload['note'] ?? null)->toBe('The organizers corrected the result.');
     });
 });
 

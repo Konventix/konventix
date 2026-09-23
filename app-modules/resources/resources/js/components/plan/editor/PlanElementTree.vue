@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CircleAlert, Lock } from '@lucide/vue';
 import { computed } from 'vue';
+import { elementKindLabel } from '../labels';
 import type { PlanElement } from './document';
 import { childrenIndex } from './document';
 import type { PlanStore } from './usePlanStore';
@@ -34,7 +35,12 @@ const rows = computed<Row[]>(() => {
 });
 
 function title(element: PlanElement): string {
-    return element.label ?? element.ref ?? element.text ?? element.kind;
+    return (
+        element.label ??
+        element.ref ??
+        element.text ??
+        elementKindLabel(element.kind)
+    );
 }
 
 function onClick(element: PlanElement, event: MouseEvent): void {
@@ -48,12 +54,15 @@ function onClick(element: PlanElement, event: MouseEvent): void {
 
 <template>
     <nav
-        aria-label="Plan elements"
+        :aria-label="$t('Plan elements')"
         class="flex h-full flex-col overflow-y-auto"
     >
         <p v-if="rows.length === 0" class="p-3 text-sm text-text-muted">
-            No elements yet. Add a group, or press S and click the floor to
-            place a seat.
+            {{
+                $t(
+                    'No elements yet. Add a group, or press S and click the floor to place a seat.',
+                )
+            }}
         </p>
         <ul v-else class="flex flex-col py-1">
             <li v-for="row in rows" :key="row.element.id">
@@ -68,18 +77,18 @@ function onClick(element: PlanElement, event: MouseEvent): void {
                 >
                     <span
                         class="w-16 shrink-0 text-xs text-text-muted uppercase"
-                        >{{ row.element.kind }}</span
+                        >{{ elementKindLabel(row.element.kind) }}</span
                     >
                     <span class="truncate">{{ title(row.element) }}</span>
                     <Lock
                         v-if="row.element.locked"
                         class="ml-auto size-3 shrink-0 text-text-muted"
-                        aria-label="Locked"
+                        :aria-label="$t('Locked')"
                     />
                     <CircleAlert
                         v-if="row.element.blocked"
                         class="size-3 shrink-0 text-warning"
-                        aria-label="Blocked"
+                        :aria-label="$t('Blocked')"
                     />
                 </button>
             </li>

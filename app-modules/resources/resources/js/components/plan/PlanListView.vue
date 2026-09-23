@@ -74,7 +74,7 @@ function describe(element: Element): string {
 <template>
     <div class="flex flex-col gap-6">
         <p v-if="tree.length === 0" class="text-sm text-text-muted">
-            This plan has no places yet.
+            {{ $t('This plan has no places yet.') }}
         </p>
         <section
             v-for="zone in tree"

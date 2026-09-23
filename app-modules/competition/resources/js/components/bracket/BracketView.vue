@@ -31,7 +31,7 @@ onMounted(() => {
 
 <template>
     <div class="flex flex-col gap-3">
-        <div class="flex gap-1" role="group" aria-label="Darstellung">
+        <div class="flex gap-1" role="group" :aria-label="$t('View')">
             <button
                 type="button"
                 class="rounded-md border border-border px-3 py-1 text-sm"
@@ -43,7 +43,7 @@ onMounted(() => {
                 :aria-pressed="view === 'canvas'"
                 @click="view = 'canvas'"
             >
-                Turnierbaum
+                {{ $t('Bracket') }}
             </button>
             <button
                 type="button"
@@ -56,7 +56,7 @@ onMounted(() => {
                 :aria-pressed="view === 'table'"
                 @click="view = 'table'"
             >
-                Tabelle
+                {{ $t('Table view') }}
             </button>
         </div>
 

@@ -1,3 +1,5 @@
+import { transChoice } from 'laravel-vue-i18n';
+
 /**
  * What `/my/registrations`' live region says after the cancelled-registrations
  * link is used (#239, branch review findings 21 and NEW-3).
@@ -15,11 +17,17 @@ export function registrationListSummary(
     cancelledCount: number,
     showAll: boolean,
 ): string {
-    const plural = shown === 1 ? '' : 's';
-
+    // `[0,*]` after `{1}`: zero reads as a plural ("0 registrations").
     if (showAll) {
-        return `Showing all ${shown} registration${plural}, cancelled ones included.`;
+        return transChoice(
+            '{1} Showing all :count registration, cancelled ones included.|[0,*] Showing all :count registrations, cancelled ones included.',
+            shown,
+        );
     }
 
-    return `Showing ${shown} registration${plural}, ${cancelledCount} cancelled hidden.`;
+    return transChoice(
+        '{1} Showing :count registration, :cancelled cancelled hidden.|[0,*] Showing :count registrations, :cancelled cancelled hidden.',
+        shown,
+        { cancelled: String(cancelledCount) },
+    );
 }

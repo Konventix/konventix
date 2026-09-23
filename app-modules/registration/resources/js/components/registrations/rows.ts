@@ -1,9 +1,11 @@
 import { Link } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { h } from 'vue';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/datetime';
 import { show as showRegistration } from '@/routes/admin/registrations';
+import { paymentStatusLabel, registrationStatusLabel } from '../../lib/labels';
 
 /**
  * One row of the operator console's registration list, and the columns that
@@ -60,7 +62,9 @@ export function registrationColumns(options: {
                 row.original.approvable
                     ? h('input', {
                           type: 'checkbox',
-                          'aria-label': `Select ${row.original.registrant}`,
+                          'aria-label': trans('Select :name', {
+                              name: row.original.registrant,
+                          }),
                           checked: options.isSelected(row.original.id),
                           onChange: () => options.onToggle(row.original.id),
                       })
@@ -68,7 +72,7 @@ export function registrationColumns(options: {
         },
         {
             id: 'registrant',
-            header: 'Registrant',
+            header: trans('Registrant'),
             enableSorting: false,
             // A real link, not a row click: the detail has to be reachable
             // by keyboard (WCAG 2.1.1, .ai/rules/js.md).
@@ -93,7 +97,7 @@ export function registrationColumns(options: {
         },
         {
             id: 'organization',
-            header: 'Organization',
+            header: trans('Organization'),
             enableSorting: false,
             cell: ({ row }) =>
                 h(
@@ -104,7 +108,7 @@ export function registrationColumns(options: {
         },
         {
             accessorKey: 'status',
-            header: 'Status',
+            header: trans('Status'),
             enableSorting: true,
             cell: ({ row }) => {
                 const status = row.getValue<string>('status');
@@ -114,25 +118,25 @@ export function registrationColumns(options: {
                     {
                         class: `inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusClasses[status] ?? 'bg-subtle text-text-muted'}`,
                     },
-                    status,
+                    registrationStatusLabel(status),
                 );
             },
         },
         {
             accessorKey: 'payment_status',
             accessorFn: (row) => row.paymentStatus,
-            header: 'Payment',
+            header: trans('Payment'),
             enableSorting: true,
             cell: ({ row }) =>
                 h(
                     'span',
                     { class: 'text-text-muted' },
-                    row.original.paymentStatus,
+                    paymentStatusLabel(row.original.paymentStatus),
                 ),
         },
         {
             id: 'quantity',
-            header: 'Units',
+            header: trans('Units'),
             enableSorting: false,
             cell: ({ row }) =>
                 h(
@@ -144,7 +148,7 @@ export function registrationColumns(options: {
         {
             accessorKey: 'submitted_at',
             accessorFn: (row) => row.submittedAt,
-            header: 'Submitted',
+            header: trans('Submitted'),
             enableSorting: true,
             // The instant carries its offset; the reader's own zone is what
             // the column shows, with the machine-readable value on the
@@ -173,7 +177,7 @@ export function registrationColumns(options: {
                               size: 'sm',
                               onClick: () => options.onReduce(row.original),
                           },
-                          () => 'Reduce',
+                          () => trans('Reduce'),
                       )
                     : null,
         },

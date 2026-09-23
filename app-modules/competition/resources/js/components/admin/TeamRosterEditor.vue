@@ -96,7 +96,9 @@ function move(member: Member): void {
     <div class="flex flex-col gap-3 border-t border-border pt-3">
         <form class="flex flex-wrap items-end gap-2" @submit.prevent="rename">
             <div class="grid gap-1">
-                <Label :for="`team-name-${props.teamId}`">Team name</Label>
+                <Label :for="`team-name-${props.teamId}`">{{
+                    $t('Team name')
+                }}</Label>
                 <Input
                     :id="`team-name-${props.teamId}`"
                     v-model="name"
@@ -110,7 +112,7 @@ function move(member: Member): void {
                 variant="outline"
                 :disabled="name === props.teamName"
             >
-                Rename
+                {{ $t('Rename') }}
             </Button>
         </form>
 
@@ -122,20 +124,24 @@ function move(member: Member): void {
             >
                 <span class="min-w-32 text-text">{{ member.displayName }}</span>
                 <Button size="sm" variant="ghost" @click="remove(member)">
-                    Remove
+                    {{ $t('Remove') }}
                     <span class="sr-only">{{ member.displayName }}</span>
                 </Button>
                 <label
                     :for="`move-${props.teamId}-${member.userId}`"
                     class="sr-only"
-                    >Move {{ member.displayName }} to</label
+                    >{{
+                        $t('Move :name to', { name: member.displayName })
+                    }}</label
                 >
                 <select
                     :id="`move-${props.teamId}-${member.userId}`"
                     v-model="moveTo[member.userId]"
                     class="h-8 rounded-md border border-border bg-surface px-2 text-sm"
                 >
-                    <option :value="undefined" disabled>Move to…</option>
+                    <option :value="undefined" disabled>
+                        {{ $t('Move to…') }}
+                    </option>
                     <option
                         v-for="team in props.teams.filter(
                             (candidate) => candidate.id !== props.teamId,
@@ -152,18 +158,18 @@ function move(member: Member): void {
                     :disabled="!moveTo[member.userId]"
                     @click="move(member)"
                 >
-                    Move
+                    {{ $t('Move') }}
                 </Button>
             </li>
         </ul>
 
         <div class="grid gap-1">
-            <Label :for="`add-${props.teamId}`">Add a player</Label>
+            <Label :for="`add-${props.teamId}`">{{ $t('Add a player') }}</Label>
             <Input
                 :id="`add-${props.teamId}`"
                 v-model="search"
                 type="search"
-                placeholder="Name or username"
+                :placeholder="$t('Name or username')"
                 autocomplete="off"
             />
             <ul
@@ -183,13 +189,16 @@ function move(member: Member): void {
                         variant="outline"
                         @click="add(person.userId)"
                     >
-                        Add
+                        {{ $t('Add') }}
                         <span class="sr-only">{{ person.displayName }}</span>
                     </Button>
                 </li>
                 <li v-if="props.people.length === 0" class="text-text-muted">
-                    Nobody with a confirmed registration or a ticket in their
-                    name matches.
+                    {{
+                        $t(
+                            'Nobody with a confirmed registration or a ticket in their name matches.',
+                        )
+                    }}
                 </li>
             </ul>
         </div>

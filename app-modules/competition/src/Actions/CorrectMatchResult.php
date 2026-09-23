@@ -142,7 +142,7 @@ final class CorrectMatchResult
                 $match,
                 $winnerEntrantId,
                 $correctedByUserId,
-                $note !== null && trim($note) !== '' ? $note : __('Die Turnierleitung hat das Ergebnis korrigiert.'),
+                $note !== null && trim($note) !== '' ? $note : __('The organizers corrected the result.'),
             );
 
             $this->history->handle(

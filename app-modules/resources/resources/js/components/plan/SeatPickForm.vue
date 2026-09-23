@@ -57,7 +57,7 @@ defineProps<{
                 type="submit"
                 :disabled="processing || selected.length === 0"
             >
-                {{ processing ? 'Saving…' : 'Save my seat' }}
+                {{ processing ? $t('Saving…') : $t('Save my seat') }}
             </Button>
             <span class="text-sm text-text-muted">{{ announcement }}</span>
         </div>

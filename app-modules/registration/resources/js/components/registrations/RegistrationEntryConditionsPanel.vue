@@ -4,6 +4,12 @@ import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/datetime';
 import { decide as decideCondition } from '@/routes/admin/registrations/entry-conditions';
+import {
+    assertionStateLabel,
+    decisionSourceLabel,
+    entryConditionReasonLabel,
+    verificationLabel,
+} from '../../lib/labels';
 
 /**
  * The declarations one registration rests on, and what an operator may make
@@ -61,7 +67,7 @@ function decide(
 <template>
     <div class="flex flex-col gap-4">
         <p v-if="props.rows.length === 0" class="text-sm text-text-muted">
-            This registration's type demands no declaration.
+            {{ $t('This registration’s type demands no declaration.') }}
         </p>
 
         <div
@@ -79,39 +85,51 @@ function decide(
                             : stateClasses[row.state]
                     "
                 >
-                    {{ row.state ?? 'not asserted' }}
+                    {{
+                        row.state === null
+                            ? $t('not asserted')
+                            : assertionStateLabel(row.state)
+                    }}
                 </span>
                 <span
                     class="rounded-full bg-subtle px-2 py-0.5 text-xs text-text-muted"
                 >
-                    {{ row.verification }}
+                    {{ verificationLabel(row.verification) }}
                 </span>
             </div>
 
             <p class="text-sm text-text-muted">{{ row.assertionText }}</p>
 
             <p v-if="row.state === null" class="text-xs text-text-muted">
-                Added to this type after this registration was made — nothing
-                was written for it, and nothing is blocked.
+                {{
+                    $t(
+                        'Added to this type after this registration was made — nothing was written for it, and nothing is blocked.',
+                    )
+                }}
             </p>
             <p v-else-if="!row.stillRequired" class="text-xs text-text-muted">
-                No longer required by this type. The declaration stays on the
-                registration that made it.
+                {{
+                    $t(
+                        'No longer required by this type. The declaration stays on the registration that made it.',
+                    )
+                }}
             </p>
 
             <p v-if="row.assertedAt" class="text-xs text-text-muted">
-                Declared
+                {{ $t('Declared') }}
                 <time :datetime="row.assertedAt">{{
                     formatDateTime(row.assertedAt)
                 }}</time>
                 <template v-if="row.decidedAt">
-                    · decided
+                    · {{ $t('decided') }}
                     <time :datetime="row.decidedAt">{{
                         formatDateTime(row.decidedAt)
                     }}</time>
-                    at the {{ row.decidedVia }}
+                    <template v-if="row.decidedVia">
+                        {{ decisionSourceLabel(row.decidedVia) }}
+                    </template>
                     <template v-if="row.reasonCode">
-                        ({{ row.reasonCode }})
+                        ({{ entryConditionReasonLabel(row.reasonCode) }})
                     </template>
                 </template>
             </p>
@@ -127,7 +145,7 @@ function decide(
                     variant="outline"
                     @click="decide(row.conditionId, 'verified')"
                 >
-                    Verify
+                    {{ $t('Verify') }}
                 </Button>
                 <Button
                     v-if="row.state !== null"
@@ -136,7 +154,7 @@ function decide(
                     variant="outline"
                     @click="refusing = row.conditionId"
                 >
-                    Refuse
+                    {{ $t('Refuse') }}
                 </Button>
                 <Button
                     type="button"
@@ -144,7 +162,7 @@ function decide(
                     variant="outline"
                     @click="decide(row.conditionId, 'waived')"
                 >
-                    Waive
+                    {{ $t('Waive') }}
                 </Button>
 
                 <template v-if="refusing === row.conditionId">
@@ -152,7 +170,7 @@ function decide(
                         :for="`refuse-reason-${row.conditionId}`"
                         class="text-xs text-text-muted"
                     >
-                        Reason
+                        {{ $t('Reason') }}
                     </label>
                     <select
                         :id="`refuse-reason-${row.conditionId}`"
@@ -165,13 +183,15 @@ function decide(
                             )
                         "
                     >
-                        <option value="" disabled selected>Pick one</option>
+                        <option value="" disabled selected>
+                            {{ $t('Pick one') }}
+                        </option>
                         <option
                             v-for="code in props.reasonCodes"
                             :key="code"
                             :value="code"
                         >
-                            {{ code }}
+                            {{ entryConditionReasonLabel(code) }}
                         </option>
                     </select>
                 </template>

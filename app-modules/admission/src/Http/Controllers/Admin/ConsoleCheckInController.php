@@ -56,7 +56,7 @@ final class ConsoleCheckInController
 
         $this->record($request, $checkIn, $model, 'in', $data->conditions);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Ticket '.TicketReference::of($model->id).' is checked in.']);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Ticket :reference is checked in.', ['reference' => TicketReference::of($model->id)])]);
 
         return back();
     }
@@ -69,7 +69,7 @@ final class ConsoleCheckInController
 
         $this->record($request, $checkIn, $model, 'out', []);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Ticket '.TicketReference::of($model->id).' is checked out.']);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Ticket :reference is checked out.', ['reference' => TicketReference::of($model->id)])]);
 
         return back();
     }
@@ -96,7 +96,7 @@ final class ConsoleCheckInController
         if ($row->result === CheckInResult::Rejected) {
             throw ValidationException::withMessages([
                 'check_in' => CheckInRejectionReason::tryFrom((string) $row->reason_code)?->consoleSentence($direction)
-                    ?? 'The check-in was refused.',
+                    ?? __('The check-in was refused.'),
             ]);
         }
     }

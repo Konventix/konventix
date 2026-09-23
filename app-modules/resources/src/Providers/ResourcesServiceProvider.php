@@ -179,7 +179,7 @@ class ResourcesServiceProvider extends ModuleServiceProvider
     }
 
     /**
-     * "Mein Sitzplatz" on the live hub (D-HUB-05): a link, not a card —
+     * "My seat" on the live hub (D-HUB-05): a link, not a card —
      * the seat picker is a page of its own (#292 §6.4) and there is
      * nothing about a seat worth restating beside the ticket.
      *
@@ -209,7 +209,7 @@ class ResourcesServiceProvider extends ModuleServiceProvider
         $this->app->make(HubRegistry::class)->add(new HubLink(
             module: 'resources',
             key: 'resources.my-seat',
-            label: 'Mein Sitzplatz',
+            label: 'My seat',
             url: static fn (ActiveEventData $event, Authenticatable $user): ?string => app(FindSeatClaimForAdmission::class)
                 ->handle($event->admissionId, (string) $user->getAuthIdentifier()) === null
                     ? null

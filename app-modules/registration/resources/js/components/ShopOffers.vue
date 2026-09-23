@@ -60,7 +60,9 @@ const props = defineProps<{
         class="flex flex-col gap-3"
         aria-labelledby="shop-offers"
     >
-        <h2 id="shop-offers" class="text-lg font-medium">Register</h2>
+        <h2 id="shop-offers" class="text-lg font-medium">
+            {{ $t('Register') }}
+        </h2>
 
         <ul class="grid gap-4 sm:grid-cols-2">
             <li v-for="offer in props.offers" :key="offer.registrationTypeId">
@@ -83,7 +85,7 @@ const props = defineProps<{
                         v-if="offer.requiresApproval"
                         class="text-sm text-text-muted"
                     >
-                        Reviewed before it is confirmed
+                        {{ $t('Reviewed before it is confirmed') }}
                     </span>
 
                     <span
@@ -98,7 +100,7 @@ const props = defineProps<{
                             :href="offer.url"
                             class="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-3 text-sm font-medium text-text hover:border-accent"
                         >
-                            Register
+                            {{ $t('Register') }}
                             <ArrowRight
                                 class="size-4 shrink-0 text-text-muted"
                                 aria-hidden="true"
@@ -124,7 +126,7 @@ const props = defineProps<{
                     </span>
                     <span class="text-sm text-text-muted">
                         <template v-if="offer.salesStart">
-                            Sale starts
+                            {{ $t('Sale starts') }}
                             <time :datetime="offer.salesStart">
                                 {{
                                     formatDateTime(offer.salesStart, {
@@ -133,7 +135,7 @@ const props = defineProps<{
                                 }}
                             </time>
                         </template>
-                        <template v-else>Not on sale</template>
+                        <template v-else>{{ $t('Not on sale') }}</template>
                     </span>
 
                     <OfferPrice

@@ -5,7 +5,7 @@ import {
     moveImage,
     resolvePrimary,
     setImageAt,
-    WEEKDAYS,
+    weekdays,
 } from './venueForm';
 
 describe('moveImage', () => {
@@ -90,10 +90,12 @@ describe('emptyOpeningPeriod', () => {
     });
 });
 
-describe('WEEKDAYS', () => {
+describe('weekdays', () => {
     it('offers the seven ISO-8601 day numbers, Monday first', () => {
-        expect(WEEKDAYS.map((day) => day.value)).toEqual([1, 2, 3, 4, 5, 6, 7]);
-        expect(WEEKDAYS[0].label).toBe('Monday');
-        expect(WEEKDAYS[6].label).toBe('Sunday');
+        expect(weekdays().map((day) => day.value)).toEqual([
+            1, 2, 3, 4, 5, 6, 7,
+        ]);
+        expect(weekdays()[0].label).toBe('Monday');
+        expect(weekdays()[6].label).toBe('Sunday');
     });
 });

@@ -29,12 +29,12 @@ enum StageEntrySource: string
      */
     case PreviousStage = 'previous_stage';
 
-    /** Console copy is English (ADR-0001 is about brand sites, not this). */
+    /** In the reader's locale (ADR-0068); the English is the catalog key. */
     public function label(): string
     {
         return match ($this) {
-            self::Signup => 'The entrants who signed up',
-            self::PreviousStage => 'Who advanced from the previous stage',
+            self::Signup => __('The entrants who signed up'),
+            self::PreviousStage => __('Who advanced from the previous stage'),
         };
     }
 

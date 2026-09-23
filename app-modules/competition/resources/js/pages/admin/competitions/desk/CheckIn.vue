@@ -124,23 +124,32 @@ function undo(entrant: EntrantRow): void {
 </script>
 
 <template>
-    <Head :title="`Check-in — ${props.competition.name}`" />
+    <Head :title="$t('Check-in — :name', { name: props.competition.name })" />
 
     <div class="flex w-full flex-col gap-6 p-4">
         <Heading
             as="h1"
-            :title="`Check-in — ${props.competition.name}`"
-            :description="`${checkedIn.length} of ${props.entrants.length} team(s) checked in.`"
+            :title="$t('Check-in — :name', { name: props.competition.name })"
+            :description="
+                $t(':checked of :total team(s) checked in.', {
+                    checked: String(checkedIn.length),
+                    total: String(props.entrants.length),
+                })
+            "
         />
 
         <section
             class="flex flex-col gap-2 rounded-xl border border-border bg-surface-raised p-4 text-sm"
         >
             <p class="text-text">
-                Mode: <strong>{{ props.competition.checkInModeLabel }}</strong>
+                {{ $t('Mode:') }}
+                <strong>{{ props.competition.checkInModeLabel }}</strong>
                 <template v-if="props.competition.requiresEventCheckIn">
-                    — every roster member must have been scanned at the event
-                    door.
+                    {{
+                        $t(
+                            '— every roster member must have been scanned at the event door.',
+                        )
+                    }}
                 </template>
             </p>
 
@@ -149,20 +158,31 @@ function undo(entrant: EntrantRow): void {
                 class="text-text-muted"
             >
                 <template v-if="props.competition.selfServiceOpensAt">
-                    Captains may check in from
-                    {{ formatDateTime(props.competition.selfServiceOpensAt) }}
-                    ({{ props.competition.checkInOpensMinutesBefore }}
-                    minutes before the start) until the competition starts —
+                    {{
+                        $t(
+                            'Captains may check in from :time (:minutes minutes before the start) until the competition starts.',
+                            {
+                                time: formatDateTime(
+                                    props.competition.selfServiceOpensAt,
+                                ),
+                                minutes: String(
+                                    props.competition.checkInOpensMinutesBefore,
+                                ),
+                            },
+                        )
+                    }}
                     {{
                         props.competition.selfServiceIsOpen
-                            ? 'the window is open now'
-                            : 'not open yet'
-                    }}.
+                            ? $t('The window is open now.')
+                            : $t('It is not open yet.')
+                    }}
                 </template>
                 <template v-else>
-                    This competition has no start time, so the self-service
-                    window never opens. Set one on the competition, or check the
-                    teams in here.
+                    {{
+                        $t(
+                            'This competition has no start time, so the self-service window never opens. Set one on the competition, or check the teams in here.',
+                        )
+                    }}
                 </template>
             </p>
 
@@ -170,12 +190,15 @@ function undo(entrant: EntrantRow): void {
                 v-else-if="props.competition.checkInMode === 'none'"
                 class="text-text-muted"
             >
-                This competition does not require a check-in: every entered team
-                counts as ready. You may still tick teams off here.
+                {{
+                    $t(
+                        'This competition does not require a check-in: every entered team counts as ready. You may still tick teams off here.',
+                    )
+                }}
             </p>
 
             <p v-else class="text-text-muted">
-                Only this desk checks teams in.
+                {{ $t('Only this desk checks teams in.') }}
             </p>
 
             <p class="flex flex-wrap gap-4">
@@ -183,22 +206,22 @@ function undo(entrant: EntrantRow): void {
                     :href="competitionDesk(props.competition.id).url"
                     class="underline underline-offset-4 hover:text-accent"
                 >
-                    Tournament desk
+                    {{ $t('Tournament desk') }}
                 </Link>
                 <Link
                     :href="competitionEntrants(props.competition.id).url"
                     class="underline underline-offset-4 hover:text-accent"
                 >
-                    Entrants and rosters
+                    {{ $t('Entrants and rosters') }}
                 </Link>
             </p>
         </section>
 
         <section class="flex flex-col gap-3">
-            <h2 class="text-lg font-medium text-text">Waiting</h2>
+            <h2 class="text-lg font-medium text-text">{{ $t('Waiting') }}</h2>
 
             <p v-if="waiting.length === 0" class="text-sm text-text-muted">
-                Every team is checked in.
+                {{ $t('Every team is checked in.') }}
             </p>
 
             <article
@@ -229,8 +252,8 @@ function undo(entrant: EntrantRow): void {
                                 —
                                 {{
                                     member.atTheDoor
-                                        ? 'at the door'
-                                        : 'not scanned'
+                                        ? $t('at the door')
+                                        : $t('not scanned')
                                 }}
                             </template>
                         </li>
@@ -240,19 +263,29 @@ function undo(entrant: EntrantRow): void {
                         v-if="stillOutside(entrant).length > 0"
                         class="text-sm text-warning"
                     >
-                        {{ stillOutside(entrant).length }} player(s) have not
-                        been through the door yet; the check-in will refuse.
+                        {{
+                            $t(
+                                ':count player(s) have not been through the door yet; the check-in will refuse.',
+                                {
+                                    count: String(stillOutside(entrant).length),
+                                },
+                            )
+                        }}
                     </p>
 
                     <InputError :message="refusals[entrant.id]" />
                 </div>
 
-                <Button size="sm" @click="checkIn(entrant)">Check in</Button>
+                <Button size="sm" @click="checkIn(entrant)">{{
+                    $t('Check in')
+                }}</Button>
             </article>
         </section>
 
         <section v-if="checkedIn.length > 0" class="flex flex-col gap-3">
-            <h2 class="text-lg font-medium text-text">Checked in</h2>
+            <h2 class="text-lg font-medium text-text">
+                {{ $t('Checked in') }}
+            </h2>
 
             <article
                 v-for="entrant in checkedIn"
@@ -264,15 +297,19 @@ function undo(entrant: EntrantRow): void {
                         entrant.teamName
                     }}</span>
                     <span class="text-sm text-success">
-                        Checked in {{ formatDateTime(entrant.checkedInAt) }}
+                        {{
+                            $t('Checked in :time', {
+                                time: formatDateTime(entrant.checkedInAt),
+                            })
+                        }}
                     </span>
 
                     <InputError :message="refusals[entrant.id]" />
                 </div>
 
-                <Button variant="outline" size="sm" @click="undo(entrant)"
-                    >Undo check-in</Button
-                >
+                <Button variant="outline" size="sm" @click="undo(entrant)">{{
+                    $t('Undo check-in')
+                }}</Button>
             </article>
         </section>
     </div>

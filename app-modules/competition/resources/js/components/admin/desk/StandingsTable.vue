@@ -15,27 +15,33 @@ const props = defineProps<{
 <template>
     <section class="flex flex-col gap-3" aria-labelledby="desk-standings">
         <h2 id="desk-standings" class="text-lg font-medium text-text">
-            Standings
+            {{ $t('Standings') }}
         </h2>
 
         <p v-if="props.standings.length === 0" class="text-sm text-text-muted">
-            No standings yet.
+            {{ $t('No standings yet.') }}
         </p>
 
         <table v-else class="w-full text-left text-sm">
             <thead class="text-text-muted">
                 <tr>
                     <th scope="col" class="py-1 pr-3">#</th>
-                    <th scope="col" class="py-1 pr-3">Team</th>
+                    <th scope="col" class="py-1 pr-3">{{ $t('Team') }}</th>
                     <template v-if="props.unit !== null">
-                        <th scope="col" class="py-1">Score</th>
+                        <th scope="col" class="py-1">{{ $t('Score') }}</th>
                     </template>
                     <template v-else>
-                        <th scope="col" class="py-1 pr-3">Group</th>
-                        <th scope="col" class="py-1 pr-3">W</th>
-                        <th scope="col" class="py-1 pr-3">L</th>
-                        <th scope="col" class="py-1 pr-3">D</th>
-                        <th scope="col" class="py-1">Points</th>
+                        <th scope="col" class="py-1 pr-3">{{ $t('Group') }}</th>
+                        <th scope="col" class="py-1 pr-3">
+                            <abbr :title="$t('Wins')">{{ $t('W') }}</abbr>
+                        </th>
+                        <th scope="col" class="py-1 pr-3">
+                            <abbr :title="$t('Losses')">{{ $t('L') }}</abbr>
+                        </th>
+                        <th scope="col" class="py-1 pr-3">
+                            <abbr :title="$t('Draws')">{{ $t('D') }}</abbr>
+                        </th>
+                        <th scope="col" class="py-1">{{ $t('Points') }}</th>
                     </template>
                 </tr>
             </thead>

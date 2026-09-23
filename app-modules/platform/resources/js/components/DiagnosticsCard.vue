@@ -16,7 +16,7 @@ defineProps<{
         aria-labelledby="diagnostics-heading"
     >
         <h2 id="diagnostics-heading" class="text-sm font-semibold text-text">
-            Diagnostics
+            {{ $t('Diagnostics') }}
         </h2>
         <ul class="mt-3 flex flex-col gap-2">
             <li v-for="link in links" :key="link.url">

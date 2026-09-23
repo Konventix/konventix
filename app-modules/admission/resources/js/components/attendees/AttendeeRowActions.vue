@@ -33,7 +33,11 @@ const checkingOut = ref(false);
             <Button
                 variant="ghost"
                 size="icon-sm"
-                :aria-label="`Actions for ticket ${row.reference}`"
+                :aria-label="
+                    $t('Actions for ticket :reference', {
+                        reference: row.reference,
+                    })
+                "
             >
                 <MoreHorizontal class="size-4" />
             </Button>
@@ -43,16 +47,18 @@ const checkingOut = ref(false);
                 :disabled="!row.canCheckIn"
                 @select="checkingIn = true"
             >
-                Check in
+                {{ $t('Check in') }}
             </DropdownMenuItem>
             <DropdownMenuItem
                 :disabled="!row.canCheckOut"
                 @select="checkingOut = true"
             >
-                Check out
+                {{ $t('Check out') }}
             </DropdownMenuItem>
             <DropdownMenuItem as-child>
-                <Link :href="showTicket(row.admissionId).url">Show ticket</Link>
+                <Link :href="showTicket(row.admissionId).url">{{
+                    $t('Show ticket')
+                }}</Link>
             </DropdownMenuItem>
         </DropdownMenuContent>
     </DropdownMenu>

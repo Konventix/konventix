@@ -73,7 +73,7 @@ async function toggleList(): Promise<void> {
                 aria-controls="plan-list"
                 @click="toggleList"
             >
-                Accessibility
+                {{ $t('Accessibility') }}
             </Button>
         </div>
 
@@ -105,7 +105,7 @@ async function toggleList(): Promise<void> {
             aria-labelledby="plan-list-heading"
         >
             <h2 id="plan-list-heading" class="text-lg font-medium">
-                Choose from the list
+                {{ $t('Choose from the list') }}
             </h2>
             <PlanListView
                 :plan="plan"

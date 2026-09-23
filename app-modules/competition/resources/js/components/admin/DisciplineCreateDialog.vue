@@ -14,6 +14,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { store as storeDiscipline } from '@/routes/admin/disciplines';
+import { disciplineKindLabel } from '../public/labels';
 
 /**
  * Creating a discipline asks for what it *is* — brand, kind, name, slug and
@@ -85,16 +86,16 @@ function submit(): void {
         <DialogTrigger as-child>
             <Button>
                 <Plus class="size-4" />
-                New discipline
+                {{ $t('New discipline') }}
             </Button>
         </DialogTrigger>
         <DialogContent class="max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-                <DialogTitle>Create discipline</DialogTitle>
+                <DialogTitle>{{ $t('Create discipline') }}</DialogTitle>
             </DialogHeader>
             <form class="flex flex-col gap-4" @submit.prevent="submit">
                 <div class="grid gap-2">
-                    <Label for="discipline-brand">Brand</Label>
+                    <Label for="discipline-brand">{{ $t('Brand') }}</Label>
                     <select
                         id="discipline-brand"
                         v-model="form.brand_id"
@@ -112,7 +113,7 @@ function submit(): void {
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="discipline-kind">Kind</Label>
+                    <Label for="discipline-kind">{{ $t('Kind') }}</Label>
                     <select
                         id="discipline-kind"
                         v-model="form.kind"
@@ -123,24 +124,27 @@ function submit(): void {
                             :key="value"
                             :value="value"
                         >
-                            {{ value }}
+                            {{ disciplineKindLabel(value) }}
                         </option>
                     </select>
                     <p class="text-xs text-text-muted">
-                        A video game is one kind of discipline, not the only one
-                        — a table-football table and a quiz are others.
+                        {{
+                            $t(
+                                'A video game is one kind of discipline, not the only one — a table-football table and a quiz are others.',
+                            )
+                        }}
                     </p>
                     <InputError :message="form.errors.kind" />
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="discipline-name">Name</Label>
+                    <Label for="discipline-name">{{ $t('Name') }}</Label>
                     <Input id="discipline-name" v-model="form.name" />
                     <InputError :message="form.errors.name" />
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="discipline-slug">Slug</Label>
+                    <Label for="discipline-slug">{{ $t('Slug') }}</Label>
                     <Input
                         id="discipline-slug"
                         v-model="form.slug"
@@ -151,7 +155,9 @@ function submit(): void {
 
                 <div class="grid grid-cols-2 gap-4">
                     <div class="grid gap-2">
-                        <Label for="discipline-team-size">Team size</Label>
+                        <Label for="discipline-team-size">{{
+                            $t('Team size')
+                        }}</Label>
                         <Input
                             id="discipline-team-size"
                             v-model.number="form.teamSize"
@@ -159,13 +165,13 @@ function submit(): void {
                             min="1"
                         />
                         <p class="text-xs text-text-muted">
-                            1 is a solo contest — a team of one.
+                            {{ $t('1 is a solo contest — a team of one.') }}
                         </p>
                         <InputError :message="form.errors.teamSize" />
                     </div>
                     <div class="grid gap-2">
                         <Label for="discipline-minutes">
-                            Average match minutes
+                            {{ $t('Average match minutes') }}
                         </Label>
                         <Input
                             id="discipline-minutes"
@@ -183,20 +189,20 @@ function submit(): void {
                         type="checkbox"
                         class="size-4 rounded border-border"
                     />
-                    Draws are possible
+                    {{ $t('Draws are possible') }}
                 </label>
                 <InputError :message="form.errors.allowDraws" />
 
                 <div class="grid gap-2">
                     <Label for="discipline-linked-provider">
-                        Required linked account
+                        {{ $t('Required linked account') }}
                     </Label>
                     <select
                         id="discipline-linked-provider"
                         v-model="form.requiresLinkedProvider"
                         class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                     >
-                        <option :value="null">None</option>
+                        <option :value="null">{{ $t('None') }}</option>
                         <option
                             v-for="provider in props.options.linkedProvider"
                             :key="provider.value"
@@ -206,14 +212,17 @@ function submit(): void {
                         </option>
                     </select>
                     <p class="text-xs text-text-muted">
-                        Everyone who enters or joins a team must have linked
-                        this account.
+                        {{
+                            $t(
+                                'Everyone who enters or joins a team must have linked this account.',
+                            )
+                        }}
                     </p>
                     <InputError :message="form.errors.requiresLinkedProvider" />
                 </div>
 
                 <Button type="submit" :disabled="form.processing">
-                    Create
+                    {{ $t('Create') }}
                 </Button>
             </form>
         </DialogContent>

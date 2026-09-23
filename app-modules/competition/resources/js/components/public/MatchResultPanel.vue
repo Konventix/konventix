@@ -106,24 +106,29 @@ function claim(scores: Record<number, number | null>): string {
         aria-labelledby="result-heading"
     >
         <h2 id="result-heading" class="text-lg font-medium text-text">
-            Euer Ergebnis
+            {{ $t('Your result') }}
         </h2>
 
         <p
             v-if="props.competition.resultSubmissionMode === 'desk_only'"
             class="text-sm text-text-muted"
         >
-            Bei diesem Turnier trägt die Turnierleitung die Ergebnisse ein.
-            Meldet euch nach dem Spiel am Turnier-Desk.
+            {{
+                $t(
+                    'In this tournament, the organizers enter the results. Come to the tournament desk after the match.',
+                )
+            }}
         </p>
 
         <p
             v-else-if="props.competition.proofRequired"
             class="text-sm text-text"
         >
-            Für dieses Turnier ist zu jedem Ergebnis ein Nachweis (etwa ein
-            Screenshot) Pflicht. Die Turnierleitung nimmt Ergebnis und Nachweis
-            am Turnier-Desk entgegen.
+            {{
+                $t(
+                    'This tournament requires proof (such as a screenshot) with every result. The organizers take the result and the proof at the tournament desk.',
+                )
+            }}
         </p>
 
         <p
@@ -131,12 +136,15 @@ function claim(scores: Record<number, number | null>): string {
             role="status"
             class="text-sm text-danger"
         >
-            Dieses Ergebnis ist ein Streitfall. Die Turnierleitung entscheidet
-            und begründet ihre Entscheidung im Verlauf.
+            {{
+                $t(
+                    'This result is disputed. The organizers decide and explain their decision in the history.',
+                )
+            }}
         </p>
 
         <p v-if="props.viewer.opposingReport" class="text-sm text-text">
-            Der Gegner meldet:
+            {{ $t('Your opponent reports:') }}
             <strong>{{ claim(props.viewer.opposingReport) }}</strong>
         </p>
 
@@ -144,17 +152,26 @@ function claim(scores: Record<number, number | null>): string {
             v-if="props.viewer.ownReport && !props.viewer.opposingReport"
             class="text-sm text-text-muted"
         >
-            Ihr habt {{ claim(props.viewer.ownReport) }} gemeldet. Das Ergebnis
-            gilt, sobald der Gegner es bestätigt.
+            {{
+                $t(
+                    'You reported :score. The result counts once your opponent confirms it.',
+                    { score: claim(props.viewer.ownReport) },
+                )
+            }}
         </p>
 
         <div v-if="props.viewer.canConfirm" class="flex flex-col gap-1">
             <p v-if="props.match.disputed" class="text-sm text-text">
-                Ihr seid mit dem Ergebnis des Gegners doch einverstanden?
-                Bestätigt ihr es, gilt es, und der Streitfall ist erledigt.
+                {{
+                    $t(
+                        'Do you agree with your opponent’s result after all? If you confirm it, it counts and the dispute is settled.',
+                    )
+                }}
             </p>
             <div>
-                <Button @click="submitConfirm">Ergebnis bestätigen</Button>
+                <Button @click="submitConfirm">{{
+                    $t('Confirm result')
+                }}</Button>
             </div>
             <InputError :message="confirmError" role="alert" />
         </div>
@@ -167,8 +184,8 @@ function claim(scores: Record<number, number | null>): string {
             <h3 class="text-sm font-medium text-text">
                 {{
                     props.viewer.opposingReport
-                        ? 'Anderes Ergebnis melden'
-                        : 'Ergebnis melden'
+                        ? $t('Report a different result')
+                        : $t('Report result')
                 }}
             </h3>
             <div class="flex flex-wrap gap-3">
@@ -200,13 +217,13 @@ function claim(scores: Record<number, number | null>): string {
             <InputError id="report-error" :message="reportForm.errors.scores" />
             <div class="flex flex-wrap items-center gap-3">
                 <Button type="submit" :disabled="reportForm.processing">
-                    Melden
+                    {{ $t('Report') }}
                 </Button>
                 <span
                     v-if="reportForm.isDirty"
                     role="status"
                     class="text-sm text-warning"
-                    >Nicht gespeicherte Änderungen</span
+                    >{{ $t('Unsaved changes') }}</span
                 >
             </div>
         </form>
@@ -216,7 +233,7 @@ function claim(scores: Record<number, number | null>): string {
             class="flex flex-col gap-2"
             @submit.prevent="submitDispute"
         >
-            <Label for="dispute-reason">Ergebnis anfechten</Label>
+            <Label for="dispute-reason">{{ $t('Dispute result') }}</Label>
             <Textarea
                 id="dispute-reason"
                 v-model="disputeForm.reason"
@@ -226,8 +243,11 @@ function claim(scores: Record<number, number | null>): string {
                 aria-describedby="dispute-hint dispute-error"
             />
             <p id="dispute-hint" class="text-sm text-text-muted">
-                Schreibt, was nicht stimmt. Die Turnierleitung sieht beide
-                Meldungen und entscheidet.
+                {{
+                    $t(
+                        'Say what is wrong. The organizers see both reports and decide.',
+                    )
+                }}
             </p>
             <InputError
                 id="dispute-error"
@@ -241,7 +261,7 @@ function claim(scores: Record<number, number | null>): string {
                         disputeForm.processing || disputeForm.reason === ''
                     "
                 >
-                    Ergebnis anfechten
+                    {{ $t('Dispute result') }}
                 </Button>
             </div>
         </form>

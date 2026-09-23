@@ -8,6 +8,10 @@ import {
     index as myRegistrations,
     show as showRegistration,
 } from '@/routes/registration/mine';
+import {
+    paymentStatusLabel,
+    registrationStatusLabel,
+} from '../../../lib/labels';
 import { registrationListSummary } from './listSummary';
 
 /**
@@ -85,13 +89,15 @@ const paymentTone: Record<string, string> = {
 </script>
 
 <template>
-    <Head title="My registrations" />
+    <Head :title="$t('My registrations')" />
 
     <div class="mx-auto w-full max-w-3xl px-4 py-6">
         <Heading
             as="h1"
-            title="My registrations"
-            description="Everything you have signed up for with this brand"
+            :title="$t('My registrations')"
+            :description="
+                $t('Everything you have signed up for with this brand')
+            "
         />
 
         <p v-if="props.cancelledCount > 0" role="status" class="sr-only">
@@ -104,7 +110,7 @@ const paymentTone: Record<string, string> = {
             "
             class="text-sm text-text-muted"
         >
-            You have not registered for anything yet.
+            {{ $t('You have not registered for anything yet.') }}
         </p>
 
         <!--
@@ -116,8 +122,12 @@ const paymentTone: Record<string, string> = {
             v-else-if="props.registrations.length === 0"
             class="text-sm text-text-muted"
         >
-            Everything you registered for was cancelled — the link below brings
-            {{ props.cancelledCount === 1 ? 'it' : 'them' }} back.
+            {{
+                $tChoice(
+                    '{1} Everything you registered for was cancelled — the link below brings it back.|[2,*] Everything you registered for was cancelled — the link below brings them back.',
+                    props.cancelledCount,
+                )
+            }}
         </p>
 
         <ul v-else class="flex flex-col gap-3">
@@ -151,7 +161,7 @@ const paymentTone: Record<string, string> = {
                                 'bg-subtle text-text'
                             "
                         >
-                            {{ registration.status }}
+                            {{ registrationStatusLabel(registration.status) }}
                         </span>
                         <span
                             v-if="registration.paymentStatus !== 'none'"
@@ -161,7 +171,7 @@ const paymentTone: Record<string, string> = {
                                 'bg-subtle text-text'
                             "
                         >
-                            {{ registration.paymentStatus }}
+                            {{ paymentStatusLabel(registration.paymentStatus) }}
                         </span>
                     </span>
                 </span>
@@ -170,7 +180,7 @@ const paymentTone: Record<string, string> = {
                     :href="showRegistration(registration.id).url"
                     class="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-3 text-sm font-medium text-text hover:border-accent"
                 >
-                    Details
+                    {{ $t('Details') }}
                     <ChevronRight
                         class="size-4 shrink-0 text-text-muted"
                         aria-hidden="true"
@@ -197,11 +207,14 @@ const paymentTone: Record<string, string> = {
                 class="text-text-muted underline underline-offset-4 hover:text-text"
             >
                 <template v-if="props.showAll">
-                    Hide cancelled registrations
+                    {{ $t('Hide cancelled registrations') }}
                 </template>
                 <template v-else>
-                    Show all registrations ({{ props.cancelledCount }}
-                    cancelled)
+                    {{
+                        $t('Show all registrations (:count cancelled)', {
+                            count: String(props.cancelledCount),
+                        })
+                    }}
                 </template>
             </Link>
         </p>

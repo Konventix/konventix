@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { Plus } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed, h, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -22,6 +23,10 @@ import {
 } from '@/routes/admin/competitions';
 import ConfirmDialog from '../../../components/confirm/ConfirmDialog.vue';
 import { useConfirmation } from '../../../components/confirm/useConfirmation';
+import {
+    consoleStatusLabel,
+    formatLabel,
+} from '../../../components/public/labels';
 
 /**
  * The competitions of an event (design §9): status, entrants against the
@@ -66,7 +71,7 @@ const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
 const filterDefs = computed<DataTableFilterDef[]>(() => [
     {
         name: 'brand',
-        label: 'Brands',
+        label: trans('Brands'),
         value: props.filters.brand,
         options: props.brands.map((brand) => ({
             value: brand.id,
@@ -75,7 +80,7 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
     },
     {
         name: 'event',
-        label: 'Events',
+        label: trans('Events'),
         value: props.filters.event,
         options: props.events.map((event) => ({
             value: event.id,
@@ -84,11 +89,11 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
     },
     {
         name: 'status',
-        label: 'Competitions',
+        label: trans('Competitions'),
         value: props.filters.status,
         options: props.options.status.map((status) => ({
             value: status,
-            label: status.replace('_', ' '),
+            label: consoleStatusLabel(status),
         })),
     },
 ]);
@@ -173,11 +178,12 @@ function move(row: CompetitionRow): void {
     }
 
     ask({
-        title: `Finish ${row.name}?`,
-        description:
+        title: trans('Finish :name?', { name: row.name }),
+        description: trans(
             'The standings become final and nothing moves from here. Open matches stay unplayed.',
-        confirmLabel: row.nextLabel ?? 'Finish',
-        cancelLabel: 'Keep it running',
+        ),
+        confirmLabel: row.nextLabel ?? trans('Finish'),
+        cancelLabel: trans('Keep it running'),
         destructive: false,
         run: post,
     });
@@ -186,7 +192,7 @@ function move(row: CompetitionRow): void {
 const columns: ColumnDef<CompetitionRow>[] = [
     {
         accessorKey: 'name',
-        header: 'Name',
+        header: trans('Name'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -200,13 +206,13 @@ const columns: ColumnDef<CompetitionRow>[] = [
     },
     {
         id: 'event',
-        header: 'Event',
+        header: trans('Event'),
         cell: ({ row }) =>
             h('span', { class: 'text-text-muted' }, row.original.eventName),
     },
     {
         id: 'discipline',
-        header: 'Discipline',
+        header: trans('Discipline'),
         cell: ({ row }) =>
             h(
                 'span',
@@ -216,17 +222,17 @@ const columns: ColumnDef<CompetitionRow>[] = [
     },
     {
         id: 'format',
-        header: 'Format',
+        header: trans('Format'),
         cell: ({ row }) =>
             h(
                 'span',
                 { class: 'text-text-muted' },
-                row.original.stageFormat.replace(/_/g, ' '),
+                formatLabel(row.original.stageFormat),
             ),
     },
     {
         accessorKey: 'status',
-        header: 'Status',
+        header: trans('Status'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -234,24 +240,24 @@ const columns: ColumnDef<CompetitionRow>[] = [
                 {
                     class: `rounded-full px-2 py-0.5 text-xs font-medium ${statusClass[row.original.status] ?? 'bg-subtle text-text-muted'}`,
                 },
-                row.original.status.replace('_', ' '),
+                consoleStatusLabel(row.original.status),
             ),
     },
     {
         id: 'entrants',
-        header: 'Entrants',
+        header: trans('Entrants'),
         cell: ({ row }) =>
             `${row.original.entrants} / ${row.original.maxEntrants ?? '∞'}`,
     },
     {
         accessorKey: 'starts_at',
-        header: 'Starts',
+        header: trans('Starts'),
         enableSorting: true,
         cell: ({ row }) => formatDateTime(row.original.startsAt) || '—',
     },
     {
         id: 'next',
-        header: 'Next',
+        header: trans('Next step'),
         cell: ({ row }) =>
             row.original.nextStatus === null
                 ? h('span', { class: 'text-text-muted' }, '—')
@@ -269,17 +275,21 @@ const columns: ColumnDef<CompetitionRow>[] = [
 </script>
 
 <template>
-    <Head title="Competitions" />
+    <Head :title="$t('Competitions')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Competitions"
-            description="The event's tournament programme, and where each contest stands"
+            :title="$t('Competitions')"
+            :description="
+                $t(
+                    'The event\'s tournament programme, and where each contest stands',
+                )
+            "
         >
             <Button as-child>
                 <Link :href="createCompetition().url">
                     <Plus class="size-4" />
-                    New competition
+                    {{ $t('New competition') }}
                 </Link>
             </Button>
         </AdminPageHeader>
@@ -288,7 +298,7 @@ const columns: ColumnDef<CompetitionRow>[] = [
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
             :filters="filterDefs"
-            search-placeholder="Search competitions…"
+            :search-placeholder="$t('Search competitions…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
             @update:filter="setFilter"
@@ -302,8 +312,12 @@ const columns: ColumnDef<CompetitionRow>[] = [
             :data="props.competitions.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="competitions"
-            empty-message="No competitions yet — create one per contest of this event."
+            :items-label="$t('competitions')"
+            :empty-message="
+                $t(
+                    'No competitions yet — create one per contest of this event.',
+                )
+            "
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />

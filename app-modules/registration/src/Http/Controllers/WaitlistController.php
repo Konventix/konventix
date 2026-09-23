@@ -30,8 +30,8 @@ final class WaitlistController
         $model = WaitlistEntry::query()->findOrFail($entry);
 
         abort_unless($model->registrant_user_id === (string) $request->user()?->getKey(), 403);
-        abort_unless($model->state === WaitlistState::Offered, 410, 'This offer is no longer open.');
-        abort_if($model->offer_expires_at?->isPast() ?? true, 410, 'This offer has expired.');
+        abort_unless($model->state === WaitlistState::Offered, 410, __('This offer is no longer open.'));
+        abort_if($model->offer_expires_at?->isPast() ?? true, 410, __('This offer has expired.'));
 
         $type = $model->registrationType()->firstOrFail();
 

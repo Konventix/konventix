@@ -1,4 +1,5 @@
 import { useHttp } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import {
     update as updatePlan,
@@ -99,8 +100,13 @@ export function usePlanSave(
         const current = currentVersionOf(data);
 
         return current === null
-            ? 'Someone else saved this plan meanwhile. Reload the page and redo your changes.'
-            : `Someone else saved version ${current} of this plan meanwhile. Reload the page and redo your changes.`;
+            ? trans(
+                  'Someone else saved this plan meanwhile. Reload the page and redo your changes.',
+              )
+            : trans(
+                  'Someone else saved version :version of this plan meanwhile. Reload the page and redo your changes.',
+                  { version: String(current) },
+              );
     }
 
     function exceptionMessage(
@@ -109,7 +115,9 @@ export function usePlanSave(
     ): string {
         return status === 409
             ? staleMessage(data)
-            : `The server answered HTTP ${status}.`;
+            : trans('The server answered HTTP :status.', {
+                  status: String(status),
+              });
     }
 
     async function save(resolutions: Resolution[] = []): Promise<void> {
@@ -160,7 +168,9 @@ export function usePlanSave(
                         string | string[]
                     >;
                     fail(
-                        'The server refused the document — see the checks below.',
+                        trans(
+                            'The server refused the document — see the checks below.',
+                        ),
                     );
                 },
                 onHttpException: (response) => {
@@ -174,7 +184,9 @@ export function usePlanSave(
                 },
                 onNetworkError: () => {
                     fail(
-                        'The save did not reach the server. Check the connection and try again.',
+                        trans(
+                            'The save did not reach the server. Check the connection and try again.',
+                        ),
                     );
                 },
             })
@@ -208,7 +220,7 @@ export function usePlanSave(
                     fail(exceptionMessage(response.status, response.data));
                 },
                 onNetworkError: () => {
-                    fail('The check did not reach the server.');
+                    fail(trans('The check did not reach the server.'));
                 },
             })
             .catch(() => undefined);

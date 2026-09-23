@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useElementSize } from '@vueuse/core';
+import { trans } from 'laravel-vue-i18n';
 import { computed, reactive, ref, watch } from 'vue';
 import type { Reason } from './eligibility';
 import { isSelectable, placeReason, stateText } from './eligibility';
@@ -215,7 +216,12 @@ function onTap(point: Point): void {
 function placeTitle(item: RenderedPlace): string {
     const label = placeLabel(item.element);
 
-    return props.claim === null ? label : `${label}: ${stateText(item.reason)}`;
+    return props.claim === null
+        ? label
+        : trans(':place: :state', {
+              place: label,
+              state: stateText(item.reason),
+          });
 }
 
 function resetView(): void {
@@ -243,7 +249,12 @@ defineExpose({ svgPoint, fitToBbox: fitToBboxExposed });
             preserveAspectRatio="xMidYMid meet"
             class="block h-[60vh] w-full touch-none select-none"
             role="img"
-            :aria-label="`Seat plan ${plan.name}. Click or tap a place to choose it; drag to pan, pinch or scroll to zoom. The Accessibility button above lists every place as a button for keyboard use.`"
+            :aria-label="
+                $t(
+                    'Seating plan :name. Click or tap a place to choose it; drag to pan, pinch or scroll to zoom. The Accessibility button above lists every place as a button for keyboard use.',
+                    { name: plan.name },
+                )
+            "
             @pointerdown="onPointerDown"
             @pointermove="onPointerMove"
             @pointerup="onPointerUp"

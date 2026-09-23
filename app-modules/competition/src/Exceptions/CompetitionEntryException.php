@@ -65,7 +65,7 @@ final class CompetitionEntryException extends RuntimeException
         $exception->missingUserIds = $userIds;
         // The participant controllers answer this cause in their own words,
         // with names and the settings link; this is the fallback.
-        $exception->participantMessage = __('Für dieses Turnier brauchen alle im Team ein verknüpftes :provider-Konto.', [
+        $exception->participantMessage = __('This tournament needs a linked :provider account for everyone on the team.', [
             'provider' => $provider->label(),
         ]);
 
@@ -96,7 +96,7 @@ final class CompetitionEntryException extends RuntimeException
     public function participantMessage(): string
     {
         return $this->participantMessage
-            ?? __('Das hat nicht geklappt. Lade die Seite neu und versuch es noch einmal.');
+            ?? __('That did not work. Reload the page and try again.');
     }
 
     /**
@@ -107,8 +107,7 @@ final class CompetitionEntryException extends RuntimeException
      */
     public static function joinRefusal(): string
     {
-        return __('Dieser Code passt nicht — er ist unbekannt, das Team ist voll, du bist schon dabei, '
-            .'oder du bist für diese Veranstaltung nicht angemeldet.');
+        return __('This code does not work — it is unknown, the team is full, you are already on it, or you are not registered for this event.');
     }
 
     /**
@@ -127,7 +126,7 @@ final class CompetitionEntryException extends RuntimeException
     {
         return self::refusal(
             sprintf('Signup for competition [%s] is not open.', $competitionId),
-            __('Die Anmeldung für dieses Turnier ist nicht geöffnet.'),
+            __('Signup for this tournament is not open.'),
         );
     }
 
@@ -141,7 +140,7 @@ final class CompetitionEntryException extends RuntimeException
     {
         return self::refusal(
             sprintf('Competition [%s] is `%s` and takes no more interest.', $competitionId, $status),
-            __('Für dieses Turnier kannst du dich nicht mehr als interessiert eintragen: es hat schon begonnen oder ist vorbei.'),
+            __('You can no longer register interest in this tournament: it has already started or is over.'),
         );
     }
 
@@ -149,7 +148,7 @@ final class CompetitionEntryException extends RuntimeException
     {
         return self::refusal(
             sprintf('Team [%s] is already entered in competition [%s].', $teamId, $competitionId),
-            __('Euer Team ist bei diesem Turnier schon angemeldet.'),
+            __('Your team is already signed up for this tournament.'),
         );
     }
 
@@ -162,7 +161,7 @@ final class CompetitionEntryException extends RuntimeException
                 $userId,
                 $eventId,
             ),
-            __('Dafür braucht es eine bestätigte Anmeldung zur Veranstaltung oder ein Ticket auf den eigenen Namen – für dich und für alle im Team.'),
+            __('This needs a confirmed registration for the event or a ticket in your own name – for you and for everyone on the team.'),
         );
     }
 
@@ -185,7 +184,7 @@ final class CompetitionEntryException extends RuntimeException
                 $competitionId,
                 $maxEntrants,
             ),
-            __('Dieses Turnier ist voll: alle :max Plätze sind vergeben.', ['max' => (string) $maxEntrants]),
+            __('This tournament is full: all :max slots are taken.', ['max' => (string) $maxEntrants]),
         );
     }
 
@@ -193,7 +192,7 @@ final class CompetitionEntryException extends RuntimeException
     {
         return self::refusal(
             sprintf('Team [%s] has nobody on it; an empty roster cannot enter anything.', $teamId),
-            __('In diesem Team ist niemand. Ein leeres Team kann nicht antreten.'),
+            __('There is nobody on this team. An empty team cannot enter.'),
         );
     }
 
@@ -209,7 +208,7 @@ final class CompetitionEntryException extends RuntimeException
     {
         return self::refusal(
             sprintf('User [%s] is already on team [%s].', $userId, $teamId),
-            __('Du spielst bei diesem Turnier schon in einem Team mit.'),
+            __('You are already playing on a team in this tournament.'),
         );
     }
 
@@ -229,7 +228,7 @@ final class CompetitionEntryException extends RuntimeException
                 $competitionId,
                 $teamSize,
             ),
-            __('Das Team wäre mit :count Leuten zu groß: in einem seiner Turniere spielen höchstens :size pro Team.', [
+            __('With :count people the team would be too big: one of its tournaments allows at most :size per team.', [
                 'count' => (string) $rosterSize,
                 'size' => (string) $teamSize,
             ]),
@@ -245,7 +244,7 @@ final class CompetitionEntryException extends RuntimeException
     {
         return self::refusal(
             sprintf('User [%s] does not captain team [%s].', $userId, $teamId),
-            __('Das darf nur der Captain des Teams.'),
+            __('Only the team captain can do that.'),
         );
     }
 
@@ -261,7 +260,7 @@ final class CompetitionEntryException extends RuntimeException
     {
         return self::refusal(
             sprintf('Entrant [%s] has already withdrawn or been disqualified.', $entrantId),
-            __('Diese Anmeldung ist schon zurückgezogen oder ausgeschlossen.'),
+            __('This entry has already been withdrawn or disqualified.'),
         );
     }
 
@@ -275,7 +274,7 @@ final class CompetitionEntryException extends RuntimeException
                 'Competition [%s] is finished or cancelled; its field is history and does not change.',
                 $competitionId,
             ),
-            __('Dieses Turnier hat schon begonnen oder ist vorbei. Ändern kann das jetzt nur noch die Turnierleitung.'),
+            __('This tournament has already started or is over. Only the organizers can change that now.'),
         );
     }
 
@@ -287,7 +286,7 @@ final class CompetitionEntryException extends RuntimeException
                 $teamId,
                 $competitionId,
             ),
-            __('Dieses Team gehört zu einer anderen Veranstaltung als das Turnier.'),
+            __('This team belongs to a different event than the tournament.'),
         );
     }
 
@@ -300,7 +299,7 @@ final class CompetitionEntryException extends RuntimeException
                 .'(design §6). The desk can always check a team in.',
                 $competitionId,
             ),
-            __('Selbst einchecken geht bei diesem Turnier gerade nicht. Die Turnierleitung kann euch jederzeit einchecken.'),
+            __('Self check-in is not available for this tournament right now. The organizers can check you in at any time.'),
         );
     }
 
@@ -313,7 +312,7 @@ final class CompetitionEntryException extends RuntimeException
                 $entrantId,
                 $state,
             ),
-            __('Diese Anmeldung kann nicht eingecheckt werden: eingecheckt wird nur ein vollständiges Team, das noch im Turnier ist.'),
+            __('This entry cannot be checked in: only a complete team that is still in the tournament is checked in.'),
         );
     }
 
@@ -341,7 +340,7 @@ final class CompetitionEntryException extends RuntimeException
                 count($missingNames),
                 implode(', ', $missingNames),
             ),
-            __('Einchecken geht erst, wenn alle im Team am Einlass waren. Noch nicht eingelassen: :names.', [
+            __('Check-in opens once everyone on the team has been through the entrance. Not admitted yet: :names.', [
                 'names' => implode(', ', $missingNames),
             ]),
         );

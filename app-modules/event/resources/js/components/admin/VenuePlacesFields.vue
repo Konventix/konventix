@@ -60,7 +60,7 @@ function toCoordinate(value: string | number | null): number | null {
 <template>
     <div class="flex flex-col gap-4">
         <p v-if="model.length === 0" class="text-sm text-text-muted">
-            None — the public page shows no such section.
+            {{ $t('None — the public page shows no such section.') }}
         </p>
 
         <div
@@ -94,7 +94,12 @@ function toCoordinate(value: string | number | null): number | null {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    :aria-label="`Remove ${props.itemLabel.toLowerCase()} ${index + 1}`"
+                    :aria-label="
+                        $t('Remove :item :number', {
+                            item: props.itemLabel,
+                            number: String(index + 1),
+                        })
+                    "
                     @click="remove(index)"
                 >
                     <Trash2 class="size-4 text-danger" />
@@ -103,7 +108,7 @@ function toCoordinate(value: string | number | null): number | null {
 
             <div class="grid gap-2">
                 <Label :for="fieldId(index, 'address')">
-                    Address (optional)
+                    {{ $t('Address (optional)') }}
                 </Label>
                 <Input
                     :id="fieldId(index, 'address')"
@@ -116,7 +121,7 @@ function toCoordinate(value: string | number | null): number | null {
             <div class="grid gap-3 sm:grid-cols-2">
                 <div class="grid gap-2">
                     <Label :for="fieldId(index, 'latitude')">
-                        Latitude (optional)
+                        {{ $t('Latitude (optional)') }}
                     </Label>
                     <Input
                         :id="fieldId(index, 'latitude')"
@@ -131,7 +136,7 @@ function toCoordinate(value: string | number | null): number | null {
                 </div>
                 <div class="grid gap-2">
                     <Label :for="fieldId(index, 'longitude')">
-                        Longitude (optional)
+                        {{ $t('Longitude (optional)') }}
                     </Label>
                     <Input
                         :id="fieldId(index, 'longitude')"
@@ -155,7 +160,7 @@ function toCoordinate(value: string | number | null): number | null {
             @click="add"
         >
             <Plus class="size-4" />
-            Add {{ props.itemLabel.toLowerCase() }}
+            {{ $t('Add :item', { item: props.itemLabel }) }}
         </Button>
     </div>
 </template>

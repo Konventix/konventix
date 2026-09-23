@@ -7,6 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/datetime';
 import { index as registrationsIndex } from '@/routes/admin/registrations';
 import RegistrationEntryConditionsPanel from '../../../components/registrations/RegistrationEntryConditionsPanel.vue';
+import {
+    paymentStatusLabel,
+    registrationStatusLabel,
+} from '../../../lib/labels';
 
 /**
  * One registration, and the declarations it rests on (ADR-0066 §9.1).
@@ -38,7 +42,9 @@ defineProps<{
 </script>
 
 <template>
-    <Head :title="`${registration.registrant} — Registration`" />
+    <Head
+        :title="$t(':name — Registration', { name: registration.registrant })"
+    />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
@@ -48,7 +54,7 @@ defineProps<{
             <Button variant="outline" as-child>
                 <Link :href="registrationsIndex().url">
                     <ArrowLeft class="size-4" />
-                    All registrations
+                    {{ $t('All registrations') }}
                 </Link>
             </Button>
         </AdminPageHeader>
@@ -56,7 +62,7 @@ defineProps<{
         <div class="grid gap-6 lg:grid-cols-3">
             <Card class="lg:col-span-2">
                 <CardHeader>
-                    <CardTitle>Entry conditions</CardTitle>
+                    <CardTitle>{{ $t('Entry conditions') }}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <RegistrationEntryConditionsPanel
@@ -70,7 +76,7 @@ defineProps<{
 
             <Card>
                 <CardHeader>
-                    <CardTitle>The act</CardTitle>
+                    <CardTitle>{{ $t('The act') }}</CardTitle>
                 </CardHeader>
                 <CardContent class="flex flex-col gap-2 text-sm">
                     <p
@@ -83,25 +89,25 @@ defineProps<{
                         {{ registration.organization }}
                     </p>
                     <p>
-                        Status:
+                        {{ $t('Status:') }}
                         <span class="font-medium">{{
-                            registration.status
+                            registrationStatusLabel(registration.status)
                         }}</span>
                     </p>
                     <p>
-                        Payment:
+                        {{ $t('Payment:') }}
                         <span class="font-medium">{{
-                            registration.paymentStatus
+                            paymentStatusLabel(registration.paymentStatus)
                         }}</span>
                     </p>
                     <p>
-                        Units:
+                        {{ $t('Units:') }}
                         <span class="font-medium tabular-nums">{{
                             registration.quantity
                         }}</span>
                     </p>
                     <p class="text-text-muted">
-                        Submitted
+                        {{ $t('Submitted') }}
                         <time :datetime="registration.submittedAt">{{
                             formatDateTime(registration.submittedAt)
                         }}</time>

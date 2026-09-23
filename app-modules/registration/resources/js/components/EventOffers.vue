@@ -47,13 +47,12 @@ import OfferPrice from './OfferPrice.vue';
  */
 type Offer = Konventix.Registration.Data.PublicOfferData;
 
-const props = withDefaults(
-    defineProps<{
-        offers: Offer[];
-        heading?: string;
-    }>(),
-    { heading: 'Register' },
-);
+// No `withDefaults` for the heading: a default is evaluated before the
+// catalog answers, so the fallback "Register" is looked up in the template.
+const props = defineProps<{
+    offers: Offer[];
+    heading?: string;
+}>();
 
 const headingId = useId();
 </script>
@@ -64,7 +63,9 @@ const headingId = useId();
         class="flex flex-col gap-3"
         :aria-labelledby="headingId"
     >
-        <h2 :id="headingId" class="text-lg font-medium">{{ props.heading }}</h2>
+        <h2 :id="headingId" class="text-lg font-medium">
+            {{ props.heading ?? $t('Register') }}
+        </h2>
 
         <ul class="flex flex-col gap-3">
             <li v-for="offer in props.offers" :key="offer.registrationTypeId">
@@ -81,7 +82,7 @@ const headingId = useId();
                             v-if="offer.requiresApproval"
                             class="text-sm text-text-muted"
                         >
-                            Reviewed before it is confirmed
+                            {{ $t('Reviewed before it is confirmed') }}
                         </span>
                     </span>
 
@@ -104,7 +105,7 @@ const headingId = useId();
                         </span>
                         <span class="text-sm text-text-muted">
                             <template v-if="offer.salesStart">
-                                Sale starts
+                                {{ $t('Sale starts') }}
                                 <time :datetime="offer.salesStart">
                                     {{
                                         formatDateTime(offer.salesStart, {
@@ -113,7 +114,7 @@ const headingId = useId();
                                     }}
                                 </time>
                             </template>
-                            <template v-else> Not on sale </template>
+                            <template v-else>{{ $t('Not on sale') }}</template>
                         </span>
                     </span>
 

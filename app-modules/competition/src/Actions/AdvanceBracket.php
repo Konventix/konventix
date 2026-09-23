@@ -157,7 +157,7 @@ final class AdvanceBracket
         app(RecordMatchHistory::class)->handle(
             $match,
             MatchHistoryKind::Recorded,
-            new MatchHistoryPayload(note: __('Keines der Spiele davor hat ein Team hierher geschickt; das Spiel entfällt.')),
+            new MatchHistoryPayload(note: __('None of the matches before this one sent a team here; the match is dropped.')),
         );
 
         $this->handle($match->refresh());

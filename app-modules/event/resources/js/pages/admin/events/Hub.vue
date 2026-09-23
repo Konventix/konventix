@@ -105,30 +105,40 @@ function submit(): void {
 </script>
 
 <template>
-    <Head :title="`Live hub — ${props.event.name}`" />
+    <Head :title="$t('Live hub — :name', { name: props.event.name })" />
 
     <div class="flex max-w-3xl flex-col gap-6">
         <AdminPageHeader
-            :title="`Live hub — ${props.event.name}`"
-            description="What admitted members see at the event, and in which order"
+            :title="$t('Live hub — :name', { name: props.event.name })"
+            :description="
+                $t('What admitted members see at the event, and in which order')
+            "
         >
             <Link
                 :href="showEvent(props.event.id).url"
                 class="text-sm text-text-muted hover:text-text"
             >
-                Dashboard
+                {{ $t('Dashboard') }}
             </Link>
         </AdminPageHeader>
 
         <form class="flex flex-col gap-6" @submit.prevent="submit">
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Cards and links</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{
+                        $t('Cards and links')
+                    }}</CardTitle></CardHeader
+                >
                 <CardContent class="flex flex-col gap-3">
                     <p
                         v-if="form.cards.length === 0"
                         class="text-sm text-text-muted"
                     >
-                        No module has contributed anything to the hub yet.
+                        {{
+                            $t(
+                                'No module has contributed anything to the hub yet.',
+                            )
+                        }}
                     </p>
                     <ul v-else class="flex flex-col gap-2">
                         <li
@@ -151,8 +161,8 @@ function submit(): void {
                                 <Badge variant="outline">
                                     {{
                                         entryFor(card.key).kind === 'card'
-                                            ? 'Card'
-                                            : 'Link'
+                                            ? $t('Card')
+                                            : $t('Link')
                                     }}
                                 </Badge>
                                 <span class="text-xs text-text-muted">
@@ -165,7 +175,11 @@ function submit(): void {
                                     variant="ghost"
                                     size="sm"
                                     :disabled="index === 0"
-                                    :aria-label="`Move ${entryFor(card.key).label} up`"
+                                    :aria-label="
+                                        $t('Move :name up', {
+                                            name: entryFor(card.key).label,
+                                        })
+                                    "
                                     @click="move(index, -1)"
                                 >
                                     <ChevronUp class="size-4" />
@@ -175,7 +189,11 @@ function submit(): void {
                                     variant="ghost"
                                     size="sm"
                                     :disabled="index === form.cards.length - 1"
-                                    :aria-label="`Move ${entryFor(card.key).label} down`"
+                                    :aria-label="
+                                        $t('Move :name down', {
+                                            name: entryFor(card.key).label,
+                                        })
+                                    "
                                     @click="move(index, 1)"
                                 >
                                     <ChevronDown class="size-4" />
@@ -184,16 +202,20 @@ function submit(): void {
                         </li>
                     </ul>
                     <p class="text-xs text-text-muted">
-                        Unticked entries stay out of the hub. A card whose
-                        module is switched off for the brand is hidden
-                        regardless of this list.
+                        {{
+                            $t(
+                                'Unticked entries stay out of the hub. A card whose module is switched off for the brand is hidden regardless of this list.',
+                            )
+                        }}
                     </p>
                     <InputError :message="form.errors.cards" />
                 </CardContent>
             </Card>
 
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Home page</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{ $t('Home page') }}</CardTitle></CardHeader
+                >
                 <CardContent class="flex flex-col gap-2">
                     <div class="flex items-center gap-2">
                         <Checkbox
@@ -207,15 +229,18 @@ function submit(): void {
                             "
                         />
                         <Label for="hub-replaces-home">
-                            Home page becomes the hub
+                            {{ $t('Home page becomes the hub') }}
                         </Label>
                     </div>
                     <p
                         id="hub-replaces-home-hint"
                         class="text-xs text-text-muted"
                     >
-                        Applies to signed-in, admitted guests only; the public
-                        home page stays cached.
+                        {{
+                            $t(
+                                'Applies to signed-in, admitted guests only; the public home page stays cached.',
+                            )
+                        }}
                     </p>
                     <InputError :message="form.errors.hubReplacesHome" />
                 </CardContent>
@@ -223,14 +248,14 @@ function submit(): void {
 
             <div class="flex items-center gap-3 self-start">
                 <Button type="submit" :disabled="form.processing">
-                    Save changes
+                    {{ $t('Save changes') }}
                 </Button>
                 <span
                     v-if="form.isDirty"
                     role="status"
                     class="text-sm text-warning"
                 >
-                    Unsaved changes
+                    {{ $t('Unsaved changes') }}
                 </span>
             </div>
         </form>

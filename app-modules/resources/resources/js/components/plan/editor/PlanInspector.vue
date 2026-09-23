@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { elementKindLabel, elementKindPluralLabel } from '../labels';
 import type { DraftElement } from './document';
 import PlanInspectorKindFields from './PlanInspectorKindFields.vue';
 import PlanInspectorReservation from './PlanInspectorReservation.vue';
@@ -122,7 +123,7 @@ function bulkFlag(field: 'blocked' | 'locked', value: boolean): void {
 <template>
     <div class="flex flex-col gap-3 p-3">
         <template v-if="selected.length === 0">
-            <h2 class="text-sm font-semibold text-text">Plan</h2>
+            <h2 class="text-sm font-semibold text-text">{{ $t('Plan') }}</h2>
             <dl class="grid grid-cols-2 gap-x-2 gap-y-1 text-sm">
                 <template
                     v-for="kind in [
@@ -134,24 +135,31 @@ function bulkFlag(field: 'blocked' | 'locked', value: boolean): void {
                     ]"
                     :key="kind"
                 >
-                    <dt class="text-text-muted capitalize">{{ kind }}s</dt>
+                    <dt class="text-text-muted">
+                        {{ elementKindPluralLabel(kind) }}
+                    </dt>
                     <dd class="text-text">{{ counts[kind] ?? 0 }}</dd>
                 </template>
             </dl>
             <p class="text-xs text-text-muted">
-                Click an element on the canvas or in the tree to edit it.
-                Shift-click adds to the selection; drag on the floor to marquee.
+                {{
+                    $t(
+                        'Click an element on the canvas or in the tree to edit it. Shift-click adds to the selection; drag on the floor to marquee.',
+                    )
+                }}
             </p>
         </template>
 
         <template v-else-if="single">
             <h2 class="text-sm font-semibold text-text">
-                <span class="text-text-muted uppercase">{{ single.kind }}</span>
+                <span class="text-text-muted uppercase">{{
+                    elementKindLabel(single.kind)
+                }}</span>
                 {{ single.label ?? single.ref ?? '' }}
             </h2>
 
             <div class="grid gap-1">
-                <Label for="inspector-label">Label</Label>
+                <Label for="inspector-label">{{ $t('Label') }}</Label>
                 <Input
                     id="inspector-label"
                     :model-value="single.label"
@@ -167,7 +175,9 @@ function bulkFlag(field: 'blocked' | 'locked', value: boolean): void {
                 />
             </div>
             <div v-if="single.kind === 'place'" class="grid gap-1">
-                <Label for="inspector-ref">Ref (unique per plan)</Label>
+                <Label for="inspector-ref">{{
+                    $t('Ref (unique per plan)')
+                }}</Label>
                 <Input
                     id="inspector-ref"
                     :model-value="single.ref"
@@ -185,7 +195,7 @@ function bulkFlag(field: 'blocked' | 'locked', value: boolean): void {
 
             <div class="grid grid-cols-3 gap-2">
                 <div class="grid gap-1">
-                    <Label for="inspector-x">X (mm)</Label>
+                    <Label for="inspector-x">{{ $t('X (mm)') }}</Label>
                     <Input
                         id="inspector-x"
                         type="number"
@@ -194,7 +204,7 @@ function bulkFlag(field: 'blocked' | 'locked', value: boolean): void {
                     />
                 </div>
                 <div class="grid gap-1">
-                    <Label for="inspector-y">Y (mm)</Label>
+                    <Label for="inspector-y">{{ $t('Y (mm)') }}</Label>
                     <Input
                         id="inspector-y"
                         type="number"
@@ -203,7 +213,9 @@ function bulkFlag(field: 'blocked' | 'locked', value: boolean): void {
                     />
                 </div>
                 <div class="grid gap-1">
-                    <Label for="inspector-rotation">Rotation (°)</Label>
+                    <Label for="inspector-rotation">{{
+                        $t('Rotation (°)')
+                    }}</Label>
                     <Input
                         id="inspector-rotation"
                         type="number"
@@ -221,7 +233,7 @@ function bulkFlag(field: 'blocked' | 'locked', value: boolean): void {
                 class="grid grid-cols-2 gap-2"
             >
                 <div class="grid gap-1">
-                    <Label for="inspector-w">Width (mm)</Label>
+                    <Label for="inspector-w">{{ $t('Width (mm)') }}</Label>
                     <Input
                         id="inspector-w"
                         type="number"
@@ -231,7 +243,7 @@ function bulkFlag(field: 'blocked' | 'locked', value: boolean): void {
                     />
                 </div>
                 <div class="grid gap-1">
-                    <Label for="inspector-h">Height (mm)</Label>
+                    <Label for="inspector-h">{{ $t('Height (mm)') }}</Label>
                     <Input
                         id="inspector-h"
                         type="number"
@@ -246,7 +258,7 @@ function bulkFlag(field: 'blocked' | 'locked', value: boolean): void {
                 class="grid grid-cols-2 gap-2"
             >
                 <div class="grid gap-1">
-                    <Label for="inspector-rx">Radius X (mm)</Label>
+                    <Label for="inspector-rx">{{ $t('Radius X (mm)') }}</Label>
                     <Input
                         id="inspector-rx"
                         type="number"
@@ -256,7 +268,7 @@ function bulkFlag(field: 'blocked' | 'locked', value: boolean): void {
                     />
                 </div>
                 <div class="grid gap-1">
-                    <Label for="inspector-ry">Radius Y (mm)</Label>
+                    <Label for="inspector-ry">{{ $t('Radius Y (mm)') }}</Label>
                     <Input
                         id="inspector-ry"
                         type="number"
@@ -277,7 +289,7 @@ function bulkFlag(field: 'blocked' | 'locked', value: boolean): void {
                             })
                     "
                 />
-                Locked (cannot be dragged)
+                {{ $t('Locked (cannot be dragged)') }}
             </label>
 
             <PlanInspectorKindFields
@@ -305,25 +317,32 @@ function bulkFlag(field: 'blocked' | 'locked', value: boolean): void {
                 @click="store.removeElements([single.id])"
             >
                 <Trash2 class="size-4" />
-                Delete
+                {{ $t('Delete') }}
             </Button>
         </template>
 
         <template v-else>
             <h2 class="text-sm font-semibold text-text">
-                {{ selected.length }} elements selected
+                {{
+                    $t(':count elements selected', {
+                        count: String(selected.length),
+                    })
+                }}
             </h2>
             <div v-if="selectedPlaces.length > 0" class="grid gap-1">
-                <Label for="inspector-bulk-category"
-                    >Category for {{ selectedPlaces.length }} places</Label
-                >
+                <Label for="inspector-bulk-category">{{
+                    $tChoice(
+                        '{1} Category for :count place|[2,*] Category for :count places',
+                        selectedPlaces.length,
+                    )
+                }}</Label>
                 <select
                     id="inspector-bulk-category"
                     value=""
                     class="h-9 rounded-md border border-border bg-surface px-3 text-sm text-text"
                     @change="bulkCategory"
                 >
-                    <option value="" disabled>Choose…</option>
+                    <option value="" disabled>{{ $t('Choose…') }}</option>
                     <option
                         v-for="category in categories"
                         :key="category.id"
@@ -339,28 +358,28 @@ function bulkFlag(field: 'blocked' | 'locked', value: boolean): void {
                     variant="outline"
                     size="sm"
                     @click="bulkFlag('blocked', true)"
-                    >Block</Button
+                    >{{ $t('Block') }}</Button
                 >
                 <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     @click="bulkFlag('blocked', false)"
-                    >Unblock</Button
+                    >{{ $t('Unblock') }}</Button
                 >
                 <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     @click="bulkFlag('locked', true)"
-                    >Lock</Button
+                    >{{ $t('Lock') }}</Button
                 >
                 <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     @click="bulkFlag('locked', false)"
-                    >Unlock</Button
+                    >{{ $t('Unlock') }}</Button
                 >
             </div>
             <Button
@@ -371,7 +390,7 @@ function bulkFlag(field: 'blocked' | 'locked', value: boolean): void {
                 @click="store.removeElements(store.selection.value)"
             >
                 <Trash2 class="size-4" />
-                Delete selection
+                {{ $t('Delete selection') }}
             </Button>
         </template>
     </div>

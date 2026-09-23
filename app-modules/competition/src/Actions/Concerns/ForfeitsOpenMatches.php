@@ -94,7 +94,7 @@ trait ForfeitsOpenMatches
             // A forfeit settles a disputed match like any other settlement,
             // so the dispute ends with it (fix wave A round 2, M-a). Nobody
             // pressed a button, so no `MatchDisputeResolved` names anyone.
-            $this->closeDispute($match, $winnerId, null, __('Ein Team ist nicht mehr im Turnier; das Spiel ist kampflos entschieden.'));
+            $this->closeDispute($match, $winnerId, null, __('A team is no longer in the tournament; the match is decided by forfeit.'));
 
             app(RecordMatchResult::class)->handle($match, $scores, $winnerId);
             app(AdvanceBracket::class)->handle($match->refresh());

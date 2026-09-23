@@ -16,6 +16,7 @@ import {
 } from '@/routes/admin/entry-conditions';
 import EntryConditionCheckbox from '../../../components/EntryConditionCheckbox.vue';
 import { assertionTextBudget } from '../../../components/entryConditions';
+import { verificationLabel } from '../../../lib/labels';
 
 /**
  * One entry condition (ADR-0066 §9.1): the sentence a registrant ticks, the
@@ -89,7 +90,9 @@ function archive(): void {
 </script>
 
 <template>
-    <Head :title="`${props.condition.name} — Entry condition`" />
+    <Head
+        :title="$t(':name — Entry condition', { name: props.condition.name })"
+    />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
@@ -100,12 +103,12 @@ function archive(): void {
                 v-if="props.condition.archived"
                 class="inline-flex rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning"
             >
-                archived
+                {{ $t('archived') }}
             </span>
             <Button variant="outline" as-child>
                 <Link :href="conditionsIndex().url">
                     <ArrowLeft class="size-4" />
-                    All conditions
+                    {{ $t('All conditions') }}
                 </Link>
             </Button>
         </AdminPageHeader>
@@ -114,22 +117,29 @@ function archive(): void {
             <div class="flex flex-col gap-6 lg:col-span-2">
                 <Card>
                     <CardHeader>
-                        <CardTitle>The condition</CardTitle>
+                        <CardTitle>{{ $t('The condition') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div class="grid gap-2">
-                                <Label for="condition-key">Key</Label>
+                                <Label for="condition-key">{{
+                                    $t('Key')
+                                }}</Label>
                                 <Input id="condition-key" v-model="form.key" />
                                 <p class="text-xs text-text-muted">
-                                    Travels to the door and onto the ticket.
-                                    Changing it changes what the door reads.
+                                    {{
+                                        $t(
+                                            'Travels to the door and onto the ticket. Changing it changes what the door reads.',
+                                        )
+                                    }}
                                 </p>
                                 <InputError :message="form.errors.key" />
                             </div>
 
                             <div class="grid gap-2">
-                                <Label for="condition-name">Name</Label>
+                                <Label for="condition-name">{{
+                                    $t('Name')
+                                }}</Label>
                                 <Input
                                     id="condition-name"
                                     v-model="form.name"
@@ -139,14 +149,16 @@ function archive(): void {
                         </div>
 
                         <div class="grid gap-2">
-                            <Label for="condition-event">Event</Label>
+                            <Label for="condition-event">{{
+                                $t('Event')
+                            }}</Label>
                             <select
                                 id="condition-event"
                                 v-model="form.eventId"
                                 class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                             >
                                 <option :value="null">
-                                    Every event of this brand
+                                    {{ $t('Every event of this brand') }}
                                 </option>
                                 <option
                                     v-for="event in props.events"
@@ -157,15 +169,18 @@ function archive(): void {
                                 </option>
                             </select>
                             <p class="text-xs text-text-muted">
-                                Leave it on "every event" unless this is a
-                                one-off.
+                                {{
+                                    $t(
+                                        'Leave it on “every event” unless this is a one-off.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.eventId" />
                         </div>
 
                         <div class="grid gap-2">
                             <Label for="condition-assertion">
-                                What the registrant confirms
+                                {{ $t('What the registrant confirms') }}
                             </Label>
                             <textarea
                                 id="condition-assertion"
@@ -183,30 +198,45 @@ function archive(): void {
                                         : 'text-text-muted'
                                 "
                             >
-                                {{ budget.length }} of {{ budget.max }}
-                                characters. Keep it to one sentence somebody
-                                will actually read beside a checkbox.
+                                {{
+                                    $t(
+                                        ':length of :max characters. Keep it to one sentence somebody will actually read beside a checkbox.',
+                                        {
+                                            length: String(budget.length),
+                                            max: String(budget.max),
+                                        },
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.assertionText" />
                         </div>
 
                         <div class="grid gap-2">
-                            <Label for="condition-hint">Document hint</Label>
+                            <Label for="condition-hint">{{
+                                $t('Document hint')
+                            }}</Label>
                             <Input
                                 id="condition-hint"
                                 v-model="form.documentHint"
-                                placeholder="Valid student ID or enrolment certificate."
+                                :placeholder="
+                                    $t(
+                                        'Valid student ID or enrolment certificate.',
+                                    )
+                                "
                             />
                             <p class="text-xs text-text-muted">
-                                Shown under the checkbox and printed on the
-                                ticket, so nobody arrives without it.
+                                {{
+                                    $t(
+                                        'Shown under the checkbox and printed on the ticket, so nobody arrives without it.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.documentHint" />
                         </div>
 
                         <div class="grid gap-2">
                             <Label for="condition-description">
-                                Internal note
+                                {{ $t('Internal note') }}
                             </Label>
                             <textarea
                                 id="condition-description"
@@ -215,8 +245,11 @@ function archive(): void {
                                 class="rounded-md border border-border bg-surface px-3 py-2 text-sm"
                             />
                             <p class="text-xs text-text-muted">
-                                For whoever edits a registration type later.
-                                Never shown to a registrant.
+                                {{
+                                    $t(
+                                        'For whoever edits a registration type later. Never shown to a registrant.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.description" />
                         </div>
@@ -225,11 +258,15 @@ function archive(): void {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Preview</CardTitle>
+                        <CardTitle>{{ $t('Preview') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-3">
                         <p class="text-sm text-text-muted">
-                            Exactly what a registrant sees on the form.
+                            {{
+                                $t(
+                                    'Exactly what a registrant sees on the form.',
+                                )
+                            }}
                         </p>
                         <EntryConditionCheckbox
                             :condition="preview"
@@ -243,13 +280,13 @@ function archive(): void {
             <div class="flex flex-col gap-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Verification</CardTitle>
+                        <CardTitle>{{ $t('Verification') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <select
                             id="condition-verification"
                             v-model="form.verification"
-                            aria-label="Verification"
+                            :aria-label="$t('Verification')"
                             class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                         >
                             <option
@@ -257,30 +294,37 @@ function archive(): void {
                                 :key="value"
                                 :value="value"
                             >
-                                {{ value }}
+                                {{ verificationLabel(value) }}
                             </option>
                         </select>
                         <p class="text-sm text-text-muted">
                             <template
                                 v-if="form.verification === 'self_declared'"
                             >
-                                The declaration is the whole check. Nobody asks
-                                again.
+                                {{
+                                    $t(
+                                        'The declaration is the whole check. Nobody asks again.',
+                                    )
+                                }}
                             </template>
                             <template
                                 v-else-if="
                                     form.verification === 'document_at_door'
                                 "
                             >
-                                The door asks for the document named above and
-                                records confirmed or refused.
+                                {{
+                                    $t(
+                                        'The door asks for the document named above and records confirmed or refused.',
+                                    )
+                                }}
                             </template>
                             <template v-else>
-                                Advisory only: this fills the "asserted" filter
-                                on the registrations list as a worklist. It
-                                never blocks a confirmation — for a blocking
-                                check set <strong>approval: required</strong> on
-                                the registration type.
+                                {{
+                                    $t(
+                                        'Advisory only: this fills the “declared” filter on the registrations list as a worklist. It never blocks a confirmation. For a blocking check, set this on the registration type:',
+                                    )
+                                }}
+                                <strong>{{ $t('Approval required') }}</strong>
                             </template>
                         </p>
                         <InputError :message="form.errors.verification" />
@@ -289,14 +333,18 @@ function archive(): void {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Where it is used</CardTitle>
+                        <CardTitle>{{ $t('Where it is used') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-2">
                         <p
                             v-if="props.types.length === 0"
                             class="text-sm text-text-muted"
                         >
-                            No registration type demands this condition yet.
+                            {{
+                                $t(
+                                    'No registration type demands this condition yet.',
+                                )
+                            }}
                         </p>
                         <ul v-else class="flex flex-col gap-1 text-sm">
                             <li v-for="type in props.types" :key="type.id">
@@ -304,9 +352,16 @@ function archive(): void {
                             </li>
                         </ul>
                         <p class="text-xs text-text-muted">
-                            {{ props.condition.assertions }} declaration(s) made
-                            so far. Archiving keeps every one of them and takes
-                            the condition out of the type editor.
+                            {{
+                                $t(
+                                    ':count declaration(s) made so far. Archiving keeps every one of them and takes the condition out of the type editor.',
+                                    {
+                                        count: String(
+                                            props.condition.assertions,
+                                        ),
+                                    },
+                                )
+                            }}
                         </p>
                         <Button
                             v-if="!props.condition.archived"
@@ -314,21 +369,21 @@ function archive(): void {
                             variant="outline"
                             @click="archive"
                         >
-                            Archive
+                            {{ $t('Archive') }}
                         </Button>
                     </CardContent>
                 </Card>
 
                 <div class="flex items-center gap-3">
                     <Button type="submit" :disabled="form.processing">
-                        Save
+                        {{ $t('Save') }}
                     </Button>
                     <span
                         v-if="form.isDirty"
                         role="status"
                         class="text-sm text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
             </div>

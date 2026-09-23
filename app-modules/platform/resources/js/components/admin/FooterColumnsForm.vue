@@ -69,7 +69,7 @@ function submit(): void {
                     v-if="form.columns.length === 0"
                     class="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-text-muted"
                 >
-                    No columns yet.
+                    {{ $t('No columns yet.') }}
                 </p>
 
                 <div
@@ -80,12 +80,12 @@ function submit(): void {
                     <div class="flex items-center gap-2">
                         <div class="grid flex-1 gap-2">
                             <Label :for="`${hintId}-heading-${index}`">
-                                Heading (optional)
+                                {{ $t('Heading (optional)') }}
                             </Label>
                             <Input
                                 :id="`${hintId}-heading-${index}`"
                                 :model-value="column.heading ?? ''"
-                                placeholder="Contact"
+                                :placeholder="$t('Contact')"
                                 @update:model-value="
                                     (value) =>
                                         (column.heading = String(value) || null)
@@ -102,7 +102,11 @@ function submit(): void {
                             variant="ghost"
                             size="icon"
                             class="mt-6"
-                            :aria-label="`Remove column ${index + 1}`"
+                            :aria-label="
+                                $t('Remove column :number', {
+                                    number: String(index + 1),
+                                })
+                            "
                             @click="removeColumn(index)"
                         >
                             <Trash2 class="size-4" />
@@ -127,19 +131,19 @@ function submit(): void {
                     @click="addColumn"
                 >
                     <Plus class="size-4" />
-                    Add column
+                    {{ $t('Add column') }}
                 </Button>
 
                 <div class="flex items-center gap-3">
                     <Button type="submit" :disabled="form.processing">
-                        Save
+                        {{ $t('Save') }}
                     </Button>
                     <span
                         v-if="form.isDirty"
                         role="status"
                         class="text-sm text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
             </form>

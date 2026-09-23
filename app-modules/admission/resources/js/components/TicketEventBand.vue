@@ -64,7 +64,7 @@ const linkAttributes = computed(() =>
                     :id="headingId"
                     class="text-2xl leading-tight font-semibold"
                 >
-                    {{ props.eventName ?? 'Your event' }}
+                    {{ props.eventName ?? $t('Your event') }}
                 </h1>
                 <!-- datetime-raw: props.eventWhen — the organizer's wall clock, formatted on the server (ADR-0027) -->
                 <p

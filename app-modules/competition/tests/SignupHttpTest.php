@@ -375,7 +375,7 @@ it('answers a withdrawal the competition has outrun on `entrant`, where Meine Tu
     $this->actingAs($captain)
         ->delete('/my/tournaments/entries/'.$entrant->getKey())
         ->assertSessionHasErrors([
-            'entrant' => 'Dieses Turnier hat schon begonnen oder ist vorbei. Ändern kann das jetzt nur noch die Turnierleitung.',
+            'entrant' => 'This tournament has already started or is over. Only the organizers can change that now.',
         ]);
 
     expect($entrant->refresh()->state)->toBe(EntrantState::Registered);

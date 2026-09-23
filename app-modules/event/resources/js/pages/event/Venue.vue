@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import { ExternalLink, MapPin } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import VenueCarousel from '../../components/VenueCarousel.vue';
+import { weekdays } from '../../lib/venueForm';
 
 /**
  * The public venue page. Every section is optional and renders only when
@@ -37,27 +39,22 @@ type Props = {
 
 const props = defineProps<Props>();
 
-const weekdays = [
-    'Monday',
-    'Tuesday',
-    'Wednesday',
-    'Thursday',
-    'Friday',
-    'Saturday',
-    'Sunday',
-];
+const days = weekdays();
 
 function weekday(dayOfWeek: number): string {
-    return weekdays[dayOfWeek - 1] ?? `Day ${dayOfWeek}`;
+    return (
+        days.find((day) => day.value === dayOfWeek)?.label ??
+        trans('Day :number', { number: String(dayOfWeek) })
+    );
 }
 
 /** The two place lists, and only the ones that have anything in them. */
 const placeLists = computed(() =>
     [
-        { key: 'parking', title: 'Parking', places: props.parkingSpots },
+        { key: 'parking', title: trans('Parking'), places: props.parkingSpots },
         {
             key: 'loading',
-            title: 'Loading zones',
+            title: trans('Loading zones'),
             places: props.loadingZones,
         },
     ].filter((list) => list.places.length > 0),
@@ -97,9 +94,9 @@ const placeLists = computed(() =>
                 rel="noopener noreferrer"
                 class="flex w-fit items-center gap-1 text-sm text-accent hover:underline"
             >
-                Open in maps
+                {{ $t('Open in maps') }}
                 <ExternalLink class="size-3.5" aria-hidden="true" />
-                <span class="sr-only">(opens in a new tab)</span>
+                <span class="sr-only">{{ $t('(opens in a new tab)') }}</span>
             </a>
         </header>
 
@@ -108,7 +105,9 @@ const placeLists = computed(() =>
             class="flex flex-col gap-2"
             aria-labelledby="venue-about"
         >
-            <h2 id="venue-about" class="text-lg font-medium">About</h2>
+            <h2 id="venue-about" class="text-lg font-medium">
+                {{ $t('About') }}
+            </h2>
             <p class="max-w-prose whitespace-pre-line text-text-muted">
                 {{ props.venue.description }}
             </p>
@@ -120,7 +119,7 @@ const placeLists = computed(() =>
             aria-labelledby="venue-getting-there"
         >
             <h2 id="venue-getting-there" class="text-lg font-medium">
-                Getting there
+                {{ $t('Getting there') }}
             </h2>
             <p
                 v-if="props.venue.publicTransport"
@@ -162,10 +161,14 @@ const placeLists = computed(() =>
                         rel="noopener noreferrer"
                         class="flex w-fit items-center gap-1 text-sm text-accent hover:underline"
                     >
-                        Open in maps
+                        {{ $t('Open in maps') }}
                         <ExternalLink class="size-3.5" aria-hidden="true" />
                         <span class="sr-only">
-                            for {{ place.label }} (opens in a new tab)
+                            {{
+                                $t('for :place (opens in a new tab)', {
+                                    place: place.label,
+                                })
+                            }}
                         </span>
                     </a>
                 </li>
@@ -178,7 +181,7 @@ const placeLists = computed(() =>
             aria-labelledby="venue-opening-times"
         >
             <h2 id="venue-opening-times" class="text-lg font-medium">
-                Opening times
+                {{ $t('Opening times') }}
             </h2>
             <!--
                 datetime-raw: period.opensAt
@@ -208,7 +211,9 @@ const placeLists = computed(() =>
             class="flex flex-col gap-2"
             aria-labelledby="venue-seat-plan"
         >
-            <h2 id="venue-seat-plan" class="text-lg font-medium">Seat plan</h2>
+            <h2 id="venue-seat-plan" class="text-lg font-medium">
+                {{ $t('Seat plan') }}
+            </h2>
             <p class="max-w-prose text-text-muted">
                 {{ props.venue.seatPlanReference }}
             </p>

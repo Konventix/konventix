@@ -56,7 +56,7 @@ final class ReservePlaceForOperator
     public function handle(Resource $place, string $actorUserId): ResourceBooking
     {
         if ($place->trashed()) {
-            throw ValidationException::withMessages(['placeId' => ['This place was removed from the plan.']]);
+            throw ValidationException::withMessages(['placeId' => [__('This place was removed from the plan.')]]);
         }
 
         return DB::transaction(function () use ($place, $actorUserId): ResourceBooking {
@@ -64,7 +64,7 @@ final class ReservePlaceForOperator
             $window = ResourceEventWindow::forEvent($place->brand_id, $type->event_id);
 
             if ($window === null) {
-                throw ValidationException::withMessages(['placeId' => ['The event window is not projected yet; run event:replay-details.']]);
+                throw ValidationException::withMessages(['placeId' => [__('The event window is not projected yet; run event:replay-details.')]]);
             }
 
             try {

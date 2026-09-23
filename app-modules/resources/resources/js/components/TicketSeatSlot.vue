@@ -4,10 +4,7 @@ import { Armchair, X } from '@lucide/vue';
 import { ref } from 'vue';
 import AdmissionSeatController from '@/actions/Konventix/Resources/Http/Controllers/AdmissionSeatController';
 import { Button } from '@/components/ui/button';
-import {
-    ASSIGNED_BY_ORGANISER_MESSAGE,
-    NO_FREE_PLACES_MESSAGE,
-} from './plan/labels';
+import { assignedByOrganiserMessage, noFreePlacesMessage } from './plan/labels';
 
 /**
  * Resources' contribution to Admission's ticket page (#292 §6.4),
@@ -53,7 +50,7 @@ function giveUp(): void {
             role="status"
             class="text-sm text-text-muted"
         >
-            {{ ASSIGNED_BY_ORGANISER_MESSAGE }}
+            {{ assignedByOrganiserMessage() }}
         </p>
         <template v-else>
             <Link
@@ -65,7 +62,11 @@ function giveUp(): void {
                 class="inline-flex min-h-11 items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium text-text hover:border-accent"
             >
                 <Armchair class="size-4" aria-hidden="true" />
-                {{ props.seat.placeLabel ? 'Change seat' : 'Choose a seat' }}
+                {{
+                    props.seat.placeLabel
+                        ? $t('Change seat')
+                        : $t('Choose a seat')
+                }}
             </Link>
             <Button
                 v-if="props.seat.placeLabel"
@@ -75,14 +76,14 @@ function giveUp(): void {
                 @click="giveUp"
             >
                 <X class="size-4" aria-hidden="true" />
-                Give up seat
+                {{ $t('Give up seat') }}
             </Button>
             <p
                 v-else-if="props.seat.noFreePlaces"
                 role="status"
                 class="text-sm text-text-muted"
             >
-                {{ NO_FREE_PLACES_MESSAGE }}
+                {{ noFreePlacesMessage() }}
             </p>
         </template>
     </div>

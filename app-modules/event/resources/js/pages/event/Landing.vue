@@ -79,7 +79,7 @@ const props = defineProps<Props>();
                 v-if="props.event.state === 'cancelled'"
                 class="self-start rounded-full bg-danger/15 px-3 py-1 text-sm font-medium text-danger"
             >
-                Cancelled
+                {{ $t('Called off') }}
             </p>
             <h1 class="text-4xl font-semibold">{{ props.event.name }}</h1>
             <p class="flex items-center gap-2 text-text-muted">
@@ -104,16 +104,16 @@ const props = defineProps<Props>();
         </template>
 
         <section v-if="props.days.length > 0" class="flex flex-col gap-2">
-            <h2 class="text-lg font-medium">Days</h2>
+            <h2 class="text-lg font-medium">{{ $t('Days') }}</h2>
             <ul class="flex flex-col gap-3">
                 <li
                     v-for="day in props.days"
                     :key="day.date"
                     class="flex items-baseline gap-3 text-text-muted"
                 >
-                    <span class="w-16 shrink-0 font-medium text-text"
-                        >Day {{ day.sequence }}</span
-                    >
+                    <span class="w-16 shrink-0 font-medium text-text">{{
+                        $t('Day :number', { number: String(day.sequence) })
+                    }}</span>
                     <span class="w-28 shrink-0 tabular-nums">{{
                         day.date
                     }}</span>
@@ -127,7 +127,7 @@ const props = defineProps<Props>();
 
         <section v-if="props.venues.length > 0" class="flex flex-col gap-2">
             <h2 class="text-lg font-medium">
-                {{ props.venues.length === 1 ? 'Venue' : 'Venues' }}
+                {{ $tChoice('{1} Venue|[2,*] Venues', props.venues.length) }}
             </h2>
             <ul class="flex flex-col gap-3">
                 <li
@@ -156,7 +156,7 @@ const props = defineProps<Props>();
                                 "
                                 class="ml-1 rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent"
                             >
-                                Main venue
+                                {{ $t('Main venue') }}
                             </span>
                         </p>
                         <p class="text-sm text-text-muted">

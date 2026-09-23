@@ -36,9 +36,9 @@ final class ThemeCatalogData extends Data
             groups: array_map(
                 static fn (array $group): ThemeTokenGroupData => new ThemeTokenGroupData(
                     key: $group['key'],
-                    label: $group['label'],
+                    label: __($group['label']),
                     tokens: array_map(
-                        static fn (array $token): ThemeTokenDefinitionData => new ThemeTokenDefinitionData(...$token),
+                        static fn (array $token): ThemeTokenDefinitionData => new ThemeTokenDefinitionData(...[...$token, 'label' => __($token['label'])]),
                         $group['tokens'],
                     ),
                 ),

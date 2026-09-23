@@ -12,6 +12,7 @@ import {
     index as disciplinesIndex,
     update as updateDiscipline,
 } from '@/routes/admin/disciplines';
+import { disciplineKindLabel } from '../../../components/public/labels';
 
 /**
  * One discipline (ADR-0024, ADR-0062): its identity and the contest
@@ -73,7 +74,7 @@ function submit(): void {
 </script>
 
 <template>
-    <Head :title="`${props.discipline.name} — Discipline`" />
+    <Head :title="$t(':name — Discipline', { name: props.discipline.name })" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
@@ -84,12 +85,17 @@ function submit(): void {
                 v-if="frozen"
                 class="inline-flex rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning"
             >
-                {{ props.competitions }} competition(s) — team size frozen
+                {{
+                    $tChoice(
+                        '{1} :count competition — team size frozen|[0,*] :count competitions — team size frozen',
+                        props.competitions,
+                    )
+                }}
             </span>
             <Button variant="outline" as-child>
                 <Link :href="disciplinesIndex().url">
                     <ArrowLeft class="size-4" />
-                    All disciplines
+                    {{ $t('All disciplines') }}
                 </Link>
             </Button>
         </AdminPageHeader>
@@ -98,21 +104,27 @@ function submit(): void {
             <div class="flex flex-col gap-6 lg:col-span-2">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Identity</CardTitle>
+                        <CardTitle>{{ $t('Identity') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="grid gap-4 sm:grid-cols-2">
                         <div class="grid gap-2">
-                            <Label for="discipline-name">Name</Label>
+                            <Label for="discipline-name">{{
+                                $t('Name')
+                            }}</Label>
                             <Input id="discipline-name" v-model="form.name" />
                             <InputError :message="form.errors.name" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="discipline-slug">Slug</Label>
+                            <Label for="discipline-slug">{{
+                                $t('Slug')
+                            }}</Label>
                             <Input id="discipline-slug" v-model="form.slug" />
                             <InputError :message="form.errors.slug" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="discipline-kind">Kind</Label>
+                            <Label for="discipline-kind">{{
+                                $t('Kind')
+                            }}</Label>
                             <select
                                 id="discipline-kind"
                                 v-model="form.kind"
@@ -123,21 +135,26 @@ function submit(): void {
                                     :key="value"
                                     :value="value"
                                 >
-                                    {{ value }}
+                                    {{ disciplineKindLabel(value) }}
                                 </option>
                             </select>
                             <InputError :message="form.errors.kind" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="discipline-game">GameOps game id</Label>
+                            <Label for="discipline-game">{{
+                                $t('GameOps game id')
+                            }}</Label>
                             <Input
                                 id="discipline-game"
                                 v-model="form.gameId"
-                                placeholder="ULID, video games only"
+                                :placeholder="$t('ULID, video games only')"
                             />
                             <p class="text-xs text-text-muted">
-                                Leave empty for every kind that is not a video
-                                game.
+                                {{
+                                    $t(
+                                        'Leave empty for every kind that is not a video game.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.gameId" />
                         </div>
@@ -148,11 +165,13 @@ function submit(): void {
             <div class="flex flex-col gap-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Contest defaults</CardTitle>
+                        <CardTitle>{{ $t('Contest defaults') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <div class="grid gap-2">
-                            <Label for="discipline-team-size">Team size</Label>
+                            <Label for="discipline-team-size">{{
+                                $t('Team size')
+                            }}</Label>
                             <Input
                                 id="discipline-team-size"
                                 v-model.number="form.teamSize"
@@ -161,15 +180,17 @@ function submit(): void {
                                 :disabled="frozen"
                             />
                             <p class="text-xs text-text-muted">
-                                1 is a solo contest — a team of one. A roster
-                                below this is held as incomplete until signup
-                                closes.
+                                {{
+                                    $t(
+                                        '1 is a solo contest — a team of one. A roster below this is held as incomplete until signup closes.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.teamSize" />
                         </div>
                         <div class="grid gap-2">
                             <Label for="discipline-minutes">
-                                Average match minutes
+                                {{ $t('Average match minutes') }}
                             </Label>
                             <Input
                                 id="discipline-minutes"
@@ -178,8 +199,11 @@ function submit(): void {
                                 min="1"
                             />
                             <p class="text-xs text-text-muted">
-                                The duration hint the schedule reads; nothing
-                                enforces it.
+                                {{
+                                    $t(
+                                        'The duration hint the schedule reads; nothing enforces it.',
+                                    )
+                                }}
                             </p>
                             <InputError
                                 :message="form.errors.avgMatchMinutes"
@@ -191,19 +215,19 @@ function submit(): void {
                                 type="checkbox"
                                 class="size-4 rounded border-border"
                             />
-                            Draws are possible
+                            {{ $t('Draws are possible') }}
                         </label>
                         <InputError :message="form.errors.allowDraws" />
                         <div class="grid gap-2">
                             <Label for="discipline-linked-provider">
-                                Required linked account
+                                {{ $t('Required linked account') }}
                             </Label>
                             <select
                                 id="discipline-linked-provider"
                                 v-model="form.requiresLinkedProvider"
                                 class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                             >
-                                <option :value="null">None</option>
+                                <option :value="null">{{ $t('None') }}</option>
                                 <option
                                     v-for="provider in props.options
                                         .linkedProvider"
@@ -214,10 +238,11 @@ function submit(): void {
                                 </option>
                             </select>
                             <p class="text-xs text-text-muted">
-                                Everyone who enters or joins a team must have
-                                linked this account. Switching it on does not
-                                touch teams that are already in; it applies to
-                                the next entry or join.
+                                {{
+                                    $t(
+                                        'Everyone who enters or joins a team must have linked this account. Switching it on does not touch teams that are already in; it applies to the next entry or join.',
+                                    )
+                                }}
                             </p>
                             <InputError
                                 :message="form.errors.requiresLinkedProvider"
@@ -228,14 +253,14 @@ function submit(): void {
 
                 <div class="flex items-center gap-3">
                     <Button type="submit" :disabled="form.processing">
-                        Save
+                        {{ $t('Save') }}
                     </Button>
                     <span
                         v-if="form.isDirty"
                         role="status"
                         class="text-sm text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
             </div>

@@ -15,6 +15,7 @@ import {
     index as competitionsIndex,
     store as storeCompetition,
 } from '@/routes/admin/competitions';
+import { formatLabel } from '../../../components/public/labels';
 
 /**
  * A new competition (design §9) — and its first stage in the same form,
@@ -106,17 +107,17 @@ function submit(): void {
 </script>
 
 <template>
-    <Head title="New competition" />
+    <Head :title="$t('New competition')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="New competition"
-            description="One contest, its discipline and its first stage"
+            :title="$t('New competition')"
+            :description="$t('One contest, its discipline and its first stage')"
         >
             <Button variant="outline" as-child>
                 <Link :href="competitionsIndex().url">
                     <ArrowLeft class="size-4" />
-                    All competitions
+                    {{ $t('All competitions') }}
                 </Link>
             </Button>
         </AdminPageHeader>
@@ -125,11 +126,13 @@ function submit(): void {
             <div class="flex flex-col gap-6 lg:col-span-2">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Identity</CardTitle>
+                        <CardTitle>{{ $t('Identity') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="grid gap-4 sm:grid-cols-2">
                         <div class="grid gap-2">
-                            <Label for="competition-brand">Brand</Label>
+                            <Label for="competition-brand">{{
+                                $t('Brand')
+                            }}</Label>
                             <select
                                 id="competition-brand"
                                 v-model="form.brand_id"
@@ -146,14 +149,16 @@ function submit(): void {
                             <InputError :message="form.errors.brand_id" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="competition-event">Event</Label>
+                            <Label for="competition-event">{{
+                                $t('Event')
+                            }}</Label>
                             <select
                                 id="competition-event"
                                 v-model="form.eventId"
                                 class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                             >
                                 <option value="" disabled>
-                                    Choose an event
+                                    {{ $t('Choose an event') }}
                                 </option>
                                 <option
                                     v-for="event in eventsForBrand"
@@ -166,18 +171,22 @@ function submit(): void {
                             <InputError :message="form.errors.eventId" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="competition-name">Name</Label>
+                            <Label for="competition-name">{{
+                                $t('Name')
+                            }}</Label>
                             <Input id="competition-name" v-model="form.name" />
                             <InputError :message="form.errors.name" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="competition-slug">Slug</Label>
+                            <Label for="competition-slug">{{
+                                $t('Slug')
+                            }}</Label>
                             <Input id="competition-slug" v-model="form.slug" />
                             <InputError :message="form.errors.slug" />
                         </div>
                         <div class="grid gap-2 sm:col-span-2">
                             <Label for="competition-discipline">
-                                Discipline
+                                {{ $t('Discipline') }}
                             </Label>
                             <select
                                 id="competition-discipline"
@@ -185,22 +194,27 @@ function submit(): void {
                                 class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                             >
                                 <option value="" disabled>
-                                    Choose a discipline
+                                    {{ $t('Choose a discipline') }}
                                 </option>
                                 <option
                                     v-for="discipline in disciplinesForBrand"
                                     :key="discipline.id"
                                     :value="discipline.id"
                                 >
-                                    {{ discipline.name }} ({{
-                                        discipline.teamSize
+                                    {{
+                                        $t(':name (:size per team)', {
+                                            name: discipline.name,
+                                            size: String(discipline.teamSize),
+                                        })
                                     }}
-                                    per team)
                                 </option>
                             </select>
                             <p class="text-xs text-text-muted">
-                                Team size, duration hint and draws come from the
-                                discipline.
+                                {{
+                                    $t(
+                                        'Team size, duration hint and draws come from the discipline.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.disciplineId" />
                         </div>
@@ -209,32 +223,38 @@ function submit(): void {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>When</CardTitle>
+                        <CardTitle>{{ $t('When') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <p class="text-sm text-text-muted">
-                            Leave a signup bound empty for no bound. While the
-                            competition is published, the window alone decides
-                            whether anybody can enter.
+                            {{
+                                $t(
+                                    'Leave a signup bound empty for no bound. While the competition is published, the window alone decides whether anybody can enter.',
+                                )
+                            }}
                         </p>
 
                         <DateTimeField
                             id="competition-signup-opens"
                             v-model="form.signupOpensAt"
-                            label="Signup opens"
+                            :label="$t('Signup opens')"
                             :error="form.errors.signupOpensAt"
                         />
                         <DateTimeField
                             id="competition-signup-closes"
                             v-model="form.signupClosesAt"
-                            label="Signup closes"
+                            :label="$t('Signup closes')"
                             :error="form.errors.signupClosesAt"
                         />
                         <DateTimeField
                             id="competition-starts"
                             v-model="form.startsAt"
-                            label="Starts"
-                            hint="What the published programme shows as this contest's start."
+                            :label="$t('Starts')"
+                            :hint="
+                                $t(
+                                    'What the published programme shows as this contest\'s start.',
+                                )
+                            "
                             :error="form.errors.startsAt"
                         />
                     </CardContent>
@@ -244,16 +264,18 @@ function submit(): void {
             <div class="flex flex-col gap-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>First stage</CardTitle>
+                        <CardTitle>{{ $t('First stage') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <div class="grid gap-2">
-                            <Label for="stage-name">Stage name</Label>
+                            <Label for="stage-name">{{
+                                $t('Stage name')
+                            }}</Label>
                             <Input id="stage-name" v-model="form.stageName" />
                             <InputError :message="form.errors.stageName" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="stage-format">Format</Label>
+                            <Label for="stage-format">{{ $t('Format') }}</Label>
                             <select
                                 id="stage-format"
                                 v-model="form.stageFormat"
@@ -264,26 +286,28 @@ function submit(): void {
                                     :key="value"
                                     :value="value"
                                 >
-                                    {{ value.replace(/_/g, ' ') }}
+                                    {{ formatLabel(value) }}
                                 </option>
                             </select>
                             <p class="text-xs text-text-muted">
-                                The format belongs to the stage; a later
-                                group-into-playoff competition adds a second
-                                one.
+                                {{
+                                    $t(
+                                        'The format belongs to the stage; a later group-into-playoff competition adds a second one.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.stageFormat" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="competition-max"
-                                >Participant limit</Label
-                            >
+                            <Label for="competition-max">{{
+                                $t('Participant limit')
+                            }}</Label>
                             <Input
                                 id="competition-max"
                                 v-model.number="form.maxEntrants"
                                 type="number"
                                 min="2"
-                                placeholder="No limit"
+                                :placeholder="$t('No limit')"
                             />
                             <InputError :message="form.errors.maxEntrants" />
                         </div>
@@ -292,14 +316,14 @@ function submit(): void {
 
                 <div class="flex items-center gap-3">
                     <Button type="submit" :disabled="form.processing">
-                        Create draft
+                        {{ $t('Create draft') }}
                     </Button>
                     <span
                         v-if="form.isDirty"
                         role="status"
                         class="text-sm text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
             </div>

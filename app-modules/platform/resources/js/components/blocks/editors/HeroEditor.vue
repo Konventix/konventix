@@ -23,7 +23,7 @@ const id = useId();
 <template>
     <div class="grid gap-4">
         <div class="grid gap-2">
-            <Label :for="`${id}-heading`">Heading</Label>
+            <Label :for="`${id}-heading`">{{ $t('Heading') }}</Label>
             <Input
                 :id="`${id}-heading`"
                 :model-value="props.modelValue.heading"
@@ -32,7 +32,9 @@ const id = useId();
             <InputError :message="props.errors.heading" />
         </div>
         <div class="grid gap-2">
-            <Label :for="`${id}-subheading`">Subheading (optional)</Label>
+            <Label :for="`${id}-subheading`">{{
+                $t('Subheading (optional)')
+            }}</Label>
             <Input
                 :id="`${id}-subheading`"
                 :model-value="props.modelValue.subheading ?? ''"
@@ -43,7 +45,9 @@ const id = useId();
             <InputError :message="props.errors.subheading" />
         </div>
         <div class="grid gap-2">
-            <Label :for="`${id}-cta-label`">Button label (optional)</Label>
+            <Label :for="`${id}-cta-label`">{{
+                $t('Button label (optional)')
+            }}</Label>
             <Input
                 :id="`${id}-cta-label`"
                 :model-value="props.modelValue.ctaLabel ?? ''"
@@ -52,7 +56,9 @@ const id = useId();
             <InputError :message="props.errors.ctaLabel" />
         </div>
         <div class="grid gap-2">
-            <Label :for="`${id}-cta-url`">Button link (optional)</Label>
+            <Label :for="`${id}-cta-url`">{{
+                $t('Button link (optional)')
+            }}</Label>
             <Input
                 :id="`${id}-cta-url`"
                 :model-value="props.modelValue.ctaUrl ?? ''"
@@ -62,7 +68,7 @@ const id = useId();
         </div>
         <div class="grid gap-2">
             <MediaPicker
-                label="Image"
+                :label="$t('Image')"
                 :model-value="props.modelValue.imageMediaId"
                 :media="props.context.media"
                 :brand-id="props.context.brandId ?? null"

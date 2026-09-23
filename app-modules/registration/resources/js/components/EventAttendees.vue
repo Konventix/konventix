@@ -28,12 +28,17 @@ const headingId = useId();
         class="flex flex-col gap-3"
         :aria-labelledby="headingId"
     >
-        <h2 :id="headingId" class="text-lg font-medium">Who's coming</h2>
+        <h2 :id="headingId" class="text-lg font-medium">
+            {{ $t('Who’s coming') }}
+        </h2>
 
         <p class="text-text-muted" data-test="attendee-count">
-            {{ props.listing.count }}
-            {{ props.listing.count === 1 ? 'attendee' : 'attendees' }}
-            so far.
+            {{
+                $tChoice(
+                    '{1} :count attendee so far.|[0,*] :count attendees so far.',
+                    props.listing.count,
+                )
+            }}
         </p>
 
         <ul
@@ -65,7 +70,7 @@ const headingId = useId();
                 :href="props.listing.url"
                 class="inline-flex items-center gap-1 text-accent underline-offset-4 hover:underline"
             >
-                Sign in to see who is coming
+                {{ $t('Sign in to see who is coming') }}
                 <ArrowRight class="size-4" aria-hidden="true" />
             </Link>
         </p>
@@ -79,7 +84,11 @@ const headingId = useId();
                 :href="props.listing.url"
                 class="inline-flex items-center gap-1 text-accent underline-offset-4 hover:underline"
             >
-                See all {{ props.listing.namedCount }} names
+                {{
+                    $t('See all :count names', {
+                        count: String(props.listing.namedCount),
+                    })
+                }}
                 <ArrowRight class="size-4" aria-hidden="true" />
             </Link>
         </p>

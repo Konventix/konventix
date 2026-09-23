@@ -38,18 +38,18 @@ const props = defineProps<{
     not an instant: it is printed exactly as promised, in the zone the label
     names, and must not be converted to the reader's own.
 -->
-    <Head title="Events" />
+    <Head :title="$t('Events')" />
 
     <div
         class="mx-auto flex w-full max-w-3xl flex-col gap-10 p-6 text-text lg:p-8"
     >
-        <h1 class="text-3xl font-semibold">Events</h1>
+        <h1 class="text-3xl font-semibold">{{ $t('Events') }}</h1>
 
         <p
             v-if="props.upcoming.length === 0 && props.past.length === 0"
             class="text-sm text-text-muted"
         >
-            Nothing announced yet.
+            {{ $t('Nothing announced yet.') }}
         </p>
 
         <section
@@ -57,7 +57,9 @@ const props = defineProps<{
             class="flex flex-col gap-4"
             aria-labelledby="upcoming-events"
         >
-            <h2 id="upcoming-events" class="text-lg font-medium">Upcoming</h2>
+            <h2 id="upcoming-events" class="text-lg font-medium">
+                {{ $t('Upcoming') }}
+            </h2>
 
             <ul class="flex flex-col gap-4">
                 <li v-for="event in props.upcoming" :key="event.slug">
@@ -73,13 +75,13 @@ const props = defineProps<{
                                 v-if="event.state === 'cancelled'"
                                 class="rounded-full bg-danger/15 px-2 py-0.5 text-xs font-medium text-danger"
                             >
-                                Cancelled
+                                {{ $t('Called off') }}
                             </span>
                             <span
                                 v-else-if="event.state === 'running'"
                                 class="rounded-full bg-success/15 px-2 py-0.5 text-xs font-medium text-success"
                             >
-                                Happening now
+                                {{ $t('Happening now') }}
                             </span>
                         </div>
 
@@ -118,7 +120,9 @@ const props = defineProps<{
             class="flex flex-col gap-3"
             aria-labelledby="past-events"
         >
-            <h2 id="past-events" class="text-lg font-medium">Past</h2>
+            <h2 id="past-events" class="text-lg font-medium">
+                {{ $t('Past') }}
+            </h2>
 
             <ul class="flex flex-col">
                 <li

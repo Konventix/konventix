@@ -19,7 +19,7 @@ const id = useId();
 <template>
     <div class="grid gap-4">
         <div class="grid gap-2">
-            <Label :for="`${id}-event`">Event</Label>
+            <Label :for="`${id}-event`">{{ $t('Event') }}</Label>
             <select
                 :id="`${id}-event`"
                 class="rounded-md border border-border bg-surface px-3 py-2 text-sm"
@@ -28,7 +28,7 @@ const id = useId();
                     set('eventId', ($event.target as HTMLSelectElement).value)
                 "
             >
-                <option value="">Choose an event</option>
+                <option value="">{{ $t('Choose an event') }}</option>
                 <option
                     v-for="event in props.context.events"
                     :key="event.id"
@@ -42,7 +42,7 @@ const id = useId();
                 v-if="props.context.events.length === 0"
                 class="text-sm text-text-muted"
             >
-                No events on this brand yet.
+                {{ $t('No events on this brand yet.') }}
             </p>
         </div>
     </div>

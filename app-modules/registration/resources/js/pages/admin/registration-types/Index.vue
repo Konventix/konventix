@@ -2,6 +2,7 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { Plus } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed, h, ref, watch } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -24,6 +25,14 @@ import {
     index as typesIndex,
     store as storeType,
 } from '@/routes/admin/registration-types';
+import {
+    approvalLabel,
+    confirmationGateLabel,
+    priceDisplayLabel,
+    settlementLabel,
+    taxClassLabel,
+    visibilityLabel,
+} from '../../../lib/labels';
 
 /**
  * The offer, listed by its axes (ADR-0005): four independent settings that
@@ -92,7 +101,7 @@ const pagination = computed(() => ({
 const columns: ColumnDef<TypeRow>[] = [
     {
         accessorKey: 'name',
-        header: 'Name',
+        header: trans('Name'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -106,7 +115,7 @@ const columns: ColumnDef<TypeRow>[] = [
     },
     {
         id: 'offeredOn',
-        header: 'Offered on',
+        header: trans('Offered on'),
         cell: ({ row }) =>
             row.original.eventPageUrl === null
                 ? h(
@@ -122,23 +131,23 @@ const columns: ColumnDef<TypeRow>[] = [
                           rel: 'noopener',
                           class: 'text-text-muted hover:text-accent',
                       },
-                      `${row.original.eventName} event page`,
+                      trans(':event event page', {
+                          event: row.original.eventName,
+                      }),
                   ),
     },
     {
         id: 'axes',
-        header: 'Axes',
+        header: trans('Axes'),
         cell: ({ row }) =>
             h(
                 'div',
                 { class: 'flex flex-wrap gap-1' },
                 [
-                    row.original.visibility,
-                    row.original.approval === 'required'
-                        ? 'approval'
-                        : 'no approval',
-                    row.original.settlement,
-                    row.original.confirmationGate,
+                    visibilityLabel(row.original.visibility),
+                    approvalLabel(row.original.approval),
+                    settlementLabel(row.original.settlement),
+                    confirmationGateLabel(row.original.confirmationGate),
                 ].map((label) =>
                     h(
                         'span',
@@ -152,18 +161,20 @@ const columns: ColumnDef<TypeRow>[] = [
     },
     {
         accessorKey: 'settlement',
-        header: 'Price',
+        header: trans('Price'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
                 'span',
                 { class: 'text-text-muted' },
-                row.original.price === null ? '—' : `${row.original.price} net`,
+                row.original.price === null
+                    ? '—'
+                    : trans(':amount net', { amount: row.original.price }),
             ),
     },
     {
         id: 'registrations',
-        header: 'Registrations',
+        header: trans('Registrations'),
         cell: ({ row }) =>
             h('div', { class: 'flex flex-col' }, [
                 h('span', {}, String(row.original.registrations)),
@@ -171,7 +182,7 @@ const columns: ColumnDef<TypeRow>[] = [
                     ? h(
                           'span',
                           { class: 'text-xs text-warning' },
-                          'terms frozen',
+                          trans('terms frozen'),
                       )
                     : null,
             ]),
@@ -228,23 +239,30 @@ function submit(): void {
 </script>
 
 <template>
-    <Head title="Registration types" />
+    <Head :title="$t('Registration types')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Registration types"
-            description="The offer: visibility, approval, settlement and confirmation gate"
+            :title="$t('Registration types')"
+            :description="
+                $t(
+                    'The offer: visibility, approval, settlement and confirmation gate',
+                )
+            "
         />
 
         <p class="text-sm text-text-muted">
-            Types are offered on their event's own public page, never in the
-            shop, and only while their visibility is public.
+            {{
+                $t(
+                    'Types are offered on their event’s own public page, never in the shop, and only while their visibility is public.',
+                )
+            }}
         </p>
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
-            search-placeholder="Search types…"
+            :search-placeholder="$t('Search types…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
         >
@@ -253,19 +271,23 @@ function submit(): void {
                     <DialogTrigger as-child>
                         <Button>
                             <Plus class="size-4" />
-                            New type
+                            {{ $t('New type') }}
                         </Button>
                     </DialogTrigger>
                     <DialogContent class="max-h-[85vh] overflow-y-auto">
                         <DialogHeader>
-                            <DialogTitle>Create registration type</DialogTitle>
+                            <DialogTitle>{{
+                                $t('Create registration type')
+                            }}</DialogTitle>
                         </DialogHeader>
                         <form
                             class="flex flex-col gap-4"
                             @submit.prevent="submit"
                         >
                             <div class="grid gap-2">
-                                <Label for="type-brand">Brand</Label>
+                                <Label for="type-brand">{{
+                                    $t('Brand')
+                                }}</Label>
                                 <select
                                     id="type-brand"
                                     v-model="form.brand_id"
@@ -283,14 +305,16 @@ function submit(): void {
                             </div>
 
                             <div class="grid gap-2">
-                                <Label for="type-event">Event</Label>
+                                <Label for="type-event">{{
+                                    $t('Event')
+                                }}</Label>
                                 <select
                                     id="type-event"
                                     v-model="form.eventId"
                                     class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                                 >
                                     <option value="" disabled>
-                                        Choose an event
+                                        {{ $t('Choose an event') }}
                                     </option>
                                     <option
                                         v-for="event in eventsForBrand"
@@ -304,7 +328,7 @@ function submit(): void {
                             </div>
 
                             <div class="grid gap-2">
-                                <Label for="type-name">Name</Label>
+                                <Label for="type-name">{{ $t('Name') }}</Label>
                                 <Input id="type-name" v-model="form.name" />
                                 <InputError :message="form.errors.name" />
                             </div>
@@ -312,7 +336,7 @@ function submit(): void {
                             <div class="grid grid-cols-2 gap-4">
                                 <div class="grid gap-2">
                                     <Label for="type-visibility">
-                                        Visibility
+                                        {{ $t('Visibility') }}
                                     </Label>
                                     <select
                                         id="type-visibility"
@@ -325,7 +349,7 @@ function submit(): void {
                                             :key="value"
                                             :value="value"
                                         >
-                                            {{ value }}
+                                            {{ visibilityLabel(value) }}
                                         </option>
                                     </select>
                                     <InputError
@@ -333,7 +357,9 @@ function submit(): void {
                                     />
                                 </div>
                                 <div class="grid gap-2">
-                                    <Label for="type-approval">Approval</Label>
+                                    <Label for="type-approval">{{
+                                        $t('Approval')
+                                    }}</Label>
                                     <select
                                         id="type-approval"
                                         v-model="form.approval"
@@ -345,7 +371,7 @@ function submit(): void {
                                             :key="value"
                                             :value="value"
                                         >
-                                            {{ value }}
+                                            {{ approvalLabel(value) }}
                                         </option>
                                     </select>
                                     <InputError
@@ -354,7 +380,7 @@ function submit(): void {
                                 </div>
                                 <div class="grid gap-2">
                                     <Label for="type-settlement">
-                                        Settlement
+                                        {{ $t('Settlement') }}
                                     </Label>
                                     <select
                                         id="type-settlement"
@@ -367,7 +393,7 @@ function submit(): void {
                                             :key="value"
                                             :value="value"
                                         >
-                                            {{ value }}
+                                            {{ settlementLabel(value) }}
                                         </option>
                                     </select>
                                     <InputError
@@ -376,7 +402,7 @@ function submit(): void {
                                 </div>
                                 <div class="grid gap-2">
                                     <Label for="type-gate">
-                                        Confirmation gate
+                                        {{ $t('Confirmation gate') }}
                                     </Label>
                                     <select
                                         id="type-gate"
@@ -389,7 +415,7 @@ function submit(): void {
                                             :key="value"
                                             :value="value"
                                         >
-                                            {{ value }}
+                                            {{ confirmationGateLabel(value) }}
                                         </option>
                                     </select>
                                     <InputError
@@ -403,7 +429,9 @@ function submit(): void {
                                 class="grid grid-cols-3 gap-4 rounded-md border border-border p-3"
                             >
                                 <div class="grid gap-2">
-                                    <Label for="type-price">Net price</Label>
+                                    <Label for="type-price">{{
+                                        $t('Net price')
+                                    }}</Label>
                                     <Input
                                         id="type-price"
                                         v-model="
@@ -413,7 +441,9 @@ function submit(): void {
                                     />
                                 </div>
                                 <div class="grid gap-2">
-                                    <Label for="type-tax">Tax class</Label>
+                                    <Label for="type-tax">{{
+                                        $t('Tax class')
+                                    }}</Label>
                                     <select
                                         id="type-tax"
                                         v-model="form.priceDeclaration.taxClass"
@@ -425,12 +455,14 @@ function submit(): void {
                                             :key="value"
                                             :value="value"
                                         >
-                                            {{ value }}
+                                            {{ taxClassLabel(value) }}
                                         </option>
                                     </select>
                                 </div>
                                 <div class="grid gap-2">
-                                    <Label for="type-display">Display</Label>
+                                    <Label for="type-display">{{
+                                        $t('Display')
+                                    }}</Label>
                                     <select
                                         id="type-display"
                                         v-model="form.priceDeclaration.display"
@@ -442,7 +474,7 @@ function submit(): void {
                                             :key="value"
                                             :value="value"
                                         >
-                                            {{ value }}
+                                            {{ priceDisplayLabel(value) }}
                                         </option>
                                     </select>
                                 </div>
@@ -453,12 +485,15 @@ function submit(): void {
                             </div>
 
                             <p class="text-sm text-text-muted">
-                                Grants and quotas come next, on the type's own
-                                screen.
+                                {{
+                                    $t(
+                                        'Grants and quotas come next, on the type’s own screen.',
+                                    )
+                                }}
                             </p>
 
                             <Button type="submit" :disabled="form.processing">
-                                Create
+                                {{ $t('Create') }}
                             </Button>
                         </form>
                     </DialogContent>
@@ -472,8 +507,8 @@ function submit(): void {
             :data="props.types.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="types"
-            empty-message="No registration types yet."
+            :items-label="$t('types')"
+            :empty-message="$t('No registration types yet.')"
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />

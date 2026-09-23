@@ -102,7 +102,7 @@ final class ProofGate
         if ($proofMediaId === null) {
             if ($policy->demandsProof() && ! $asOrganizer) {
                 throw ValidationException::withMessages([
-                    $field => __('Dieses Turnier braucht zu jedem Ergebnis ein Beweisbild.'),
+                    $field => __('This tournament needs a proof image with every result.'),
                 ]);
             }
 
@@ -113,7 +113,7 @@ final class ProofGate
             throw ValidationException::withMessages([
                 $field => $asOrganizer
                     ? __('This competition does not take proof images.')
-                    : __('Dieses Turnier nimmt keine Beweisbilder an.'),
+                    : __('This tournament does not take proof images.'),
             ]);
         }
 
@@ -123,7 +123,7 @@ final class ProofGate
             throw ValidationException::withMessages([
                 $field => $asOrganizer
                     ? __('That proof image is not one of this brand\'s media items.')
-                    : __('Dieses Beweisbild ist unbekannt. Lade es bitte erneut hoch.'),
+                    : __('This proof image is unknown. Please upload it again.'),
             ]);
         }
 

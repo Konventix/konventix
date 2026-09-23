@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useHttp } from '@inertiajs/vue3';
 import { Bookmark, BookmarkX } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { reserve, unreserve } from '@/routes/admin/plans';
@@ -39,8 +40,9 @@ function run(request: Promise<unknown>): void {
     request
         .then(() => emit('changed'))
         .catch(() => {
-            error.value =
-                'The reservation could not be changed. Reload the occupancy and try again.';
+            error.value = trans(
+                'The reservation could not be changed. Reload the occupancy and try again.',
+            );
         });
 }
 
@@ -66,15 +68,21 @@ function releasePlace(): void {
             id="inspector-reservation"
             class="text-xs font-semibold text-text-muted uppercase"
         >
-            Occupancy
+            {{ $t('Occupancy') }}
         </h3>
 
-        <p v-if="holder === null" class="text-sm text-text-muted">Free.</p>
+        <p v-if="holder === null" class="text-sm text-text-muted">
+            {{ $t('Free.') }}
+        </p>
         <p v-else-if="holder === 'operator'" class="text-sm text-text">
-            Reserved by the organisation.
+            {{ $t('Reserved by the organisation.') }}
         </p>
         <p v-else class="text-sm text-text">
-            {{ entry?.state === 'held' ? 'Held' : 'Booked' }} by registration
+            {{
+                entry?.state === 'held'
+                    ? $t('Held by registration')
+                    : $t('Booked by registration')
+            }}
             <span class="font-mono text-xs">{{ entry?.registrationId }}</span>
         </p>
 
@@ -88,7 +96,7 @@ function releasePlace(): void {
                 @click="reservePlace"
             >
                 <Bookmark class="size-4" />
-                Reserve for the organisation
+                {{ $t('Reserve for the organisation') }}
             </Button>
             <Button
                 v-else-if="holder === 'operator'"
@@ -99,10 +107,14 @@ function releasePlace(): void {
                 @click="releasePlace"
             >
                 <BookmarkX class="size-4" />
-                Release reservation
+                {{ $t('Release reservation') }}
             </Button>
             <p v-if="dirty" class="text-xs text-text-muted">
-                Save the plan first — a reservation needs the saved place.
+                {{
+                    $t(
+                        'Save the plan first — a reservation needs the saved place.',
+                    )
+                }}
             </p>
         </template>
 

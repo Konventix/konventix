@@ -142,7 +142,7 @@ class CheckInDeskController
 
         $this->run(fn () => $checkIn->handle($this->findEntrant($entrant)));
 
-        return $this->done('Checked in.');
+        return $this->done(__('Checked in.'));
     }
 
     public function undo(string $entrant, UndoCheckIn $undo): RedirectResponse
@@ -151,7 +151,7 @@ class CheckInDeskController
 
         $this->run(fn () => $undo->handle($this->findEntrant($entrant)));
 
-        return $this->done('Check-in undone.');
+        return $this->done(__('Check-in undone.'));
     }
 
     /**

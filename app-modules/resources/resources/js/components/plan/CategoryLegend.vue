@@ -16,7 +16,7 @@ defineProps<{
 <template>
     <ul
         class="flex flex-wrap gap-3 text-xs text-text-muted"
-        aria-label="Categories"
+        :aria-label="$t('Categories')"
     >
         <li
             v-for="category in categories"
@@ -35,7 +35,7 @@ defineProps<{
             />
             {{ category.name
             }}<template v-if="!claimResourceTypeIds.includes(category.id)">
-                (not yours)</template
+                {{ $t('(not yours)') }}</template
             >
         </li>
     </ul>

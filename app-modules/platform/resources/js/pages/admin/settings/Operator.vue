@@ -74,28 +74,32 @@ function submit(): void {
 </script>
 
 <template>
-    <Head title="Operator settings" />
+    <Head :title="$t('Operator settings')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Operator settings"
-            description="The legal entity running this instance. Its identity appears on every invoice."
+            :title="$t('Operator settings')"
+            :description="
+                $t(
+                    'The legal entity running this instance. Its identity appears on every invoice.',
+                )
+            "
         />
 
         <form class="grid max-w-3xl gap-6" @submit.prevent="submit">
             <Card>
                 <CardHeader>
-                    <CardTitle>Identity</CardTitle>
+                    <CardTitle>{{ $t('Identity') }}</CardTitle>
                 </CardHeader>
                 <CardContent class="grid gap-4 sm:grid-cols-2">
                     <div class="grid gap-2">
-                        <Label for="name">Display name</Label>
+                        <Label for="name">{{ $t('Display name') }}</Label>
                         <Input id="name" v-model="form.name" required />
                         <InputError :message="form.errors.name" />
                     </div>
 
                     <div class="grid gap-2">
-                        <Label for="legalName">Legal name</Label>
+                        <Label for="legalName">{{ $t('Legal name') }}</Label>
                         <Input
                             id="legalName"
                             v-model="form.legalName"
@@ -103,13 +107,18 @@ function submit(): void {
                         />
                         <InputError :message="form.errors.legalName" />
                         <p class="text-xs text-text-muted">
-                            Printed as the seller on every invoice. Settlement
-                            is refused for a brand whose operator has none.
+                            {{
+                                $t(
+                                    'Printed as the seller on every invoice. Settlement is refused for a brand whose operator has none.',
+                                )
+                            }}
                         </p>
                     </div>
 
                     <div class="grid gap-2 sm:col-span-2">
-                        <Label for="contactEmail">Contact address</Label>
+                        <Label for="contactEmail">{{
+                            $t('Contact address')
+                        }}</Label>
                         <Input
                             id="contactEmail"
                             v-model="form.contactEmail"
@@ -117,8 +126,11 @@ function submit(): void {
                         />
                         <InputError :message="form.errors.contactEmail" />
                         <p class="text-xs text-text-muted">
-                            Where operator-facing notices go — a statutory
-                            deadline needs one owner, not a distribution list.
+                            {{
+                                $t(
+                                    'Where operator-facing notices go — a statutory deadline needs one owner, not a distribution list.',
+                                )
+                            }}
                         </p>
                     </div>
                 </CardContent>
@@ -126,29 +138,33 @@ function submit(): void {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Registered address</CardTitle>
+                    <CardTitle>{{ $t('Registered address') }}</CardTitle>
                 </CardHeader>
                 <CardContent class="grid gap-4 sm:grid-cols-2">
                     <div class="grid gap-2 sm:col-span-2">
-                        <Label for="addressLine">Street and number</Label>
+                        <Label for="addressLine">{{
+                            $t('Street and number')
+                        }}</Label>
                         <Input id="addressLine" v-model="form.addressLine" />
                         <InputError :message="form.errors.addressLine" />
                     </div>
 
                     <div class="grid gap-2">
-                        <Label for="postalCode">Postal code</Label>
+                        <Label for="postalCode">{{ $t('Postal code') }}</Label>
                         <Input id="postalCode" v-model="form.postalCode" />
                         <InputError :message="form.errors.postalCode" />
                     </div>
 
                     <div class="grid gap-2">
-                        <Label for="city">City</Label>
+                        <Label for="city">{{ $t('City') }}</Label>
                         <Input id="city" v-model="form.city" />
                         <InputError :message="form.errors.city" />
                     </div>
 
                     <div class="grid gap-2">
-                        <Label for="countryCode">Country code</Label>
+                        <Label for="countryCode">{{
+                            $t('Country code')
+                        }}</Label>
                         <Input
                             id="countryCode"
                             v-model="form.countryCode"
@@ -157,7 +173,11 @@ function submit(): void {
                         />
                         <InputError :message="form.errors.countryCode" />
                         <p class="text-xs text-text-muted">
-                            Two letters, ISO 3166-1 — what ZUGFeRD expects.
+                            {{
+                                $t(
+                                    'Two letters, ISO 3166-1 — what ZUGFeRD expects.',
+                                )
+                            }}
                         </p>
                     </div>
                 </CardContent>
@@ -165,17 +185,19 @@ function submit(): void {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Tax</CardTitle>
+                    <CardTitle>{{ $t('Tax') }}</CardTitle>
                 </CardHeader>
                 <CardContent class="grid gap-4 sm:grid-cols-2">
                     <div class="grid gap-2">
-                        <Label for="vatId">VAT identification number</Label>
+                        <Label for="vatId">{{
+                            $t('VAT identification number')
+                        }}</Label>
                         <Input id="vatId" v-model="form.vatId" />
                         <InputError :message="form.errors.vatId" />
                     </div>
 
                     <div class="grid gap-2">
-                        <Label for="taxNumber">Tax number</Label>
+                        <Label for="taxNumber">{{ $t('Tax number') }}</Label>
                         <Input id="taxNumber" v-model="form.taxNumber" />
                         <InputError :message="form.errors.taxNumber" />
                     </div>
@@ -187,12 +209,14 @@ function submit(): void {
                         />
                         <div class="grid gap-1">
                             <Label for="smallBusinessScheme">
-                                Small-business scheme (§19 UStG)
+                                {{ $t('Small-business scheme (§19 UStG)') }}
                             </Label>
                             <p class="text-xs text-text-muted">
-                                No VAT is shown on invoices, and each carries
-                                the §19 note instead. This is an operator-level
-                                election in law, so it applies to every brand.
+                                {{
+                                    $t(
+                                        'No VAT is shown on invoices, and each carries the §19 note instead. This is an operator-level election in law, so it applies to every brand.',
+                                    )
+                                }}
                             </p>
                         </div>
                         <InputError
@@ -204,21 +228,21 @@ function submit(): void {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Accounts</CardTitle>
+                    <CardTitle>{{ $t('Accounts') }}</CardTitle>
                 </CardHeader>
                 <CardContent class="grid gap-4">
                     <div class="flex items-start gap-3">
                         <Checkbox id="signupsOpen" v-model="form.signupsOpen" />
                         <div class="grid gap-1">
                             <Label for="signupsOpen">
-                                Let visitors create accounts
+                                {{ $t('Let visitors create accounts') }}
                             </Label>
                             <p class="text-xs text-text-muted">
-                                Off, the sign-up form and the Steam sign-up step
-                                tell a stranger that sign-up is closed. People
-                                who already have an account log in as before. An
-                                account is the person's, so this applies on
-                                every brand host at once.
+                                {{
+                                    $t(
+                                        'Off, the sign-up form and the Steam sign-up step tell a stranger that sign-up is closed. People who already have an account log in as before. An account is the person’s, so this applies on every brand host at once.',
+                                    )
+                                }}
                             </p>
                             <!--
                                 Always rendered so a screen reader has a live
@@ -232,9 +256,11 @@ function submit(): void {
                                 data-test="signups-forced-closed"
                             >
                                 <template v-if="signupsForcedClosed">
-                                    Sign-up is closed by this instance's
-                                    configuration (SIGNUPS_ENABLED). The switch
-                                    is saved, but cannot open it.
+                                    {{
+                                        $t(
+                                            'Sign-up is closed by this instance’s configuration (SIGNUPS_ENABLED). The switch is saved, but cannot open it.',
+                                        )
+                                    }}
                                 </template>
                             </p>
                         </div>
@@ -245,18 +271,19 @@ function submit(): void {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Dates and times</CardTitle>
+                    <CardTitle>{{ $t('Dates and times') }}</CardTitle>
                 </CardHeader>
                 <CardContent class="grid gap-4 sm:grid-cols-2">
                     <p class="text-xs text-text-muted sm:col-span-2">
-                        How this instance writes a date and a time — on every
-                        console page, in every mail and on every invoice. Each
-                        person still reads them in their own timezone, which
-                        they set on their profile.
+                        {{
+                            $t(
+                                'How this instance writes a date and a time — on every console page, in every mail and on every invoice. Each person still reads them in their own timezone, which they set on their profile.',
+                            )
+                        }}
                     </p>
 
                     <div class="grid gap-2">
-                        <Label for="dateFormat">Date format</Label>
+                        <Label for="dateFormat">{{ $t('Date format') }}</Label>
                         <select
                             id="dateFormat"
                             v-model="form.dateFormat"
@@ -270,14 +297,18 @@ function submit(): void {
                     </div>
 
                     <div class="grid gap-2">
-                        <Label for="timeFormat">Time format</Label>
+                        <Label for="timeFormat">{{ $t('Time format') }}</Label>
                         <select
                             id="timeFormat"
                             v-model="form.timeFormat"
                             class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                         >
-                            <option value="24h">24-hour (14:05)</option>
-                            <option value="12h">12-hour (2:05 PM)</option>
+                            <option value="24h">
+                                {{ $t('24-hour (14:05)') }}
+                            </option>
+                            <option value="12h">
+                                {{ $t('12-hour (2:05 PM)') }}
+                            </option>
                         </select>
                         <InputError :message="form.errors.timeFormat" />
                     </div>
@@ -294,7 +325,7 @@ function submit(): void {
                         role="status"
                         data-test="date-format-sample"
                     >
-                        A timestamp reads as
+                        {{ $t('A timestamp reads as') }}
                         <span class="font-medium text-text">{{ sample }}</span>
                         .
                     </p>
@@ -303,7 +334,7 @@ function submit(): void {
 
             <div class="flex items-center gap-3">
                 <Button type="submit" :disabled="form.processing">
-                    {{ form.processing ? 'Saving…' : 'Save changes' }}
+                    {{ form.processing ? $t('Saving…') : $t('Save changes') }}
                 </Button>
                 <!--
                     The region is always in the document and only its text
@@ -313,7 +344,9 @@ function submit(): void {
                     arrived (ADR-0055).
                 -->
                 <span role="status" class="text-sm text-warning">
-                    <template v-if="form.isDirty">Unsaved changes</template>
+                    <template v-if="form.isDirty">{{
+                        $t('Unsaved changes')
+                    }}</template>
                 </span>
             </div>
         </form>

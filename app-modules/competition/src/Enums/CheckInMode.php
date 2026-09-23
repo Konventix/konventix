@@ -52,13 +52,13 @@ enum CheckInMode: string
         return $this === self::SelfService;
     }
 
-    /** Console copy is English (ADR-0001 is about brand sites, not this). */
+    /** In the reader's locale (ADR-0068); the English is the catalog key. */
     public function label(): string
     {
         return match ($this) {
-            self::None => 'No check-in',
-            self::SelfService => 'Self-service',
-            self::Desk => 'At the desk',
+            self::None => __('No check-in'),
+            self::SelfService => __('Self-service'),
+            self::Desk => __('At the desk'),
         };
     }
 }

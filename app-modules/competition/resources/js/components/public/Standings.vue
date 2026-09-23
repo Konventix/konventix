@@ -23,32 +23,32 @@ const grouped = computed(() =>
 
 <template>
     <p v-if="props.standings.length === 0" class="text-sm text-text-muted">
-        Noch keine Platzierungen.
+        {{ $t('No standings yet.') }}
     </p>
 
     <div v-else class="overflow-x-auto">
         <table class="w-full text-left text-sm">
             <thead class="text-text-muted">
                 <tr>
-                    <th scope="col" class="py-1 pr-3">Platz</th>
-                    <th scope="col" class="py-1 pr-3">Team</th>
+                    <th scope="col" class="py-1 pr-3">{{ $t('Place') }}</th>
+                    <th scope="col" class="py-1 pr-3">{{ $t('Team') }}</th>
                     <th v-if="props.unit !== null" scope="col" class="py-1">
-                        Wertung
+                        {{ $t('Score') }}
                     </th>
                     <template v-else>
                         <th v-if="grouped" scope="col" class="py-1 pr-3">
-                            Gruppe
+                            {{ $t('Group') }}
                         </th>
                         <th scope="col" class="py-1 pr-3">
-                            <abbr title="Siege">S</abbr>
+                            <abbr :title="$t('Wins')">{{ $t('W') }}</abbr>
                         </th>
                         <th scope="col" class="py-1 pr-3">
-                            <abbr title="Niederlagen">N</abbr>
+                            <abbr :title="$t('Losses')">{{ $t('L') }}</abbr>
                         </th>
                         <th scope="col" class="py-1 pr-3">
-                            <abbr title="Unentschieden">U</abbr>
+                            <abbr :title="$t('Draws')">{{ $t('D') }}</abbr>
                         </th>
-                        <th scope="col" class="py-1">Punkte</th>
+                        <th scope="col" class="py-1">{{ $t('Points') }}</th>
                     </template>
                 </tr>
             </thead>

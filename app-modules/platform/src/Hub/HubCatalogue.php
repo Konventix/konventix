@@ -36,7 +36,7 @@ final class HubCatalogue
         foreach ($sorted as $item) {
             $entries[] = [
                 'key' => $item->key,
-                'label' => $item->label,
+                'label' => __($item->label),
                 'kind' => $item instanceof HubCard ? 'card' : 'link',
                 'module' => $item->module,
             ];

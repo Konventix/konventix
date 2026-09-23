@@ -28,8 +28,8 @@ enum CheckInRejectionReason: string
 
     /**
      * What the operator console says when the shared core refused a check-in
-     * (attendee-list design §4.3: every refusal is a sentence, never a 500).
-     * English, as all console copy is (ADR-0001). The token-level reasons
+     * (attendee-list design §4.3: every refusal is a sentence, never a 500),
+     * in the reader's language (ADR-0068). The token-level reasons
      * cannot come from the console, which never handles a token, but every
      * case has a sentence so a caller never has to guess.
      *
@@ -40,17 +40,17 @@ enum CheckInRejectionReason: string
     public function consoleSentence(string $direction = 'in'): string
     {
         return match ($this) {
-            self::UnknownAdmission => 'This ticket does not exist.',
-            self::InvalidSignature => 'The ticket code could not be verified.',
-            self::TokenExpired => 'The ticket code has expired.',
-            self::NonceSuperseded => 'This ticket code has been replaced by a newer one.',
-            self::AdmissionNotValid => 'This ticket is not valid: it has been revoked or is outside its validity period.',
+            self::UnknownAdmission => __('This ticket does not exist.'),
+            self::InvalidSignature => __('The ticket code could not be verified.'),
+            self::TokenExpired => __('The ticket code has expired.'),
+            self::NonceSuperseded => __('This ticket code has been replaced by a newer one.'),
+            self::AdmissionNotValid => __('This ticket is not valid: it has been revoked or is outside its validity period.'),
             self::OutsideEventDay => $direction === 'out'
-                ? 'There is no event day today, so nobody can be checked out right now.'
-                : 'There is no event day today, so nobody can be checked in right now.',
-            self::NotValidOnThisDay => 'This ticket is not valid on this event day.',
-            self::ReentryNotPermitted => 'This event does not permit re-entry, and this ticket has already been used to enter.',
-            self::WrongEvent => 'This ticket belongs to a different event.',
+                ? __('There is no event day today, so nobody can be checked out right now.')
+                : __('There is no event day today, so nobody can be checked in right now.'),
+            self::NotValidOnThisDay => __('This ticket is not valid on this event day.'),
+            self::ReentryNotPermitted => __('This event does not permit re-entry, and this ticket has already been used to enter.'),
+            self::WrongEvent => __('This ticket belongs to a different event.'),
         };
     }
 }

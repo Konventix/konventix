@@ -29,7 +29,7 @@ defineProps<{
         class="flex flex-col items-center gap-4 text-center"
     >
         <p class="text-sm font-medium tracking-wide text-text-muted uppercase">
-            {{ label ?? 'Countdown'
+            {{ label ?? $t('Countdown')
             }}<template v-if="eventName">
                 —
                 <Link

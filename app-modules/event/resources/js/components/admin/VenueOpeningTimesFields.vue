@@ -13,7 +13,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import type { OpeningPeriodForm } from '../../lib/venueForm';
-import { emptyOpeningPeriod, WEEKDAYS } from '../../lib/venueForm';
+import { emptyOpeningPeriod, weekdays } from '../../lib/venueForm';
 
 /**
  * When the venue's site is open, as the repeatable rows behind
@@ -36,6 +36,7 @@ const props = defineProps<{
 }>();
 
 const uid = useId();
+const days = weekdays();
 
 function fieldId(index: number, field: string): string {
     return `${uid}-openingTimes-${index}-${field}`;
@@ -57,7 +58,7 @@ function remove(index: number): void {
 <template>
     <div class="flex flex-col gap-4">
         <p v-if="model.length === 0" class="text-sm text-text-muted">
-            None — the public page shows no opening times.
+            {{ $t('None — the public page shows no opening times.') }}
         </p>
 
         <div
@@ -66,7 +67,9 @@ function remove(index: number): void {
             class="flex flex-col gap-3 rounded-md border border-border p-3 sm:flex-row sm:items-start sm:gap-4"
         >
             <div class="grid flex-1 gap-2">
-                <Label :for="fieldId(index, 'dayOfWeek')">Day</Label>
+                <Label :for="fieldId(index, 'dayOfWeek')">{{
+                    $t('Day')
+                }}</Label>
                 <Select
                     :model-value="String(period.dayOfWeek)"
                     @update:model-value="period.dayOfWeek = Number($event)"
@@ -76,7 +79,7 @@ function remove(index: number): void {
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem
-                            v-for="day in WEEKDAYS"
+                            v-for="day in days"
                             :key="day.value"
                             :value="String(day.value)"
                         >
@@ -91,7 +94,7 @@ function remove(index: number): void {
                 <TimeField
                     :id="fieldId(index, 'opensAt')"
                     v-model="period.opensAt"
-                    label="Opens"
+                    :label="$t('Opens')"
                     :error="errorFor(index, 'opensAt')"
                 />
             </div>
@@ -100,7 +103,7 @@ function remove(index: number): void {
                 <TimeField
                     :id="fieldId(index, 'closesAt')"
                     v-model="period.closesAt"
-                    label="Closes"
+                    :label="$t('Closes')"
                     :error="errorFor(index, 'closesAt')"
                 />
             </div>
@@ -110,7 +113,11 @@ function remove(index: number): void {
                 variant="ghost"
                 size="sm"
                 class="self-start sm:mt-7"
-                :aria-label="`Remove opening period ${index + 1}`"
+                :aria-label="
+                    $t('Remove opening period :number', {
+                        number: String(index + 1),
+                    })
+                "
                 @click="remove(index)"
             >
                 <Trash2 class="size-4 text-danger" />
@@ -125,7 +132,7 @@ function remove(index: number): void {
             @click="add"
         >
             <Plus class="size-4" />
-            Add opening period
+            {{ $t('Add opening period') }}
         </Button>
     </div>
 </template>

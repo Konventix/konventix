@@ -44,13 +44,13 @@ enum LeaderboardAggregate: string
         };
     }
 
-    /** Console copy is English (ADR-0001 is about brand sites, not this). */
+    /** In the reader's locale (ADR-0068); the English is the catalog key. */
     public function label(): string
     {
         return match ($this) {
-            self::Best => 'Best entry',
-            self::Sum => 'Sum of all entries',
-            self::Average => 'Average of all entries',
+            self::Best => __('Best entry'),
+            self::Sum => __('Sum of all entries'),
+            self::Average => __('Average of all entries'),
         };
     }
 }

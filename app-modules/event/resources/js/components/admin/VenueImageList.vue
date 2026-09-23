@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ChevronDown, ChevronUp } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, useId } from 'vue';
 import MediaPicker from '@/components/admin/MediaPicker.vue';
 import { Button } from '@/components/ui/button';
@@ -44,7 +45,7 @@ function move(index: number, offset: number): void {
 function labelFor(mediaId: string | null): string {
     const item = props.media.find((candidate) => candidate.id === mediaId);
 
-    return item?.altText ?? item?.originalFilename ?? 'Picture';
+    return item?.altText ?? item?.originalFilename ?? trans('Picture');
 }
 </script>
 
@@ -60,8 +61,10 @@ function labelFor(mediaId: string | null): string {
                     :model-value="mediaId"
                     :label="
                         mediaId === null
-                            ? 'Add a picture'
-                            : `Picture ${index + 1}`
+                            ? $t('Add a picture')
+                            : $t('Picture :number', {
+                                  number: String(index + 1),
+                              })
                     "
                     :media="props.media"
                     :brand-id="props.brandId"
@@ -83,14 +86,16 @@ function labelFor(mediaId: string | null): string {
                         :checked="primary === mediaId"
                         @change="primary = mediaId"
                     />
-                    Primary
+                    {{ $t('Primary') }}
                 </label>
                 <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     :disabled="index === 0"
-                    :aria-label="`Move ${labelFor(mediaId)} up`"
+                    :aria-label="
+                        $t('Move :name up', { name: labelFor(mediaId) })
+                    "
                     @click="move(index, -1)"
                 >
                     <ChevronUp class="size-4" />
@@ -100,7 +105,9 @@ function labelFor(mediaId: string | null): string {
                     variant="ghost"
                     size="sm"
                     :disabled="index === ids.length - 1"
-                    :aria-label="`Move ${labelFor(mediaId)} down`"
+                    :aria-label="
+                        $t('Move :name down', { name: labelFor(mediaId) })
+                    "
                     @click="move(index, 1)"
                 >
                     <ChevronDown class="size-4" />
@@ -109,8 +116,11 @@ function labelFor(mediaId: string | null): string {
         </div>
 
         <p class="text-xs text-text-muted">
-            The primary picture heads the venue's public page and is the one
-            shown beside the venue on an event's page.
+            {{
+                $t(
+                    "The primary picture heads the venue's public page and is the one shown beside the venue on an event's page.",
+                )
+            }}
         </p>
     </div>
 </template>

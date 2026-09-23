@@ -65,18 +65,20 @@ function submit(): void {
 </script>
 
 <template>
-    <Head :title="`Storage — ${brand.name}`" />
+    <Head :title="$t('Storage — :brand', { brand: brand.name })" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            :title="`Storage — ${brand.name}`"
-            description="Keep this brand's media in a bucket the brand owns"
+            :title="$t('Storage — :brand', { brand: brand.name })"
+            :description="
+                $t('Keep this brand’s media in a bucket the brand owns')
+            "
         />
 
         <form class="flex flex-col gap-6" @submit.prevent="submit">
             <Card>
                 <CardHeader>
-                    <CardTitle>Own storage</CardTitle>
+                    <CardTitle>{{ $t('Own storage') }}</CardTitle>
                 </CardHeader>
                 <CardContent class="flex flex-col gap-4">
                     <div class="flex items-start gap-3">
@@ -86,12 +88,15 @@ function submit(): void {
                         />
                         <div class="flex flex-col gap-1">
                             <Label for="useOwnStorage">
-                                This brand brings its own bucket
+                                {{ $t('This brand brings its own bucket') }}
                             </Label>
                             <p class="text-sm text-text-muted">
-                                Off means new uploads go to the deployment's
-                                media disk. Switching moves nothing — use
-                                <code>storage:migrate</code> for that.
+                                {{
+                                    $t(
+                                        'Off means new uploads go to the deployment’s media disk. Switching moves nothing; to move files, run',
+                                    )
+                                }}
+                                <code>storage:migrate</code>.
                             </p>
                         </div>
                     </div>
@@ -101,9 +106,12 @@ function submit(): void {
                         v-if="itemsInOwnBucket > 0"
                         class="text-sm text-text-muted"
                     >
-                        {{ itemsInOwnBucket }} file(s) currently live in this
-                        brand's bucket. They stay readable from there; turning
-                        own storage off is refused until they are migrated.
+                        {{
+                            $tChoice(
+                                '{1} :count file currently lives in this brand’s bucket. It stays readable from there; turning own storage off is refused until it is migrated.|[2,*] :count files currently live in this brand’s bucket. They stay readable from there; turning own storage off is refused until they are migrated.',
+                                itemsInOwnBucket,
+                            )
+                        }}
                     </p>
                 </CardContent>
             </Card>
@@ -111,21 +119,21 @@ function submit(): void {
             <div v-if="form.useOwnStorage" class="grid gap-6 xl:grid-cols-2">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Bucket</CardTitle>
+                        <CardTitle>{{ $t('Bucket') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <div class="grid gap-2">
-                            <Label for="bucket">Bucket</Label>
+                            <Label for="bucket">{{ $t('Bucket') }}</Label>
                             <Input id="bucket" v-model="form.bucket" />
                             <InputError :message="form.errors.bucket" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="region">Region</Label>
+                            <Label for="region">{{ $t('Region') }}</Label>
                             <Input id="region" v-model="form.region" />
                             <InputError :message="form.errors.region" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="endpoint">Endpoint</Label>
+                            <Label for="endpoint">{{ $t('Endpoint') }}</Label>
                             <Input
                                 id="endpoint"
                                 v-model="form.endpoint"
@@ -134,7 +142,7 @@ function submit(): void {
                             <InputError :message="form.errors.endpoint" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="prefix">Key prefix</Label>
+                            <Label for="prefix">{{ $t('Key prefix') }}</Label>
                             <Input id="prefix" v-model="form.prefix" />
                             <InputError :message="form.errors.prefix" />
                         </div>
@@ -144,7 +152,7 @@ function submit(): void {
                                 v-model="form.usePathStyleEndpoint"
                             />
                             <Label for="usePathStyleEndpoint">
-                                Path-style endpoint
+                                {{ $t('Path-style endpoint') }}
                             </Label>
                         </div>
                     </CardContent>
@@ -152,11 +160,15 @@ function submit(): void {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Credentials and delivery</CardTitle>
+                        <CardTitle>{{
+                            $t('Credentials and delivery')
+                        }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <div class="grid gap-2">
-                            <Label for="accessKeyId">Access key ID</Label>
+                            <Label for="accessKeyId">{{
+                                $t('Access key ID')
+                            }}</Label>
                             <Input
                                 id="accessKeyId"
                                 v-model="form.accessKeyId"
@@ -165,7 +177,7 @@ function submit(): void {
                         </div>
                         <div class="grid gap-2">
                             <Label for="secretAccessKey">
-                                Secret access key
+                                {{ $t('Secret access key') }}
                             </Label>
                             <Input
                                 id="secretAccessKey"
@@ -174,7 +186,7 @@ function submit(): void {
                                 autocomplete="new-password"
                                 :placeholder="
                                     settings.hasSecretAccessKey
-                                        ? 'Stored — leave blank to keep it'
+                                        ? $t('Stored — leave blank to keep it')
                                         : ''
                                 "
                             />
@@ -190,21 +202,22 @@ function submit(): void {
                             />
                             <div class="flex flex-col gap-1">
                                 <Label for="publicDirect">
-                                    The bucket is publicly readable
+                                    {{ $t('The bucket is publicly readable') }}
                                 </Label>
                                 <p class="text-sm text-text-muted">
-                                    Visitors then fetch media straight from the
-                                    bucket. Leave off and media is served
-                                    through the application.
-                                    <code>storage:doctor</code> verifies this
-                                    claim.
+                                    {{
+                                        $t(
+                                            'Visitors then fetch media straight from the bucket. Leave off and media is served through the application. This claim is checked by',
+                                        )
+                                    }}
+                                    <code>storage:doctor</code>.
                                 </p>
                             </div>
                         </div>
                         <InputError :message="form.errors.publicDirect" />
 
                         <div v-if="form.publicDirect" class="grid gap-2">
-                            <Label for="url">Public base URL</Label>
+                            <Label for="url">{{ $t('Public base URL') }}</Label>
                             <Input
                                 id="url"
                                 v-model="form.url"
@@ -218,7 +231,7 @@ function submit(): void {
 
             <div class="flex items-center gap-3">
                 <Button type="submit" :disabled="form.processing">
-                    Save
+                    {{ $t('Save') }}
                 </Button>
             </div>
         </form>

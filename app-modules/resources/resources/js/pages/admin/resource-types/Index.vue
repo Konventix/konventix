@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed, h } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -15,6 +16,7 @@ import {
     index as typesIndex,
 } from '@/routes/admin/resource-types';
 import ResourceTypeCreateDialog from '../../../components/admin/ResourceTypeCreateDialog.vue';
+import { capacityModeLabel } from '../../../components/plan/labels';
 
 /**
  * Categories of an event (design §8.1): what a place is, what a seating
@@ -56,7 +58,7 @@ const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
 const filterDefs = computed<DataTableFilterDef[]>(() => [
     {
         name: 'event',
-        label: 'Events',
+        label: trans('Events'),
         value: props.filters.event,
         options: props.events.map((event) => ({
             value: event.id,
@@ -86,7 +88,7 @@ const pagination = computed(() => ({
 const columns: ColumnDef<TypeRow>[] = [
     {
         accessorKey: 'name',
-        header: 'Name',
+        header: trans('Name'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -100,13 +102,13 @@ const columns: ColumnDef<TypeRow>[] = [
     },
     {
         id: 'event',
-        header: 'Event',
+        header: trans('Event'),
         cell: ({ row }) =>
             h('span', { class: 'text-text-muted' }, row.original.eventName),
     },
     {
         id: 'token',
-        header: 'Token',
+        header: trans('Token'),
         cell: ({ row }) =>
             h('span', { class: 'inline-flex items-center gap-2' }, [
                 h('span', {
@@ -119,51 +121,55 @@ const columns: ColumnDef<TypeRow>[] = [
     },
     {
         id: 'symbol',
-        header: 'Symbol',
+        header: trans('Symbol'),
         cell: ({ row }) =>
             h('span', { class: 'text-text-muted' }, row.original.symbol ?? '—'),
     },
     {
         accessorKey: 'sort_order',
-        header: 'Order',
+        header: trans('Sort order'),
         enableSorting: true,
         cell: ({ row }) => String(row.original.sortOrder),
     },
     {
         id: 'mode',
-        header: 'Mode',
+        header: trans('Mode'),
         cell: ({ row }) =>
             h(
                 'span',
                 {
                     class: 'rounded-full bg-subtle px-2 py-0.5 text-xs text-text-muted',
                 },
-                row.original.mode,
+                capacityModeLabel(row.original.mode),
             ),
     },
     {
         id: 'places',
         // Bookable, not raw — see the module docblock above.
-        header: 'Bookable places',
+        header: trans('Bookable places'),
         cell: ({ row }) => String(row.original.places),
     },
 ];
 </script>
 
 <template>
-    <Head title="Categories" />
+    <Head :title="$t('Categories')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Categories"
-            description="What a place is: the categories a seating grant chooses from and the picker draws"
+            :title="$t('Categories')"
+            :description="
+                $t(
+                    'What a place is: the categories a seating grant chooses from and the picker draws',
+                )
+            "
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
             :filters="filterDefs"
-            search-placeholder="Search categories…"
+            :search-placeholder="$t('Search categories…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
             @update:filter="setFilter"
@@ -183,8 +189,10 @@ const columns: ColumnDef<TypeRow>[] = [
             :data="props.types.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="categories"
-            empty-message="No categories yet — create one per kind of place."
+            :items-label="$t('categories')"
+            :empty-message="
+                $t('No categories yet — create one per kind of place.')
+            "
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />

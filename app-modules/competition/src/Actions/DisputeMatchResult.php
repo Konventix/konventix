@@ -86,7 +86,7 @@ final class DisputeMatchResult
 
             if (trim($reason) === '') {
                 throw ValidationException::withMessages([
-                    'reason' => __('Schreib bitte dazu, was an dem gemeldeten Ergebnis nicht stimmt.'),
+                    'reason' => __('Please say what is wrong with the reported result.'),
                 ]);
             }
 
@@ -160,7 +160,7 @@ final class DisputeMatchResult
             new EntrantNoticeData(
                 competitionName: $this->competitionOf($match)->name,
                 teamName: $team->name ?? '',
-                detail: __('Euer Gegner hat das Ergebnis angefochten. Die Turnierleitung entscheidet.'),
+                detail: __('Your opponent disputed the result. The organizers decide.'),
             ),
         );
     }

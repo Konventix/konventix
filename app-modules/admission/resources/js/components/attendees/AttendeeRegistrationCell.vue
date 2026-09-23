@@ -2,6 +2,7 @@
 import { Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import { show as showRegistration } from '@/routes/admin/registrations';
+import { registrationStatusLabel } from '../../lib/labels';
 
 type Row = Konventix.Admission.Data.AttendeeRowData;
 
@@ -15,14 +16,6 @@ type Row = Konventix.Admission.Data.AttendeeRowData;
  */
 const props = defineProps<{ row: Row }>();
 
-const statusLabels: Record<string, string> = {
-    unconfirmed: 'Not confirmed',
-    submitted: 'Submitted',
-    approved: 'Approved',
-    rejected: 'Rejected',
-    cancelled: 'Cancelled',
-};
-
 const status = computed(() => {
     const value = props.row.registrationStatus;
 
@@ -30,7 +23,7 @@ const status = computed(() => {
         return null;
     }
 
-    return statusLabels[value] ?? value;
+    return registrationStatusLabel(value);
 });
 </script>
 
@@ -39,7 +32,11 @@ const status = computed(() => {
         <Link
             :href="showRegistration(row.registrationId).url"
             class="font-mono text-xs underline-offset-4 hover:underline"
-            :aria-label="`Registration ${row.registrationShortId}`"
+            :aria-label="
+                $t('Registration :id', {
+                    id: row.registrationShortId ?? '',
+                })
+            "
         >
             {{ row.registrationShortId }}
         </Link>
@@ -47,5 +44,7 @@ const status = computed(() => {
             {{ status }}
         </span>
     </div>
-    <span v-else class="text-xs text-text-muted">No registration (crew)</span>
+    <span v-else class="text-xs text-text-muted">{{
+        $t('No registration (crew)')
+    }}</span>
 </template>

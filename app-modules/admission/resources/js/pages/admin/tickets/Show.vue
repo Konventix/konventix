@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import { ArrowLeft } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,11 @@ import { edit as editUser } from '@/routes/admin/users';
 import CheckInDialog from '../../../components/attendees/CheckInDialog.vue';
 import CheckOutDialog from '../../../components/attendees/CheckOutDialog.vue';
 import TicketHistory from '../../../components/attendees/TicketHistory.vue';
+import {
+    admissionStateLabel,
+    doorCheckOutcomeLabel,
+    registrationStatusLabel,
+} from '../../../lib/labels';
 
 type Ticket = Konventix.Admission.Data.TicketDetailData;
 
@@ -26,50 +32,36 @@ const props = defineProps<{ ticket: Ticket }>();
 const checkingIn = ref(false);
 const checkingOut = ref(false);
 
-const stateLabels: Record<string, string> = {
-    issued: 'Issued',
-    assigned: 'Assigned',
-    revoked: 'Revoked',
-    expired: 'Expired',
-};
-
-const registrationStatusLabels: Record<string, string> = {
-    confirmed: 'Confirmed',
-    unconfirmed: 'Not confirmed',
-    submitted: 'Submitted',
-    approved: 'Approved',
-    rejected: 'Rejected',
-    cancelled: 'Cancelled',
-};
-
 const validity = computed(() => {
     const { validFrom, validUntil } = props.ticket;
 
     if (validFrom === null && validUntil === null) {
-        return 'Every event day';
+        return trans('Every event day');
     }
 
-    return `${validFrom === null ? 'from the start' : formatDateTime(validFrom)} – ${validUntil === null ? 'the end' : formatDateTime(validUntil)}`;
-});
+    const from =
+        validFrom === null
+            ? trans('from the start')
+            : formatDateTime(validFrom);
+    const until =
+        validUntil === null ? trans('the end') : formatDateTime(validUntil);
 
-const outcomeLabels: Record<string, string> = {
-    confirmed: 'Confirmed',
-    refused: 'Refused',
-};
+    return `${from} – ${until}`;
+});
 </script>
 
 <template>
-    <Head :title="`Ticket ${ticket.reference}`" />
+    <Head :title="$t('Ticket :reference', { reference: ticket.reference })" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            :title="`Ticket ${ticket.reference}`"
-            :description="`${ticket.eventName} · ${ticket.ticketType} · ${stateLabels[ticket.state] ?? ticket.state}`"
+            :title="$t('Ticket :reference', { reference: ticket.reference })"
+            :description="`${ticket.eventName} · ${ticket.ticketType} · ${admissionStateLabel(ticket.state)}`"
         >
             <Button as-child variant="outline" size="sm">
                 <Link :href="attendeesIndex(ticket.eventId).url">
                     <ArrowLeft class="size-4" />
-                    Attendees
+                    {{ $t('Attendees') }}
                 </Link>
             </Button>
             <Button
@@ -79,7 +71,7 @@ const outcomeLabels: Record<string, string> = {
                 size="sm"
             >
                 <a :href="ticket.badgeUrl" target="_blank" rel="noopener">
-                    Print badge
+                    {{ $t('Print badge') }}
                 </a>
             </Button>
             <Button
@@ -87,7 +79,7 @@ const outcomeLabels: Record<string, string> = {
                 :disabled="!ticket.canCheckIn"
                 @click="checkingIn = true"
             >
-                Check in
+                {{ $t('Check in') }}
             </Button>
             <Button
                 size="sm"
@@ -95,7 +87,7 @@ const outcomeLabels: Record<string, string> = {
                 :disabled="!ticket.canCheckOut"
                 @click="checkingOut = true"
             >
-                Check out
+                {{ $t('Check out') }}
             </Button>
         </AdminPageHeader>
 
@@ -103,41 +95,43 @@ const outcomeLabels: Record<string, string> = {
             <dl
                 class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 rounded-lg border border-border p-4 text-sm"
             >
-                <dt class="text-text-muted">State</dt>
+                <dt class="text-text-muted">{{ $t('State') }}</dt>
                 <dd>
-                    {{ stateLabels[ticket.state] ?? ticket.state }}
+                    {{ admissionStateLabel(ticket.state) }}
                     <span v-if="ticket.canCheckOut" class="text-success">
-                        · in today
+                        · {{ $t('in today') }}
                     </span>
                 </dd>
-                <dt class="text-text-muted">Valid</dt>
+                <dt class="text-text-muted">{{ $t('Valid') }}</dt>
                 <dd>{{ validity }}</dd>
-                <dt class="text-text-muted">Holder</dt>
+                <dt class="text-text-muted">{{ $t('Holder') }}</dt>
                 <dd>
                     <Link
                         v-if="ticket.holderUserId !== null"
                         :href="editUser(ticket.holderUserId).url"
                         class="underline-offset-4 hover:underline"
                     >
-                        {{ ticket.holderName ?? 'Unnamed holder' }}
+                        {{ ticket.holderName ?? $t('Unnamed holder') }}
                     </Link>
-                    <span v-else class="text-text-muted">Unassigned</span>
+                    <span v-else class="text-text-muted">{{
+                        $t('Unassigned')
+                    }}</span>
                     <span v-if="ticket.holderUsername" class="text-text-muted">
                         @{{ ticket.holderUsername }}
                     </span>
                 </dd>
-                <dt class="text-text-muted">Buyer</dt>
+                <dt class="text-text-muted">{{ $t('Buyer') }}</dt>
                 <dd>
                     <Link
                         v-if="ticket.buyerUserId !== null"
                         :href="editUser(ticket.buyerUserId).url"
                         class="underline-offset-4 hover:underline"
                     >
-                        {{ ticket.buyerName ?? 'Unnamed buyer' }}
+                        {{ ticket.buyerName ?? $t('Unnamed buyer') }}
                     </Link>
-                    <span v-else class="text-text-muted"
-                        >No buyer on record</span
-                    >
+                    <span v-else class="text-text-muted">{{
+                        $t('No buyer on record')
+                    }}</span>
                     <span v-if="ticket.buyerUsername" class="text-text-muted">
                         @{{ ticket.buyerUsername }}
                     </span>
@@ -148,47 +142,55 @@ const outcomeLabels: Record<string, string> = {
                 class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 rounded-lg border border-border p-4 text-sm"
             >
                 <template v-if="ticket.registrationId !== null">
-                    <dt class="text-text-muted">Registration</dt>
+                    <dt class="text-text-muted">{{ $t('Registration') }}</dt>
                     <dd>
                         <Link
                             :href="showRegistration(ticket.registrationId).url"
                             class="font-mono underline-offset-4 hover:underline"
-                            :aria-label="`Registration ${ticket.registrationShortId}`"
+                            :aria-label="
+                                $t('Registration :id', {
+                                    id: ticket.registrationShortId ?? '',
+                                })
+                            "
                         >
                             {{ ticket.registrationShortId }}
                         </Link>
                     </dd>
-                    <dt class="text-text-muted">Type</dt>
+                    <dt class="text-text-muted">{{ $t('Type') }}</dt>
                     <dd>
-                        {{ ticket.registrationTypeName ?? 'Not known yet' }}
+                        {{ ticket.registrationTypeName ?? $t('Not known yet') }}
                     </dd>
-                    <dt class="text-text-muted">Status</dt>
+                    <dt class="text-text-muted">{{ $t('Status') }}</dt>
                     <dd>
                         {{
                             ticket.registrationStatus === null
-                                ? 'Not known yet'
-                                : (registrationStatusLabels[
-                                      ticket.registrationStatus
-                                  ] ?? ticket.registrationStatus)
+                                ? $t('Not known yet')
+                                : registrationStatusLabel(
+                                      ticket.registrationStatus,
+                                  )
                         }}
                     </dd>
                 </template>
                 <template v-else>
-                    <dt class="text-text-muted">Registration</dt>
+                    <dt class="text-text-muted">{{ $t('Registration') }}</dt>
                     <dd class="text-text-muted">
-                        None — a crew ticket ({{ ticket.role }})
+                        {{
+                            $t('None — a crew ticket (:role)', {
+                                role: ticket.role,
+                            })
+                        }}
                     </dd>
                 </template>
             </dl>
         </section>
 
         <section class="flex flex-col gap-2">
-            <h2 class="text-base font-semibold">Door checks</h2>
+            <h2 class="text-base font-semibold">{{ $t('Door checks') }}</h2>
             <p
                 v-if="ticket.doorChecks.length === 0"
                 class="text-sm text-text-muted"
             >
-                This ticket carries no entry conditions.
+                {{ $t('This ticket carries no entry conditions.') }}
             </p>
             <ul v-else class="grid gap-2 text-sm">
                 <li
@@ -213,9 +215,9 @@ const outcomeLabels: Record<string, string> = {
                         {{
                             check.outcome === null
                                 ? check.verification === 'document_at_door'
-                                    ? 'Not answered yet'
-                                    : 'Not checked at the door'
-                                : outcomeLabels[check.outcome]
+                                    ? $t('Not answered yet')
+                                    : $t('Not checked at the door')
+                                : doorCheckOutcomeLabel(check.outcome)
                         }}
                     </span>
                 </li>
@@ -223,7 +225,9 @@ const outcomeLabels: Record<string, string> = {
         </section>
 
         <section class="flex flex-col gap-2">
-            <h2 class="text-base font-semibold">Check-in history</h2>
+            <h2 class="text-base font-semibold">
+                {{ $t('Check-in history') }}
+            </h2>
             <TicketHistory :history="ticket.history" />
         </section>
     </div>

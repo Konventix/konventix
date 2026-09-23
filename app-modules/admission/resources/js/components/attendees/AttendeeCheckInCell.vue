@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import { formatDateTime } from '@/lib/datetime';
+import { checkInSourceLabel } from '../../lib/labels';
 
 type CheckIn = Konventix.Admission.Data.AttendeeCheckInStateData;
 
@@ -15,11 +17,11 @@ const props = defineProps<{ checkIn: CheckIn }>();
 const label = computed(() => {
     switch (props.checkIn.direction) {
         case 'in':
-            return 'In';
+            return trans('In');
         case 'out':
-            return 'Out';
+            return trans('Out');
         default:
-            return 'Not yet';
+            return trans('Not yet');
     }
 });
 
@@ -35,7 +37,7 @@ const badgeClass = computed(() => {
 });
 
 const sourceLabel = computed(() =>
-    props.checkIn.source === 'console' ? 'console' : 'door',
+    checkInSourceLabel(props.checkIn.source === 'console' ? 'console' : 'door'),
 );
 </script>
 
@@ -54,7 +56,7 @@ const sourceLabel = computed(() =>
             v-if="checkIn.lastKnown && checkIn.direction !== null"
             class="text-xs text-text-muted italic"
         >
-            Last known — no event day today
+            {{ $t('Last known — no event day today') }}
         </span>
     </div>
 </template>

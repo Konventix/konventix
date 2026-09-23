@@ -60,10 +60,16 @@ function href(matchId: string): string {
                     </caption>
                     <thead class="text-text-muted">
                         <tr>
-                            <th scope="col" class="py-1 pr-3">Spiel</th>
-                            <th scope="col" class="py-1 pr-3">Paarung</th>
-                            <th scope="col" class="py-1 pr-3">Zeit</th>
-                            <th scope="col" class="py-1">Stand</th>
+                            <th scope="col" class="py-1 pr-3">
+                                {{ $t('Match') }}
+                            </th>
+                            <th scope="col" class="py-1 pr-3">
+                                {{ $t('Pairing') }}
+                            </th>
+                            <th scope="col" class="py-1 pr-3">
+                                {{ $t('Time') }}
+                            </th>
+                            <th scope="col" class="py-1">{{ $t('Status') }}</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-border text-text">
@@ -73,7 +79,11 @@ function href(matchId: string): string {
                                     :href="href(match.id)"
                                     class="underline underline-offset-4"
                                 >
-                                    Spiel {{ match.position }}
+                                    {{
+                                        $t('Match :position', {
+                                            position: String(match.position),
+                                        })
+                                    }}
                                 </Link>
                             </td>
                             <td class="py-2 pr-3 align-top">
@@ -82,7 +92,7 @@ function href(matchId: string): string {
                                     :key="side.position"
                                 >
                                     <template v-if="index > 0">
-                                        gegen
+                                        {{ $t('vs') }}
                                     </template>
                                     <span
                                         :class="
@@ -101,7 +111,7 @@ function href(matchId: string): string {
                                             v-if="side.winner"
                                             class="sr-only"
                                         >
-                                            (Sieger)
+                                            ({{ $t('Winner') }})
                                         </span>
                                     </span>
                                 </template>
@@ -117,8 +127,10 @@ function href(matchId: string): string {
                                 }}
                             </td>
                             <td class="py-2 align-top">
-                                <span v-if="match.disputed" class="text-danger"
-                                    >Streitfall</span
+                                <span
+                                    v-if="match.disputed"
+                                    class="text-danger"
+                                    >{{ $t('In dispute') }}</span
                                 >
                                 <span v-else class="text-text-muted">{{
                                     matchStateLabel(match.state)

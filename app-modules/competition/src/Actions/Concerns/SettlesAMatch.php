@@ -65,7 +65,7 @@ trait SettlesAMatch
         $this->guardWinnerIsASide($match, $winnerEntrantId, $this->entrantIdsByPosition($match));
         $this->guardDrawIsPossible($match, $winnerEntrantId);
 
-        $this->closeDispute($match, $winnerEntrantId, $recordedByUserId, __('Die beiden Seiten haben sich doch auf ein Ergebnis geeinigt.'));
+        $this->closeDispute($match, $winnerEntrantId, $recordedByUserId, __('The two sides agreed on a result after all.'));
 
         $settled = app(RecordMatchResult::class)->handle(
             $match,

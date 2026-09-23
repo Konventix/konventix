@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -62,8 +63,8 @@ const unavailable = computed(() => {
     }
 
     return props.ticket.state === 'revoked'
-        ? 'This ticket is revoked, so it cannot be checked in.'
-        : 'This ticket is already checked in today.';
+        ? trans('This ticket is revoked, so it cannot be checked in.')
+        : trans('This ticket is already checked in today.');
 });
 
 /**
@@ -122,18 +123,26 @@ function submit(): void {
     >
         <DialogContent>
             <DialogHeader>
-                <DialogTitle
-                    >Check in ticket {{ ticket.reference }}</DialogTitle
-                >
+                <DialogTitle>
+                    {{
+                        $t('Check in ticket :reference', {
+                            reference: ticket.reference,
+                        })
+                    }}
+                </DialogTitle>
                 <DialogDescription>
                     {{
-                        ticket.holderName ??
-                        (ticket.holderUserId === null
-                            ? 'Unassigned ticket'
-                            : 'Unnamed holder')
+                        $t(
+                            ':holder — checked in as if scanned at the door, with you recorded as the person who let them in.',
+                            {
+                                holder:
+                                    ticket.holderName ??
+                                    (ticket.holderUserId === null
+                                        ? $t('Unassigned ticket')
+                                        : $t('Unnamed holder')),
+                            },
+                        )
                     }}
-                    — checked in as if scanned at the door, with you recorded as
-                    the person who let them in.
                 </DialogDescription>
             </DialogHeader>
             <form
@@ -155,7 +164,11 @@ function submit(): void {
                     v-if="ticket.holderUserId === null"
                     class="text-sm text-warning"
                 >
-                    No holder account: the live hub will not open for anyone.
+                    {{
+                        $t(
+                            'No holder account: the live hub will not open for anyone.',
+                        )
+                    }}
                 </p>
 
                 <template v-if="ticket.owedDoorChecks.length > 0">
@@ -182,7 +195,7 @@ function submit(): void {
                                     value="confirmed"
                                     required
                                 />
-                                Confirm
+                                {{ $t('Confirm') }}
                             </label>
                             <label class="flex items-center gap-2 text-sm">
                                 <input
@@ -192,14 +205,16 @@ function submit(): void {
                                     value="refused"
                                     required
                                 />
-                                Refuse
+                                {{ $t('Refuse') }}
                             </label>
                         </div>
                     </fieldset>
                     <p class="text-sm text-text-muted">
-                        Refusing records the refusal; the check-in still goes
-                        through, as at the door. Cancel if you are not letting
-                        them in.
+                        {{
+                            $t(
+                                'Refusing records the refusal; the check-in still goes through, as at the door. Cancel if you are not letting them in.',
+                            )
+                        }}
                     </p>
                 </template>
 
@@ -210,7 +225,7 @@ function submit(): void {
                         :disabled="form.processing"
                         @click="emit('update:open', false)"
                     >
-                        Cancel
+                        {{ $t('Cancel') }}
                     </Button>
                     <Button
                         type="submit"
@@ -220,7 +235,7 @@ function submit(): void {
                             !allAnswered
                         "
                     >
-                        Check in
+                        {{ $t('Check in') }}
                     </Button>
                 </div>
             </form>

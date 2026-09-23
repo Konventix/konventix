@@ -49,7 +49,7 @@ class ProofUploadController
                 'required', 'file', 'max:8192', 'mimes:jpg,jpeg,png,gif,webp',
                 function (string $attribute, mixed $value, Closure $fail): void {
                     if ($value instanceof UploadedFile && @getimagesize($value->getRealPath()) === false) {
-                        $fail(__('Diese Datei ist kein gültiges Bild.'));
+                        $fail(__('This file is not a valid image.'));
                     }
                 },
             ],

@@ -74,6 +74,6 @@ const note = computed<string>(() =>
             }}</template>
             <span class="font-normal text-text-muted">{{ note }}</span>
         </template>
-        <template v-else>Free</template>
+        <template v-else>{{ $t('Free of charge') }}</template>
     </span>
 </template>

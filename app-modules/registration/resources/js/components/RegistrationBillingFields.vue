@@ -27,34 +27,37 @@ const props = defineProps<{
 <template>
     <div class="grid gap-6">
         <div class="grid gap-2">
-            <Label for="organizationName">Organization (optional)</Label>
+            <Label for="organizationName">{{
+                $t('Organization (optional)')
+            }}</Label>
             <Input
                 id="organizationName"
                 name="organizationName"
                 autocomplete="organization"
-                placeholder="Company or organization name"
+                :placeholder="$t('Company or organization name')"
             />
             <InputError :message="props.errors.organizationName" />
         </div>
 
         <div class="grid gap-2">
-            <Label for="billingRecipientName"
-                >Billing recipient (optional)</Label
-            >
+            <Label for="billingRecipientName">{{
+                $t('Billing recipient (optional)')
+            }}</Label>
             <Input
                 id="billingRecipientName"
                 name="billingRecipientName"
                 autocomplete="name"
-                placeholder="Who should the invoice be addressed to"
+                :placeholder="$t('Who should the invoice be addressed to')"
             />
             <InputError :message="props.errors.billingRecipientName" />
         </div>
 
         <div class="grid gap-2">
-            <Label for="billingEmail"
-                >Billing email
-                {{ props.needsBillingAddress ? '' : '(optional)' }}</Label
-            >
+            <Label for="billingEmail">{{
+                props.needsBillingAddress
+                    ? $t('Billing email')
+                    : $t('Billing email (optional)')
+            }}</Label>
             <Input
                 id="billingEmail"
                 type="email"
@@ -67,7 +70,9 @@ const props = defineProps<{
 
         <template v-if="props.needsBillingAddress">
             <div class="grid gap-2">
-                <Label for="billingAddressLine">Street and number</Label>
+                <Label for="billingAddressLine">{{
+                    $t('Street and number')
+                }}</Label>
                 <Input
                     id="billingAddressLine"
                     name="billingAddressLine"
@@ -78,7 +83,9 @@ const props = defineProps<{
 
             <div class="grid grid-cols-3 gap-2">
                 <div class="grid gap-2">
-                    <Label for="billingPostalCode">Postal code</Label>
+                    <Label for="billingPostalCode">{{
+                        $t('Postal code')
+                    }}</Label>
                     <Input
                         id="billingPostalCode"
                         name="billingPostalCode"
@@ -87,7 +94,7 @@ const props = defineProps<{
                     <InputError :message="props.errors.billingPostalCode" />
                 </div>
                 <div class="col-span-2 grid gap-2">
-                    <Label for="billingCity">City</Label>
+                    <Label for="billingCity">{{ $t('City') }}</Label>
                     <Input
                         id="billingCity"
                         name="billingCity"
@@ -99,7 +106,9 @@ const props = defineProps<{
 
             <div class="grid grid-cols-2 gap-2">
                 <div class="grid gap-2">
-                    <Label for="billingCountryCode">Country code</Label>
+                    <Label for="billingCountryCode">{{
+                        $t('Country code')
+                    }}</Label>
                     <Input
                         id="billingCountryCode"
                         name="billingCountryCode"
@@ -110,7 +119,9 @@ const props = defineProps<{
                     <InputError :message="props.errors.billingCountryCode" />
                 </div>
                 <div class="grid gap-2">
-                    <Label for="billingVatId">VAT ID (optional)</Label>
+                    <Label for="billingVatId">{{
+                        $t('VAT ID (optional)')
+                    }}</Label>
                     <Input
                         id="billingVatId"
                         name="billingVatId"

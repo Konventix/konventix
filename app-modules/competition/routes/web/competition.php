@@ -79,7 +79,7 @@ Route::middleware(['auth'])->group(function (): void {
         ->name('competition.my.join');
 
     /*
-     * The hub's *Nächste Spiele* card refreshing itself (design §10a
+     * The hub's *Next games* card refreshing itself (design §10a
      * "Liveness", hub design §7.1): the card's own payload as JSON, fetched
      * on its interval, so the rest of `/live` is never rebuilt for it and
      * `platform_hub_views_total` counts people, not polls. Beside `/live`

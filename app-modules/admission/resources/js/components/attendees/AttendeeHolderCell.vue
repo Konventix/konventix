@@ -20,26 +20,26 @@ defineProps<{ row: Row }>();
             :href="editUser(row.holderUserId).url"
             class="font-medium text-text underline-offset-4 hover:underline"
         >
-            {{ row.holderName ?? 'Unnamed holder' }}
+            {{ row.holderName ?? $t('Unnamed holder') }}
         </Link>
         <span v-if="row.holderUsername" class="text-xs text-text-muted">
             @{{ row.holderUsername }}
         </span>
     </div>
     <div v-else class="flex flex-col">
-        <span class="font-medium text-text-muted">Unassigned</span>
+        <span class="font-medium text-text-muted">{{ $t('Unassigned') }}</span>
         <span class="text-xs text-text-muted">
-            No holder ·
+            {{ $t('No holder') }} ·
             <template v-if="row.buyerUserId !== null">
-                bought by
+                {{ $t('bought by') }}
                 <Link
                     :href="editUser(row.buyerUserId).url"
                     class="underline-offset-4 hover:underline"
                 >
-                    {{ row.buyerName ?? 'an unnamed buyer' }}
+                    {{ row.buyerName ?? $t('an unnamed buyer') }}
                 </Link>
             </template>
-            <template v-else>no buyer on record</template>
+            <template v-else>{{ $t('no buyer on record') }}</template>
         </span>
     </div>
 </template>

@@ -60,16 +60,16 @@ function submit(): void {
         <DialogTrigger as-child>
             <Button>
                 <Plus class="size-4" />
-                New plan
+                {{ $t('New plan') }}
             </Button>
         </DialogTrigger>
         <DialogContent>
             <DialogHeader>
-                <DialogTitle>Create plan</DialogTitle>
+                <DialogTitle>{{ $t('Create plan') }}</DialogTitle>
             </DialogHeader>
             <form class="flex flex-col gap-4" @submit.prevent="submit">
                 <div class="grid gap-2">
-                    <Label for="plan-brand">Brand</Label>
+                    <Label for="plan-brand">{{ $t('Brand') }}</Label>
                     <select
                         id="plan-brand"
                         v-model="form.brand_id"
@@ -86,13 +86,15 @@ function submit(): void {
                     <InputError :message="form.errors.brand_id" />
                 </div>
                 <div class="grid gap-2">
-                    <Label for="plan-event">Event</Label>
+                    <Label for="plan-event">{{ $t('Event') }}</Label>
                     <select
                         id="plan-event"
                         v-model="form.eventId"
                         class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                     >
-                        <option value="" disabled>Choose an event</option>
+                        <option value="" disabled>
+                            {{ $t('Choose an event') }}
+                        </option>
                         <option
                             v-for="event in eventsForBrand"
                             :key="event.id"
@@ -104,18 +106,20 @@ function submit(): void {
                     <InputError :message="form.errors.eventId" />
                 </div>
                 <div class="grid gap-2">
-                    <Label for="plan-name">Name</Label>
+                    <Label for="plan-name">{{ $t('Name') }}</Label>
                     <Input id="plan-name" v-model="form.name" />
                     <InputError :message="form.errors.name" />
                 </div>
                 <div class="grid gap-2">
-                    <Label for="plan-floor">Floor label (optional)</Label>
+                    <Label for="plan-floor">{{
+                        $t('Floor label (optional)')
+                    }}</Label>
                     <Input id="plan-floor" v-model="form.floorLabel" />
                     <InputError :message="form.errors.floorLabel" />
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div class="grid gap-2">
-                        <Label for="plan-width">Width (mm)</Label>
+                        <Label for="plan-width">{{ $t('Width (mm)') }}</Label>
                         <Input
                             id="plan-width"
                             v-model.number="form.widthMm"
@@ -125,7 +129,7 @@ function submit(): void {
                         <InputError :message="form.errors.widthMm" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="plan-height">Height (mm)</Label>
+                        <Label for="plan-height">{{ $t('Height (mm)') }}</Label>
                         <Input
                             id="plan-height"
                             v-model.number="form.heightMm"
@@ -136,7 +140,7 @@ function submit(): void {
                     </div>
                 </div>
                 <Button type="submit" :disabled="form.processing">
-                    Create
+                    {{ $t('Create') }}
                 </Button>
             </form>
         </DialogContent>

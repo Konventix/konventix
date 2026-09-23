@@ -28,12 +28,14 @@ function href(slug: string): string {
 </script>
 
 <template>
-    <Head :title="`Turniere – ${props.page.event.name}`" />
+    <Head
+        :title="$t('Tournaments – :event', { event: props.page.event.name })"
+    />
 
     <div class="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6">
         <Heading
             as="h1"
-            title="Turniere"
+            :title="$t('Tournaments')"
             :description="props.page.event.name"
         />
 
@@ -41,7 +43,7 @@ function href(slug: string): string {
             v-if="props.page.competitions.length === 0"
             class="text-sm text-text-muted"
         >
-            Für diese Veranstaltung sind noch keine Turniere angekündigt.
+            {{ $t('No tournaments have been announced for this event yet.') }}
         </p>
 
         <ul v-else class="flex flex-col gap-3">
@@ -79,20 +81,20 @@ function href(slug: string): string {
                     class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4"
                 >
                     <div>
-                        <dt class="text-text-muted">Disziplin</dt>
+                        <dt class="text-text-muted">{{ $t('Discipline') }}</dt>
                         <dd class="text-text">
                             {{ competition.disciplineName }} ·
                             {{ teamSizeLabel(competition.teamSize) }}
                         </dd>
                     </div>
                     <div>
-                        <dt class="text-text-muted">Modus</dt>
+                        <dt class="text-text-muted">{{ $t('Format') }}</dt>
                         <dd class="text-text">
                             {{ formatLabel(competition.format) }}
                         </dd>
                     </div>
                     <div>
-                        <dt class="text-text-muted">Teams</dt>
+                        <dt class="text-text-muted">{{ $t('Teams') }}</dt>
                         <dd class="text-text">
                             {{ competition.entrants
                             }}<template v-if="competition.maxEntrants !== null">
@@ -101,7 +103,7 @@ function href(slug: string): string {
                         </dd>
                     </div>
                     <div>
-                        <dt class="text-text-muted">Start</dt>
+                        <dt class="text-text-muted">{{ $t('Starts') }}</dt>
                         <dd class="text-text">
                             {{
                                 competition.startsAt
@@ -109,7 +111,7 @@ function href(slug: string): string {
                                           competition.startsAt,
                                           props.page.event.timezone,
                                       )
-                                    : 'noch offen'
+                                    : $t('not set yet')
                             }}
                         </dd>
                     </div>

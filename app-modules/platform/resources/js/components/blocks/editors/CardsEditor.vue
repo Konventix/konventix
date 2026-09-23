@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Plus, Trash2 } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { useId } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,22 @@ const iconOptions = [
     'trophy',
     'users',
 ] as const;
+
+/** The words the select shows for those keys, looked up when rendered. */
+function iconLabel(icon: (typeof iconOptions)[number]): string {
+    const labels: Record<(typeof iconOptions)[number], string> = {
+        calendar: trans('Calendar'),
+        clock: trans('Clock'),
+        'map-pin': trans('Map pin'),
+        megaphone: trans('Megaphone'),
+        sparkles: trans('Sparkles'),
+        ticket: trans('Ticket'),
+        trophy: trans('Trophy'),
+        users: trans('People'),
+    };
+
+    return labels[icon];
+}
 
 const id = useId();
 
@@ -61,13 +78,15 @@ function removeCard(index: number): void {
         >
             <div class="flex items-center justify-between">
                 <p class="text-sm font-medium text-text">
-                    Card {{ index + 1 }}
+                    {{ $t('Card :number', { number: String(index + 1) }) }}
                 </p>
                 <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    :aria-label="`Remove card ${index + 1}`"
+                    :aria-label="
+                        $t('Remove card :number', { number: String(index + 1) })
+                    "
                     @click="removeCard(index)"
                 >
                     <Trash2 class="size-4" />
@@ -75,7 +94,7 @@ function removeCard(index: number): void {
             </div>
 
             <div class="grid gap-2">
-                <Label :for="`${id}-title-${index}`">Title</Label>
+                <Label :for="`${id}-title-${index}`">{{ $t('Title') }}</Label>
                 <Input
                     :id="`${id}-title-${index}`"
                     :model-value="card.title"
@@ -87,7 +106,7 @@ function removeCard(index: number): void {
             </div>
 
             <div class="grid gap-2">
-                <Label :for="`${id}-body-${index}`">Body</Label>
+                <Label :for="`${id}-body-${index}`">{{ $t('Body') }}</Label>
                 <textarea
                     :id="`${id}-body-${index}`"
                     :value="card.body"
@@ -105,7 +124,7 @@ function removeCard(index: number): void {
             </div>
 
             <div class="grid gap-2">
-                <Label :for="`${id}-icon-${index}`">Icon</Label>
+                <Label :for="`${id}-icon-${index}`">{{ $t('Icon') }}</Label>
                 <select
                     :id="`${id}-icon-${index}`"
                     class="rounded-md border border-border bg-surface px-3 py-2 text-sm"
@@ -118,13 +137,13 @@ function removeCard(index: number): void {
                         )
                     "
                 >
-                    <option value="">None</option>
+                    <option value="">{{ $t('None') }}</option>
                     <option
                         v-for="icon in iconOptions"
                         :key="icon"
                         :value="icon"
                     >
-                        {{ icon }}
+                        {{ iconLabel(icon) }}
                     </option>
                 </select>
                 <InputError :message="props.errors[`cards.${index}.icon`]" />
@@ -139,7 +158,7 @@ function removeCard(index: number): void {
             @click="addCard"
         >
             <Plus class="size-4" />
-            Add card
+            {{ $t('Add card') }}
         </Button>
     </div>
 </template>

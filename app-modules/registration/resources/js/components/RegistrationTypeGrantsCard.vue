@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
+import { grantKindLabel } from '../lib/labels';
 
 /**
  * The grants a confirmed registration of a type is entitled to (ADR-0005),
@@ -75,14 +76,15 @@ function changeKind(index: number, kind: string): void {
 <template>
     <Card>
         <CardHeader>
-            <CardTitle>Grants</CardTitle>
+            <CardTitle>{{ $t('Grants') }}</CardTitle>
         </CardHeader>
         <CardContent class="flex flex-col gap-4">
             <p class="text-sm text-text-muted">
-                What a confirmed registration of this type is entitled to.
-                Admission grants become badges; resource claims become bookings;
-                a seating grant lets the registrant pick places of the chosen
-                categories after confirmation.
+                {{
+                    $t(
+                        'What a confirmed registration of this type is entitled to. Admission grants become badges; resource claims become bookings; a seating grant lets the registrant pick places of the chosen categories after confirmation.',
+                    )
+                }}
             </p>
 
             <div
@@ -93,7 +95,7 @@ function changeKind(index: number, kind: string): void {
                 <select
                     :value="grant.kind"
                     :disabled="props.disabled"
-                    aria-label="Grant kind"
+                    :aria-label="$t('Grant kind')"
                     class="h-9 rounded-md border border-border bg-surface px-3 text-sm disabled:opacity-60"
                     @change="
                         changeKind(
@@ -107,28 +109,28 @@ function changeKind(index: number, kind: string): void {
                         :key="value"
                         :value="value"
                     >
-                        {{ value }}
+                        {{ grantKindLabel(value) }}
                     </option>
                 </select>
                 <Input
                     v-model="grant.role"
-                    placeholder="Role (visitor, exhibitor, crew…)"
+                    :placeholder="$t('Role (visitor, exhibitor, crew…)')"
                     :disabled="props.disabled"
-                    aria-label="Role"
+                    :aria-label="$t('Role')"
                 />
                 <Input
                     v-model.number="grant.quantity"
                     type="number"
                     min="1"
                     :disabled="props.disabled"
-                    aria-label="Quantity"
+                    :aria-label="$t('Quantity')"
                 />
                 <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     :disabled="props.disabled"
-                    aria-label="Remove grant"
+                    :aria-label="$t('Remove grant')"
                     @click="removeGrant(index)"
                 >
                     <Trash2 class="size-3.5" />
@@ -155,16 +157,21 @@ function changeKind(index: number, kind: string): void {
                         v-if="props.seatingSlots.length === 0"
                         class="text-sm text-warning sm:col-span-4"
                     >
-                        Seat categories come from the Resources module, which is
-                        switched off for this brand — a seating grant cannot be
-                        configured until it is on.
+                        {{
+                            $t(
+                                'Seat categories come from the Resources module, which is switched off for this brand — a seating grant cannot be configured until it is on.',
+                            )
+                        }}
                     </p>
                 </template>
             </div>
 
             <p v-if="model.length === 0" class="text-sm text-text-muted">
-                No grants — a registration of this type entitles its holder to
-                nothing yet.
+                {{
+                    $t(
+                        'No grants — a registration of this type entitles its holder to nothing yet.',
+                    )
+                }}
             </p>
 
             <div>
@@ -175,7 +182,7 @@ function changeKind(index: number, kind: string): void {
                     @click="addGrant"
                 >
                     <Plus class="size-4" />
-                    Add grant
+                    {{ $t('Add grant') }}
                 </Button>
             </div>
 

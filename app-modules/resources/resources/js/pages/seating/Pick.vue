@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import { ArrowLeft } from '@lucide/vue';
+import { trans, transChoice } from 'laravel-vue-i18n';
 import { computed, ref, watch } from 'vue';
 import AdmissionSeatController from '@/actions/Konventix/Resources/Http/Controllers/AdmissionSeatController';
 import SeatAvailabilityController from '@/actions/Konventix/Resources/Http/Controllers/SeatAvailabilityController';
@@ -15,8 +16,8 @@ import {
     selectWithSwap,
 } from '../../components/plan/eligibility';
 import {
-    ASSIGNED_BY_ORGANISER_MESSAGE,
-    NO_FREE_PLACES_MESSAGE,
+    assignedByOrganiserMessage,
+    noFreePlacesMessage,
     placeLabel,
     selectionAnnouncement,
 } from '../../components/plan/labels';
@@ -39,7 +40,7 @@ import { useAvailabilityPoll } from '../../components/plan/useAvailabilityPoll';
  * derived from that same polled map (`categoriesHaveFreePlace`), not a
  * flag computed once at render. `SeatSummarySlot.vue` has no poll of its
  * own and keeps reading the server's `SeatSummaryData.noFreePlaces`; both
- * render the same `NO_FREE_PLACES_MESSAGE` so the wording cannot drift.
+ * render the same `noFreePlacesMessage()` so the wording cannot drift.
  *
  * 2026-09-21 bugfix round: a click on another place at the cap swaps
  * (`selectWithSwap`, the oldest selection leaves) instead of refusing;
@@ -90,16 +91,21 @@ const assignedByOrganiser = computed(
     () => props.claim.seatingMode === 'assign',
 );
 const pageTitle = computed(() =>
-    assignedByOrganiser.value ? 'Your seat' : 'Choose your seat',
+    assignedByOrganiser.value ? trans('Your seat') : trans('Choose your seat'),
 );
 const pageDescription = computed(() =>
     assignedByOrganiser.value
-        ? ASSIGNED_BY_ORGANISER_MESSAGE
+        ? assignedByOrganiserMessage()
         : maxPlaces.value === 1
           ? perTicket.value
-              ? 'Pick the place this ticket sits on.'
-              : 'Pick one place from the categories your registration includes.'
-          : `Pick up to ${maxPlaces.value} places from the categories your registration includes.`,
+              ? trans('Pick the place this ticket sits on.')
+              : trans(
+                    'Pick one place from the categories your registration includes.',
+                )
+          : trans(
+                'Pick up to :count places from the categories your registration includes.',
+                { count: String(maxPlaces.value) },
+            ),
 );
 
 const activePlanId = ref(props.plans[0]?.id ?? '');
@@ -209,7 +215,11 @@ watch(availability, (places) => {
     const names = result.lost
         .map((id) => refById.value.get(id) ?? id)
         .join(', ');
-    hint.value = `${names} ${result.lost.length === 1 ? 'was' : 'were'} just taken by somebody else.`;
+    hint.value = transChoice(
+        '{1} :names was just taken by somebody else.|[2,*] :names were just taken by somebody else.',
+        result.lost.length,
+        { names },
+    );
 });
 </script>
 
@@ -227,7 +237,7 @@ watch(availability, (places) => {
                 class="mb-4 inline-flex items-center gap-2 text-sm text-text-muted hover:text-text"
             >
                 <ArrowLeft class="size-4" />
-                {{ perTicket ? 'Your ticket' : 'Your registration' }}
+                {{ perTicket ? $t('Your ticket') : $t('Your registration') }}
             </Link>
 
             <header class="mb-8 space-y-0.5">
@@ -256,7 +266,7 @@ watch(availability, (places) => {
             role="status"
             class="rounded-md border border-border bg-surface-raised p-4 text-sm text-text-muted"
         >
-            {{ ASSIGNED_BY_ORGANISER_MESSAGE }}
+            {{ assignedByOrganiserMessage() }}
         </p>
 
         <template v-else>
@@ -266,8 +276,11 @@ watch(availability, (places) => {
                 class="text-sm text-text-muted"
                 role="status"
             >
-                No seat plan has been published for this event yet. Come back
-                later.
+                {{
+                    $t(
+                        'No seat plan has been published for this event yet. Come back later.',
+                    )
+                }}
             </p>
 
             <template v-else>
@@ -276,7 +289,7 @@ watch(availability, (places) => {
                     role="status"
                     class="rounded-md border border-warning/40 bg-warning/15 p-4 text-sm text-warning-contrast"
                 >
-                    {{ NO_FREE_PLACES_MESSAGE }}
+                    {{ noFreePlacesMessage() }}
                 </p>
 
                 <PlanTabs

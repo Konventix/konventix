@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
 import { GripVertical, Trash2 } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -69,6 +70,11 @@ function addLink(): void {
     });
 }
 
+/** What the screen reader calls an entry: its label, or its position. */
+function entryName(link: FooterLink, index: number): string {
+    return link.label || trans('entry :number', { number: String(index + 1) });
+}
+
 function submit(): void {
     form.put(updateFooter().url, { preserveScroll: true });
 }
@@ -86,15 +92,18 @@ function submit(): void {
                 </div>
 
                 <p :id="hintId" class="sr-only">
-                    Drag an entry to reorder it, or focus its reorder handle and
-                    press the up or down arrow key.
+                    {{
+                        $t(
+                            'Drag an entry to reorder it, or focus its reorder handle and press the up or down arrow key.',
+                        )
+                    }}
                 </p>
 
                 <p
                     v-if="form.links.length === 0"
                     class="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-text-muted"
                 >
-                    No entries yet.
+                    {{ $t('No entries yet.') }}
                 </p>
 
                 <fieldset
@@ -122,24 +131,30 @@ function submit(): void {
                         >
                             <GripVertical class="size-4" />
                             <span class="sr-only">
-                                Reorder
-                                {{ link.label || `entry ${index + 1}` }},
-                                position {{ index + 1 }} of
-                                {{ form.links.length }}
+                                {{
+                                    $t(
+                                        'Reorder :name, position :position of :count',
+                                        {
+                                            name: entryName(link, index),
+                                            position: String(index + 1),
+                                            count: String(form.links.length),
+                                        },
+                                    )
+                                }}
                             </span>
                         </button>
-                        Entry {{ index + 1 }}
+                        {{ $t('Entry :number', { number: String(index + 1) }) }}
                     </legend>
 
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div class="grid gap-2">
                             <Label :for="`${hintId}-label-${index}`">
-                                Label
+                                {{ $t('Label') }}
                             </Label>
                             <Input
                                 :id="`${hintId}-label-${index}`"
                                 v-model="link.label"
-                                placeholder="Imprint"
+                                :placeholder="$t('Imprint')"
                             />
                             <InputError
                                 :message="form.errors[`links.${index}.label`]"
@@ -148,7 +163,7 @@ function submit(): void {
 
                         <div class="grid gap-2">
                             <Label :for="`${hintId}-kind-${index}`">
-                                Type
+                                {{ $t('Type') }}
                             </Label>
                             <Select v-model="link.kind">
                                 <SelectTrigger :id="`${hintId}-kind-${index}`">
@@ -156,10 +171,10 @@ function submit(): void {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="url">
-                                        Page link
+                                        {{ $t('Page link') }}
                                     </SelectItem>
                                     <SelectItem value="dialog">
-                                        In-page dialog
+                                        {{ $t('In-page dialog') }}
                                     </SelectItem>
                                 </SelectContent>
                             </Select>
@@ -168,7 +183,7 @@ function submit(): void {
 
                     <div v-if="link.kind === 'url'" class="grid gap-2">
                         <Label :for="`${hintId}-url-${index}`">
-                            Destination
+                            {{ $t('Destination') }}
                         </Label>
                         <Input
                             :id="`${hintId}-url-${index}`"
@@ -176,8 +191,11 @@ function submit(): void {
                             placeholder="/pages/imprint"
                         />
                         <p class="text-xs text-text-muted">
-                            A path on this site, an https:// address, or a
-                            mailto: address.
+                            {{
+                                $t(
+                                    'A path on this site, an https:// address, or a mailto: address.',
+                                )
+                            }}
                         </p>
                         <InputError
                             :message="form.errors[`links.${index}.url`]"
@@ -195,14 +213,14 @@ function submit(): void {
                                 :for="`${hintId}-newtab-${index}`"
                                 class="font-normal"
                             >
-                                Open in a new tab
+                                {{ $t('Open in a new tab') }}
                             </Label>
                         </div>
                     </div>
 
                     <div v-else class="grid gap-2">
                         <Label :for="`${hintId}-dialog-${index}`">
-                            Dialog key
+                            {{ $t('Dialog key') }}
                         </Label>
                         <Input
                             :id="`${hintId}-dialog-${index}`"
@@ -224,7 +242,11 @@ function submit(): void {
                             type="button"
                             variant="ghost"
                             size="icon"
-                            :aria-label="`Remove ${link.label || `entry ${index + 1}`}`"
+                            :aria-label="
+                                $t('Remove :name', {
+                                    name: entryName(link, index),
+                                })
+                            "
                             @click="form.links.splice(index, 1)"
                         >
                             <Trash2 class="size-4" />
@@ -239,19 +261,19 @@ function submit(): void {
                     class="self-start"
                     @click="addLink"
                 >
-                    Add entry
+                    {{ $t('Add entry') }}
                 </Button>
 
                 <div class="flex items-center gap-3">
                     <Button type="submit" :disabled="form.processing">
-                        Save
+                        {{ $t('Save') }}
                     </Button>
                     <span
                         v-if="form.isDirty"
                         role="status"
                         class="text-sm text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
             </form>

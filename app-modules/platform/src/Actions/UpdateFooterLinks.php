@@ -93,7 +93,7 @@ final class UpdateFooterLinks
 
             if ($missing) {
                 throw ValidationException::withMessages([
-                    $this->fieldFor($link, $index) => 'This entry needs a destination.',
+                    $this->fieldFor($link, $index) => __('This entry needs a destination.'),
                 ]);
             }
         }

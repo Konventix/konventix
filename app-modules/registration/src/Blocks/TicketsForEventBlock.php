@@ -82,7 +82,7 @@ final class TicketsForEventBlock implements BlockType, HasBlockEditor, ResolvesB
 
     public function label(): string
     {
-        return 'Tickets for event';
+        return __('Tickets for event');
     }
 
     public function editorComponent(): string

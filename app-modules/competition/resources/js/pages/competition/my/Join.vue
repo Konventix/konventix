@@ -19,7 +19,7 @@ import { edit as editLinkedAccounts } from '@/routes/linked-accounts';
  * same characters the server will look up — spaces and dashes out, upper
  * case, eight characters.
  *
- * Participant copy is German (ADR-0001).
+ * Copy comes from the catalog (ADR-0068).
  *
  * One refusal carries a second key, `linkedAccount` (design §5.6): the team
  * plays a competition that requires a linked account the person has not
@@ -53,18 +53,18 @@ function submit(): void {
 </script>
 
 <template>
-    <Head title="Team beitreten" />
+    <Head :title="$t('Join a team')" />
 
     <div class="mx-auto w-full max-w-md px-4 py-6">
         <Heading
             as="h1"
-            title="Team beitreten"
-            description="Gib den Einladungscode ein, den dein Captain geteilt hat."
+            :title="$t('Join a team')"
+            :description="$t('Enter the invite code your captain shared.')"
         />
 
         <form class="flex flex-col gap-4" @submit.prevent="submit">
             <div class="flex flex-col gap-2">
-                <Label for="invite-code">Einladungscode</Label>
+                <Label for="invite-code">{{ $t('Invite code') }}</Label>
                 <Input
                     id="invite-code"
                     v-model="form.code"
@@ -83,7 +83,11 @@ function submit(): void {
                     @blur="form.code = normalize(form.code)"
                 />
                 <p id="invite-code-hint" class="text-sm text-text-muted">
-                    Acht Zeichen. 0, O, 1 und I kommen in Codes nie vor.
+                    {{
+                        $t(
+                            'Eight characters. 0, O, 1 and I never appear in codes.',
+                        )
+                    }}
                 </p>
                 <InputError
                     id="invite-code-error"
@@ -93,7 +97,11 @@ function submit(): void {
                     <Link
                         :href="editLinkedAccounts().url"
                         class="underline underline-offset-4"
-                        >{{ missingLinkedAccount }}-Konto verknüpfen</Link
+                        >{{
+                            $t('Link your :provider account', {
+                                provider: missingLinkedAccount,
+                            })
+                        }}</Link
                     >
                 </p>
             </div>
@@ -102,7 +110,7 @@ function submit(): void {
                 type="submit"
                 :disabled="form.processing || form.code.length === 0"
             >
-                Beitreten
+                {{ $t('Join') }}
             </Button>
         </form>
     </div>

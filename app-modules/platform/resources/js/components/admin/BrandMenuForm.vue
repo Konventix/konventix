@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -55,7 +56,7 @@ function parentOptionsFor(item: MenuItem): { key: string; label: string }[] {
         .filter((candidate) => candidate.key !== item.key)
         .map((candidate) => ({
             key: candidate.key,
-            label: candidate.label || 'Unnamed group',
+            label: candidate.label || trans('Unnamed group'),
         }));
 }
 
@@ -134,21 +135,27 @@ function submit(): void {
                         {{ props.brandName }}
                     </h2>
                     <p class="text-sm text-text-muted">
-                        Shown in the topbar after the module entries, in this
-                        order.
+                        {{
+                            $t(
+                                'Shown in the topbar after the module entries, in this order.',
+                            )
+                        }}
                     </p>
                 </div>
 
                 <p :id="hintId" class="sr-only">
-                    Drag an entry to reorder it, or focus its reorder handle and
-                    press the up or down arrow key.
+                    {{
+                        $t(
+                            'Drag an entry to reorder it, or focus its reorder handle and press the up or down arrow key.',
+                        )
+                    }}
                 </p>
 
                 <p
                     v-if="form.items.length === 0"
                     class="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-text-muted"
                 >
-                    No entries yet.
+                    {{ $t('No entries yet.') }}
                 </p>
 
                 <BrandMenuItemFields
@@ -180,19 +187,19 @@ function submit(): void {
                     class="self-start"
                     @click="addItem"
                 >
-                    Add entry
+                    {{ $t('Add entry') }}
                 </Button>
 
                 <div class="flex items-center gap-3">
                     <Button type="submit" :disabled="form.processing">
-                        Save
+                        {{ $t('Save') }}
                     </Button>
                     <span
                         v-if="form.isDirty"
                         role="status"
                         class="text-sm text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
             </form>

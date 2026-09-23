@@ -30,7 +30,7 @@ final class EnsureActiveEvent
     public function handle(Request $request, Closure $next): Response
     {
         if (app(ActiveEventContext::class)->current() === null) {
-            Inertia::flash('toast', ['type' => 'info', 'message' => 'Kein laufendes Event, für das du eingecheckt bist.']);
+            Inertia::flash('toast', ['type' => 'info', 'message' => __('There is no running event you are checked in to.')]);
 
             return redirect()->to('/');
         }

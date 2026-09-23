@@ -169,7 +169,7 @@ class EntrantAdminController
 
         $this->run(fn () => $fill->handle($this->findEntrant($entrant), array_values($validated['userIds'])));
 
-        return $this->done('Roster filled.');
+        return $this->done(__('Roster filled.'));
     }
 
     public function decline(string $entrant, DeclineIncompleteEntrant $decline): RedirectResponse
@@ -178,7 +178,7 @@ class EntrantAdminController
 
         $this->run(fn () => $decline->handle($this->findEntrant($entrant)));
 
-        return $this->done('Entry declined; the slot is free.');
+        return $this->done(__('Entry declined; the slot is free.'));
     }
 
     public function withdraw(string $entrant, WithdrawEntrant $withdraw): RedirectResponse
@@ -187,7 +187,7 @@ class EntrantAdminController
 
         $this->run(fn () => $withdraw->handle($this->findEntrant($entrant), WithdrawalReason::OrganizerWithdrew));
 
-        return $this->done('Entry withdrawn.');
+        return $this->done(__('Entry withdrawn.'));
     }
 
     public function disqualify(string $entrant, DisqualifyEntrant $disqualify): RedirectResponse
@@ -196,7 +196,7 @@ class EntrantAdminController
 
         $this->run(fn () => $disqualify->handle($this->findEntrant($entrant)));
 
-        return $this->done('Entry disqualified; its pending matches are forfeited.');
+        return $this->done(__('Entry disqualified; its pending matches are forfeited.'));
     }
 
     public function renameTeam(Request $request, string $team, RenameTeam $rename): RedirectResponse
@@ -207,7 +207,7 @@ class EntrantAdminController
 
         $rename->handle($this->findTeam($team), $validated['name']);
 
-        return $this->done('Team renamed.');
+        return $this->done(__('Team renamed.'));
     }
 
     public function regenerateCode(string $team, RegenerateInviteCode $regenerate): RedirectResponse
@@ -216,7 +216,7 @@ class EntrantAdminController
 
         $regenerate->handle($this->findTeam($team));
 
-        return $this->done('New invite code issued.');
+        return $this->done(__('New invite code issued.'));
     }
 
     public function addMember(Request $request, string $team, AddTeamMember $add): RedirectResponse
@@ -227,7 +227,7 @@ class EntrantAdminController
 
         $this->run(fn () => $add->handle($this->findTeam($team), $validated['userId']));
 
-        return $this->done('Player added.');
+        return $this->done(__('Player added.'));
     }
 
     public function removeMember(Request $request, string $team, RemoveTeamMember $remove): RedirectResponse
@@ -238,7 +238,7 @@ class EntrantAdminController
 
         $this->run(fn () => $remove->handle($this->findTeam($team), $validated['userId']));
 
-        return $this->done('Player removed.');
+        return $this->done(__('Player removed.'));
     }
 
     public function moveMember(Request $request, string $team, MoveTeamMember $move): RedirectResponse
@@ -256,7 +256,7 @@ class EntrantAdminController
             $validated['userId'],
         ));
 
-        return $this->done('Player moved.');
+        return $this->done(__('Player moved.'));
     }
 
     /**
@@ -277,11 +277,10 @@ class EntrantAdminController
             // their ULIDs: the organizer has to tell them what to do.
             throw ValidationException::withMessages(['entrant' => $provider === null
                 ? $e->getMessage()
-                : sprintf(
-                    '%s must link a %s account first: a competition this team is entered in requires one.',
-                    implode(', ', ParticipantProfile::displayNamesFor($e->usersMissingTheLink())),
-                    $provider->label(),
-                ),
+                : __(':names must link a :provider account first: a competition this team is entered in requires one.', [
+                    'names' => implode(', ', ParticipantProfile::displayNamesFor($e->usersMissingTheLink())),
+                    'provider' => $provider->label(),
+                ]),
             ]);
         }
     }

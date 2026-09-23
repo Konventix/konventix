@@ -53,7 +53,7 @@ final class PlanWarnings
                         $warnings[] = new PlanWarningData(
                             code: PlanWarningCode::Overlap,
                             placeIds: [$a->id, $b->id],
-                            message: sprintf('Places %s and %s overlap.', self::name($a), self::name($b)),
+                            message: __('Places :first and :second overlap.', ['first' => self::name($a), 'second' => self::name($b)]),
                         );
                     }
                 }
@@ -81,7 +81,7 @@ final class PlanWarnings
                 $warnings[] = new PlanWarningData(
                     code: PlanWarningCode::OutsideZone,
                     placeIds: [$place->id],
-                    message: sprintf('Place %s lies outside every zone.', self::name($place)),
+                    message: __('Place :ref lies outside every zone.', ['ref' => self::name($place)]),
                 );
             }
         }

@@ -43,12 +43,12 @@ final class ConsoleCheckInRefusedException extends RuntimeException
 
     public static function alreadyIn(): self
     {
-        return new self(self::ALREADY_IN, 'This ticket is already checked in.');
+        return new self(self::ALREADY_IN, __('This ticket is already checked in.'));
     }
 
     public static function notIn(): self
     {
-        return new self(self::NOT_IN, 'This ticket is not checked in, so it cannot be checked out.');
+        return new self(self::NOT_IN, __('This ticket is not checked in, so it cannot be checked out.'));
     }
 
     /**
@@ -56,12 +56,12 @@ final class ConsoleCheckInRefusedException extends RuntimeException
      */
     public static function checksUnanswered(array $labels): self
     {
-        return new self(self::CHECKS_UNANSWERED, 'Answer every door check before checking this ticket in: '.implode(', ', $labels).'.');
+        return new self(self::CHECKS_UNANSWERED, __('Answer every door check before checking this ticket in: :checks.', ['checks' => implode(', ', $labels)]));
     }
 
     public static function checksInvalid(): self
     {
-        return new self(self::CHECKS_INVALID, 'The door check answers do not match the checks this ticket owes. Reload the ticket and try again.');
+        return new self(self::CHECKS_INVALID, __('The door check answers do not match the checks this ticket owes. Reload the ticket and try again.'));
     }
 
     public static function wrongEvent(string $sentence): self

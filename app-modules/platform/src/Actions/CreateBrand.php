@@ -74,7 +74,7 @@ final class CreateBrand
     private function guardUniqueness(BrandData $data): void
     {
         if (Brand::query()->where('slug', $data->slug)->exists()) {
-            throw ValidationException::withMessages(['slug' => 'This slug is already taken.']);
+            throw ValidationException::withMessages(['slug' => __('This slug is already taken.')]);
         }
 
         $taken = BrandDomain::query()
@@ -83,7 +83,7 @@ final class CreateBrand
 
         if ($taken->isNotEmpty()) {
             throw ValidationException::withMessages([
-                'hosts' => 'Already answering on: '.$taken->implode(', '),
+                'hosts' => __('Already answering on: :hosts', ['hosts' => $taken->implode(', ')]),
             ]);
         }
     }

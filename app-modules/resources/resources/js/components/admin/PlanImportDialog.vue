@@ -71,16 +71,16 @@ function submit(): void {
         <DialogTrigger as-child>
             <Button variant="outline">
                 <Upload class="size-4" />
-                Import
+                {{ $t('Import') }}
             </Button>
         </DialogTrigger>
         <DialogContent>
             <DialogHeader>
-                <DialogTitle>Import a plan document</DialogTitle>
+                <DialogTitle>{{ $t('Import a plan document') }}</DialogTitle>
             </DialogHeader>
             <form class="flex flex-col gap-4" @submit.prevent="submit">
                 <div class="grid gap-2">
-                    <Label for="import-brand">Brand</Label>
+                    <Label for="import-brand">{{ $t('Brand') }}</Label>
                     <select
                         id="import-brand"
                         v-model="form.brand_id"
@@ -97,13 +97,15 @@ function submit(): void {
                     <InputError :message="form.errors.brand_id" />
                 </div>
                 <div class="grid gap-2">
-                    <Label for="import-event">Event</Label>
+                    <Label for="import-event">{{ $t('Event') }}</Label>
                     <select
                         id="import-event"
                         v-model="form.eventId"
                         class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                     >
-                        <option value="" disabled>Choose an event</option>
+                        <option value="" disabled>
+                            {{ $t('Choose an event') }}
+                        </option>
                         <option
                             v-for="event in eventsForBrand"
                             :key="event.id"
@@ -115,12 +117,12 @@ function submit(): void {
                     <InputError :message="form.errors.eventId" />
                 </div>
                 <div class="grid gap-2">
-                    <Label for="import-name">Plan name</Label>
+                    <Label for="import-name">{{ $t('Plan name') }}</Label>
                     <Input id="import-name" v-model="form.name" />
                     <InputError :message="form.errors.name" />
                 </div>
                 <div class="grid gap-2">
-                    <Label for="import-file">Document (JSON)</Label>
+                    <Label for="import-file">{{ $t('Document (JSON)') }}</Label>
                     <input
                         id="import-file"
                         type="file"
@@ -133,14 +135,17 @@ function submit(): void {
                         "
                     />
                     <p class="text-xs text-text-muted">
-                        A <code>konventix.plan/v1</code> export. Element ids the
-                        export carries are kept; ids that already exist under
-                        another plan are refused.
+                        {{
+                            $t(
+                                'Element ids the export carries are kept; ids that already exist under another plan are refused. Expected format:',
+                            )
+                        }}
+                        <code>konventix.plan/v1</code>
                     </p>
                     <InputError :message="form.errors.file ?? documentError" />
                 </div>
                 <Button type="submit" :disabled="form.processing || !form.file">
-                    Import
+                    {{ $t('Import') }}
                 </Button>
             </form>
         </DialogContent>

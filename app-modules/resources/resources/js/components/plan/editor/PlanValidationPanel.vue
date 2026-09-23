@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import type { InvariantIssue } from './invariants';
 
@@ -28,11 +29,17 @@ const serverMessages = computed(() =>
         })),
 );
 
-const reasons: Record<Conflict['reason'], string> = {
-    deleted: 'would be deleted',
-    category_changed: 'would change category',
-    blocked: 'would be blocked',
-};
+// A lookup at call time, never a module constant: the words are catalog
+// entries (ADR-0068).
+function reasonText(reason: Conflict['reason']): string {
+    const reasons: Record<Conflict['reason'], string> = {
+        deleted: trans('would be deleted'),
+        category_changed: trans('would change category'),
+        blocked: trans('would be blocked'),
+    };
+
+    return reasons[reason];
+}
 
 const empty = computed(
     () =>
@@ -52,9 +59,11 @@ const empty = computed(
             id="plan-checks"
             class="text-xs font-semibold text-text-muted uppercase"
         >
-            Checks
+            {{ $t('Checks') }}
         </h2>
-        <p v-if="empty" class="mt-1 text-text-muted">Nothing to report.</p>
+        <p v-if="empty" class="mt-1 text-text-muted">
+            {{ $t('Nothing to report.') }}
+        </p>
         <ul v-else class="mt-1 flex flex-col gap-1">
             <li v-for="issue in issues" :key="issue.key">
                 <button
@@ -84,15 +93,19 @@ const empty = computed(
                     class="text-left text-warning hover:underline"
                     @click="emit('select', conflict.placeId)"
                 >
-                    {{ conflict.ref ?? conflict.label ?? conflict.placeId }}
-                    {{ reasons[conflict.reason] }} while
-                    {{ conflict.bookings.length }}
                     {{
-                        conflict.bookings.length === 1
-                            ? 'booking holds'
-                            : 'bookings hold'
+                        $tChoice(
+                            '{1} :place :reason while :count booking holds it.|[0,*] :place :reason while :count bookings hold it.',
+                            conflict.bookings.length,
+                            {
+                                place:
+                                    conflict.ref ??
+                                    conflict.label ??
+                                    conflict.placeId,
+                                reason: reasonText(conflict.reason),
+                            },
+                        )
                     }}
-                    it.
                 </button>
             </li>
             <!--
@@ -113,9 +126,11 @@ const empty = computed(
                     @click="emit('select', warning.placeIds[0])"
                 >
                     {{ warning.message }}
-                    <span v-if="warning.placeIds.length > 1" class="text-xs"
-                        >(+{{ warning.placeIds.length - 1 }} more)</span
-                    >
+                    <span v-if="warning.placeIds.length > 1" class="text-xs">{{
+                        $t('(+:count more)', {
+                            count: String(warning.placeIds.length - 1),
+                        })
+                    }}</span>
                 </button>
                 <span v-else class="text-text-muted">{{
                     warning.message

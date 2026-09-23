@@ -60,7 +60,7 @@ it('still refuses a participant without a proof, in German', function (): void {
         app(SubmitScoreEntry::class)->handle($stage, $entrant, new ScoreEntryData(value: 41.5), (string) Str::ulid());
         $this->fail('A participant score without a proof was accepted.');
     } catch (ValidationException $exception) {
-        expect($exception->errors()['proofMediaId'] ?? [])->toBe(['Dieses Turnier braucht zu jedem Ergebnis ein Beweisbild.']);
+        expect($exception->errors()['proofMediaId'] ?? [])->toBe(['This tournament needs a proof image with every result.']);
     }
 
     expect(ScoreEntry::query()->where('stage_id', $stage->getKey())->count())->toBe(0);

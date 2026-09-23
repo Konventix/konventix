@@ -32,7 +32,7 @@ use Konventix\Identity\Models\User;
  */
 function participantCopyGeneric(): string
 {
-    return 'Das hat nicht geklappt. Lade die Seite neu und versuch es noch einmal.';
+    return 'That did not work. Reload the page and try again.';
 }
 
 /**
@@ -129,19 +129,18 @@ it('answers a console-only cause with the generic German sentence', function ():
 
 it('fills the numbers and names in', function (): void {
     expect(CompetitionEntryException::competitionFull('x', 16)->participantMessage())
-        ->toBe('Dieses Turnier ist voll: alle 16 Plätze sind vergeben.')
+        ->toBe('This tournament is full: all 16 slots are taken.')
         ->and(CompetitionEntryException::rosterFull('t', 'c', 2, 3)->participantMessage())
-        ->toBe('Das Team wäre mit 3 Leuten zu groß: in einem seiner Turniere spielen höchstens 2 pro Team.')
+        ->toBe('With 3 people the team would be too big: one of its tournaments allows at most 2 per team.')
         ->and(CompetitionEntryException::rosterNotAtTheDoor('e', ['Mia', 'Tom'])->participantMessage())
-        ->toBe('Einchecken geht erst, wenn alle im Team am Einlass waren. Noch nicht eingelassen: Mia, Tom.');
+        ->toBe('Check-in opens once everyone on the team has been through the entrance. Not admitted yet: Mia, Tom.');
 });
 
 it('answers an unknown invite code with the join form\'s one sentence, and names no cause', function (): void {
     expect(CompetitionEntryException::unknownInviteCode('ZZZZZZZZ')->participantMessage())
         ->toBe(CompetitionEntryException::joinRefusal())
         ->and(CompetitionEntryException::joinRefusal())
-        ->toBe('Dieser Code passt nicht — er ist unbekannt, das Team ist voll, du bist schon dabei, '
-            .'oder du bist für diese Veranstaltung nicht angemeldet.');
+        ->toBe('This code does not work — it is unknown, the team is full, you are already on it, or you are not registered for this event.');
 });
 
 it('refuses interest from somebody without a registration in German', function (): void {
@@ -154,7 +153,7 @@ it('refuses interest from somebody without a registration in German', function (
     $this->actingAs($stranger)
         ->post('/tournaments/'.$competition->getKey().'/interest', ['note' => null])
         ->assertSessionHasErrors([
-            'note' => 'Dafür braucht es eine bestätigte Anmeldung zur Veranstaltung oder ein Ticket auf den eigenen Namen – für dich und für alle im Team.',
+            'note' => 'This needs a confirmed registration for the event or a ticket in your own name – for you and for everyone on the team.',
         ]);
 });
 
@@ -184,7 +183,7 @@ it('turns a proof away in German where the competition takes none', function ():
             'entrant_id' => (string) $field[0]->getKey(),
             'file' => UploadedFile::fake()->image('scoreboard.png'),
         ])
-        ->assertSessionHasErrors(['file' => 'Dieses Turnier nimmt keine Beweisbilder an.']);
+        ->assertSessionHasErrors(['file' => 'This tournament does not take proof images.']);
 
     expect(Storage::disk('media')->allFiles())->toBe([]);
 });
@@ -214,6 +213,6 @@ it('answers a match that moved on under the participant with one German sentence
 
         $this->fail('The refusal was not answered as a form error.');
     } catch (ValidationException $e) {
-        expect($e->errors())->toBe(['result' => ['Dieses Spiel hat sich inzwischen geändert. Lade die Seite neu.']]);
+        expect($e->errors())->toBe(['result' => ['This match has changed in the meantime. Reload the page.']]);
     }
 });

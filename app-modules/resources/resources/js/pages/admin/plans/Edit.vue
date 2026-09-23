@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, useHttp } from '@inertiajs/vue3';
 import { ArrowLeft, Plus, Save, ShieldCheck } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, onMounted, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { Button } from '@/components/ui/button';
@@ -102,16 +103,31 @@ usePlanShortcuts({
     deleteSelection,
 });
 
+const headerDescription = computed(() => {
+    const replacements = {
+        width: String(props.editor.plan.widthMm / 1000),
+        height: String(props.editor.plan.heightMm / 1000),
+        version: String(saver.version.value),
+    };
+
+    return props.editor.publishedAt
+        ? trans(
+              ':width × :height m · version :version · published',
+              replacements,
+          )
+        : trans(':width × :height m · version :version', replacements);
+});
+
 onMounted(() => canvas.value?.fitAll());
 </script>
 
 <template>
-    <Head :title="`${props.editor.plan.name} — Plan`" />
+    <Head :title="$t(':name — Plan', { name: props.editor.plan.name })" />
 
     <div class="flex h-[calc(100vh-11rem)] min-h-[36rem] flex-col gap-4">
         <AdminPageHeader
             :title="props.editor.plan.name"
-            :description="`${props.editor.plan.widthMm / 1000} × ${props.editor.plan.heightMm / 1000} m · version ${saver.version.value}${props.editor.publishedAt ? ' · published' : ''}`"
+            :description="headerDescription"
         >
             <PlanSavePill
                 :status="saver.status.value"
@@ -124,7 +140,7 @@ onMounted(() => canvas.value?.fitAll());
                 @click="createGroupOpen = true"
             >
                 <Plus class="size-4" />
-                Add group
+                {{ $t('Add group') }}
             </Button>
             <Button
                 type="button"
@@ -133,16 +149,16 @@ onMounted(() => canvas.value?.fitAll());
                 @click="saver.validate()"
             >
                 <ShieldCheck class="size-4" />
-                Check
+                {{ $t('Check') }}
             </Button>
             <Button type="button" :disabled="!canSave" @click="saver.save()">
                 <Save class="size-4" />
-                Save
+                {{ $t('Save') }}
             </Button>
             <Button variant="outline" as-child>
                 <Link :href="plansIndex().url">
                     <ArrowLeft class="size-4" />
-                    All plans
+                    {{ $t('All plans') }}
                 </Link>
             </Button>
         </AdminPageHeader>
@@ -152,7 +168,7 @@ onMounted(() => canvas.value?.fitAll());
         >
             <aside
                 class="min-h-0 overflow-hidden rounded-md border border-border bg-surface"
-                aria-label="Elements"
+                :aria-label="$t('Elements')"
             >
                 <PlanElementTree :store="store" />
             </aside>
@@ -188,7 +204,7 @@ onMounted(() => canvas.value?.fitAll());
 
             <aside
                 class="min-h-0 overflow-y-auto rounded-md border border-border bg-surface"
-                aria-label="Inspector"
+                :aria-label="$t('Inspector')"
             >
                 <PlanInspector
                     :store="store"

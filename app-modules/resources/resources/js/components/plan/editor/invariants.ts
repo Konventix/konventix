@@ -1,3 +1,5 @@
+import { trans } from 'laravel-vue-i18n';
+import { elementKindLabel } from '../labels';
 import type { PlanDocument, PlanElement } from './document';
 import { ALLOWED_PARENTS } from './document';
 
@@ -65,7 +67,12 @@ export function checkInvariants(
 
     document.elements.forEach((element, index) => {
         if (byId.has(element.id)) {
-            report(index, element, 'id', `Id ${element.id} is used twice.`);
+            report(
+                index,
+                element,
+                'id',
+                trans('Id :id is used twice.', { id: element.id }),
+            );
         } else {
             byId.set(element.id, { element, index });
         }
@@ -80,7 +87,7 @@ export function checkInvariants(
                     index,
                     element,
                     'parentId',
-                    'The parent does not exist.',
+                    trans('The parent does not exist.'),
                 );
             } else if (
                 !ALLOWED_PARENTS[element.kind].includes(parent.element.kind)
@@ -89,14 +96,21 @@ export function checkInvariants(
                     index,
                     element,
                     'parentId',
-                    `A ${element.kind} cannot sit inside a ${parent.element.kind}.`,
+                    trans('A :kind cannot sit inside a :parent.', {
+                        // Lower-cased for the English sentence; a catalog
+                        // that capitalises nouns writes `:Kind`/`:Parent`.
+                        kind: elementKindLabel(element.kind).toLowerCase(),
+                        parent: elementKindLabel(
+                            parent.element.kind,
+                        ).toLowerCase(),
+                    }),
                 );
             } else if (hasCycle(byId, element)) {
                 report(
                     index,
                     element,
                     'parentId',
-                    'The parent chain loops back to this element.',
+                    trans('The parent chain loops back to this element.'),
                 );
             }
         }
@@ -107,7 +121,7 @@ export function checkInvariants(
                     index,
                     element,
                     'ref',
-                    `Ref ${element.ref} is used twice.`,
+                    trans('Ref :ref is used twice.', { ref: element.ref }),
                 );
             } else {
                 refs.add(element.ref);
@@ -120,21 +134,21 @@ export function checkInvariants(
                     index,
                     element,
                     'resourceTypeId',
-                    'A place needs a category.',
+                    trans('A place needs a category.'),
                 );
             } else if (!(element.resourceTypeId in categories)) {
                 report(
                     index,
                     element,
                     'resourceTypeId',
-                    'The category does not belong to this event.',
+                    trans('The category does not belong to this event.'),
                 );
             } else if (categories[element.resourceTypeId] !== 'unit') {
                 report(
                     index,
                     element,
                     'resourceTypeId',
-                    'The category must be in unit mode to hold a place.',
+                    trans('The category must be in unit mode to hold a place.'),
                 );
             }
         }
@@ -147,7 +161,7 @@ export function checkInvariants(
                 index,
                 element,
                 'shape.points',
-                'A polygon needs at least three points.',
+                trans('A polygon needs at least three points.'),
             );
         }
     });

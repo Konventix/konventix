@@ -79,7 +79,7 @@ final class TicketDownloadController
     public function holder(Request $request, Admission $admission, TicketDocumentRenderer $renderer): SymfonyResponse
     {
         abort_unless($admission->holder_user_id === (string) $request->user()->getAuthIdentifier(), 403);
-        abort_if($admission->state === AdmissionState::Revoked, 404, 'This ticket has been revoked.');
+        abort_if($admission->state === AdmissionState::Revoked, 404, __('This ticket has been revoked.'));
 
         $bytes = $renderer->render(collect([$admission]));
 

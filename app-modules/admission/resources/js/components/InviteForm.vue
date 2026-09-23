@@ -44,11 +44,11 @@ function submit(withAddress: boolean): void {
 <template>
     <form
         class="flex flex-col gap-3 rounded-md border border-border bg-surface-muted p-3"
-        aria-label="Invite somebody to hold this ticket"
+        :aria-label="$t('Invite somebody to hold this ticket')"
         @submit.prevent="submit(true)"
     >
         <div class="grid gap-1">
-            <Label :for="`${id}-email`">Their e-mail address</Label>
+            <Label :for="`${id}-email`">{{ $t('Their email address') }}</Label>
             <Input
                 :id="`${id}-email`"
                 v-model="form.email"
@@ -71,7 +71,7 @@ function submit(withAddress: boolean): void {
                 :disabled="form.processing || form.email.trim() === ''"
             >
                 <Mail class="size-4" />
-                Send invitation
+                {{ $t('Send invitation') }}
             </Button>
             <Button
                 type="button"
@@ -81,11 +81,14 @@ function submit(withAddress: boolean): void {
                 @click="submit(false)"
             >
                 <Link2 class="size-4" />
-                Create a link to copy
+                {{ $t('Create a link to copy') }}
             </Button>
             <span class="text-xs text-text-muted">
-                A mailed invitation works only for that address. A copied link
-                works for whoever opens it first.
+                {{
+                    $t(
+                        'A mailed invitation works only for that address. A copied link works for whoever opens it first.',
+                    )
+                }}
             </span>
         </div>
     </form>

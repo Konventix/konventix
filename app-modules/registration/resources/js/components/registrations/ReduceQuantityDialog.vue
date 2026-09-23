@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import { reduceQuantity } from '@/routes/admin/registrations';
+import { quantityReductionReasonLabel } from '../../lib/labels';
 import type { RegistrationRow } from './rows';
 
 /**
@@ -72,15 +73,6 @@ const maxUnits = computed(() =>
     props.registration ? props.registration.quantity - 1 : 1,
 );
 
-function reasonLabel(value: string): string {
-    return value
-        .split('-')
-        .map((part, index) =>
-            index === 0 ? part[0].toUpperCase() + part.slice(1) : part,
-        )
-        .join(' ');
-}
-
 function submit(): void {
     if (props.registration === null) {
         return;
@@ -106,23 +98,23 @@ function submit(): void {
     >
         <DialogContent>
             <DialogHeader>
-                <DialogTitle>Reduce registration</DialogTitle>
+                <DialogTitle>{{ $t('Reduce registration') }}</DialogTitle>
                 <DialogDescription>
-                    Give back units of
-                    {{ registration?.registrant }}'s registration. The quota
-                    units return to the waitlist, that many admissions are
-                    revoked, and the money for exactly those units is sent back
-                    with a credit note. Admissions that already have a holder, a
-                    seat or a check-in are never taken — if there are not enough
-                    free ones, nothing happens at all.
+                    {{
+                        $t(
+                            'Give back units of :name’s registration. The quota units return to the waitlist, that many admissions are revoked, and the money for exactly those units is sent back with a credit note. Admissions that already have a holder, a seat or a check-in are never taken — if there are not enough free ones, nothing happens at all.',
+                            { name: registration?.registrant ?? '' },
+                        )
+                    }}
                 </DialogDescription>
             </DialogHeader>
             <form class="flex flex-col gap-4" @submit.prevent="submit">
                 <div class="grid gap-2">
-                    <Label for="reduce-units"
-                        >Units to remove (of
-                        {{ registration?.quantity }})</Label
-                    >
+                    <Label for="reduce-units">{{
+                        $t('Units to remove (of :quantity)', {
+                            quantity: String(registration?.quantity ?? ''),
+                        })
+                    }}</Label>
                     <Input
                         id="reduce-units"
                         v-model.number="form.units"
@@ -140,7 +132,7 @@ function submit(): void {
                     />
                 </div>
                 <div class="grid gap-2">
-                    <Label for="reduce-reason">Reason</Label>
+                    <Label for="reduce-reason">{{ $t('Reason') }}</Label>
                     <select
                         id="reduce-reason"
                         v-model="form.reasonCode"
@@ -155,13 +147,15 @@ function submit(): void {
                         "
                     >
                         <!-- Disabled, so it can be read but not chosen. -->
-                        <option :value="null" disabled>Choose a reason</option>
+                        <option :value="null" disabled>
+                            {{ $t('Choose a reason') }}
+                        </option>
                         <option
                             v-for="reason in props.reasons"
                             :key="reason"
                             :value="reason"
                         >
-                            {{ reasonLabel(reason) }}
+                            {{ quantityReductionReasonLabel(reason) }}
                         </option>
                     </select>
                     <InputError
@@ -170,7 +164,7 @@ function submit(): void {
                     />
                 </div>
                 <div class="grid gap-2">
-                    <Label for="reduce-note">Note (optional)</Label>
+                    <Label for="reduce-note">{{ $t('Note (optional)') }}</Label>
                     <textarea
                         id="reduce-note"
                         v-model="form.reasonNote"
@@ -197,16 +191,16 @@ function submit(): void {
                         :disabled="form.processing"
                         @click="emit('close')"
                     >
-                        Cancel
+                        {{ $t('Cancel') }}
                     </Button>
                     <Button type="submit" :disabled="form.processing">
-                        Remove units
+                        {{ $t('Remove units') }}
                     </Button>
                     <span
                         v-if="form.isDirty"
                         class="text-sm text-warning"
                         role="status"
-                        >Unsaved changes</span
+                        >{{ $t('Unsaved changes') }}</span
                     >
                 </div>
             </form>

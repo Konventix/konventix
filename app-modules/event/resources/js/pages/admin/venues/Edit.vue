@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -74,18 +75,30 @@ function toCoordinate(value: string | number | null): number | null {
     return text === '' || Number.isNaN(Number(text)) ? null : Number(text);
 }
 
+/** The four coordinate boxes, labelled from the catalog at setup time. */
+const coordinateFields = [
+    { key: 'latitude', label: trans('Building latitude') },
+    { key: 'longitude', label: trans('Building longitude') },
+    { key: 'entryLatitude', label: trans('Entrance latitude') },
+    { key: 'entryLongitude', label: trans('Entrance longitude') },
+] as const;
+
 function textOrNull(value: string | number | null): string | null {
     return String(value) || null;
 }
 </script>
 
 <template>
-    <Head :title="`Edit — ${props.venue.name}`" />
+    <Head :title="$t('Edit — :name', { name: props.venue.name })" />
 
     <div class="flex max-w-3xl flex-col gap-6">
         <AdminPageHeader
             :title="props.venue.name"
-            description="Address, arrival, pictures — what the venue's public page shows"
+            :description="
+                $t(
+                    'Address, arrival, pictures — what the venue\'s public page shows',
+                )
+            "
         >
             <div class="flex items-center gap-4 text-sm text-text-muted">
                 <a
@@ -93,17 +106,19 @@ function textOrNull(value: string | number | null): string | null {
                     :href="showVenue(props.venue.slug).url"
                     class="hover:text-text"
                 >
-                    Public page
+                    {{ $t('Public page') }}
                 </a>
                 <Link :href="venuesIndex().url" class="hover:text-text">
-                    All venues
+                    {{ $t('All venues') }}
                 </Link>
             </div>
         </AdminPageHeader>
 
         <form class="flex flex-col gap-6" @submit.prevent="submit">
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Details</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{ $t('Details') }}</CardTitle></CardHeader
+                >
                 <CardContent>
                     <VenueAddressFields
                         v-model:name="form.name"
@@ -119,12 +134,16 @@ function textOrNull(value: string | number | null): string | null {
             </Card>
 
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Description</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{ $t('Description') }}</CardTitle></CardHeader
+                >
                 <CardContent>
                     <VenueTextArea
                         id="venue-description"
                         v-model="form.description"
-                        label="What this place is, in the visitor's words"
+                        :label="
+                            $t('What this place is, in the visitor\'s words')
+                        "
                         :rows="5"
                         :error="form.errors.description"
                     />
@@ -132,21 +151,12 @@ function textOrNull(value: string | number | null): string | null {
             </Card>
 
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Coordinates</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{ $t('Coordinates') }}</CardTitle></CardHeader
+                >
                 <CardContent class="grid gap-4 sm:grid-cols-2">
                     <div
-                        v-for="field in [
-                            { key: 'latitude', label: 'Building latitude' },
-                            { key: 'longitude', label: 'Building longitude' },
-                            {
-                                key: 'entryLatitude',
-                                label: 'Entrance latitude',
-                            },
-                            {
-                                key: 'entryLongitude',
-                                label: 'Entrance longitude',
-                            },
-                        ] as const"
+                        v-for="field in coordinateFields"
                         :key="field.key"
                         class="grid gap-2"
                     >
@@ -165,32 +175,43 @@ function textOrNull(value: string | number | null): string | null {
                         <InputError :message="form.errors[field.key]" />
                     </div>
                     <p class="text-xs text-text-muted sm:col-span-2">
-                        The entrance is what "Open in maps" sends a visitor to;
-                        without it the building's own pin is used.
+                        {{
+                            $t(
+                                'The entrance is what "Open in maps" sends a visitor to; without it the building\'s own pin is used.',
+                            )
+                        }}
                     </p>
                 </CardContent>
             </Card>
 
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Getting there</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{
+                        $t('Getting there')
+                    }}</CardTitle></CardHeader
+                >
                 <CardContent class="flex flex-col gap-4">
                     <VenueTextArea
                         id="venue-transport"
                         v-model="form.publicTransport"
-                        label="Public transport"
+                        :label="$t('Public transport')"
                         :error="form.errors.publicTransport"
                     />
                     <VenueTextArea
                         id="venue-access"
                         v-model="form.accessNotes"
-                        label="Access notes"
+                        :label="$t('Access notes')"
                         :error="form.errors.accessNotes"
                     />
                 </CardContent>
             </Card>
 
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Opening times</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{
+                        $t('Opening times')
+                    }}</CardTitle></CardHeader
+                >
                 <CardContent>
                     <VenueOpeningTimesFields
                         v-model="form.openingTimes"
@@ -200,11 +221,15 @@ function textOrNull(value: string | number | null): string | null {
             </Card>
 
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Parking spots</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{
+                        $t('Parking spots')
+                    }}</CardTitle></CardHeader
+                >
                 <CardContent>
                     <VenuePlacesFields
                         v-model="form.parkingSpots"
-                        item-label="Parking spot"
+                        :item-label="$t('Parking spot')"
                         field-prefix="parkingSpots"
                         :errors="form.errors"
                     />
@@ -212,11 +237,15 @@ function textOrNull(value: string | number | null): string | null {
             </Card>
 
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Loading zones</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{
+                        $t('Loading zones')
+                    }}</CardTitle></CardHeader
+                >
                 <CardContent>
                     <VenuePlacesFields
                         v-model="form.loadingZones"
-                        item-label="Loading zone"
+                        :item-label="$t('Loading zone')"
                         field-prefix="loadingZones"
                         :errors="form.errors"
                     />
@@ -225,11 +254,11 @@ function textOrNull(value: string | number | null): string | null {
 
             <Card class="border-border bg-surface">
                 <CardHeader>
-                    <CardTitle>Seat plan reference</CardTitle>
+                    <CardTitle>{{ $t('Seat plan reference') }}</CardTitle>
                 </CardHeader>
                 <CardContent class="grid gap-2">
                     <Label for="venue-seat-plan">
-                        How the hall's seating is named here
+                        {{ $t("How the hall's seating is named here") }}
                     </Label>
                     <Input
                         id="venue-seat-plan"
@@ -243,7 +272,9 @@ function textOrNull(value: string | number | null): string | null {
             </Card>
 
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Images</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{ $t('Images') }}</CardTitle></CardHeader
+                >
                 <CardContent>
                     <VenueImageList
                         v-model:ids="form.imageMediaIds"
@@ -259,14 +290,14 @@ function textOrNull(value: string | number | null): string | null {
 
             <div class="flex items-center gap-3 self-start">
                 <Button type="submit" :disabled="form.processing">
-                    Save changes
+                    {{ $t('Save changes') }}
                 </Button>
                 <span
                     v-if="form.isDirty"
                     role="status"
                     class="text-sm text-warning"
                 >
-                    Unsaved changes
+                    {{ $t('Unsaved changes') }}
                 </span>
             </div>
         </form>

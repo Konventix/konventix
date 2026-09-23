@@ -62,7 +62,11 @@ function submit(): void {
         <DialogContent>
             <DialogHeader>
                 <DialogTitle>
-                    Schedule {{ props.match ? matchLabel(props.match) : '' }}
+                    {{
+                        $t('Schedule :match', {
+                            match: props.match ? matchLabel(props.match) : '',
+                        })
+                    }}
                 </DialogTitle>
             </DialogHeader>
 
@@ -70,7 +74,7 @@ function submit(): void {
                 <DateTimeField
                     id="desk-match-scheduled-at"
                     v-model="form.scheduledAt"
-                    label="Starts at"
+                    :label="$t('Starts at')"
                     :error="form.errors.scheduledAt"
                     required
                 />
@@ -78,7 +82,7 @@ function submit(): void {
 
                 <div class="flex justify-end">
                     <Button type="submit" :disabled="form.processing">
-                        Save time
+                        {{ $t('Save time') }}
                     </Button>
                 </div>
             </form>

@@ -295,7 +295,7 @@ class CompetitionServiceProvider extends ModuleServiceProvider
      *
      * The closures resolve their builders per request, so the singleton
      * registry captures nothing of one (`.ai/rules/providers.md`). Orders
-     * 40 and 41 put them after Agenda's *Jetzt / Gleich* (20) and
+     * 40 and 41 put them after Agenda's *Now / Next* (20) and
      * Community's *Shoutbox* (30).
      */
     protected function registerHub(): void
@@ -304,7 +304,7 @@ class CompetitionServiceProvider extends ModuleServiceProvider
             new HubCard(
                 module: 'competition',
                 key: 'competition.next-games',
-                label: 'Nächste Spiele',
+                label: 'Next games',
                 component: 'competition/hub/NextGamesCard',
                 payload: static fn (ActiveEventData $event, Authenticatable $user): NextGamesCardData => app(NextGamesCard::class)($event, $user),
                 order: 40,
@@ -312,7 +312,7 @@ class CompetitionServiceProvider extends ModuleServiceProvider
             new HubCard(
                 module: 'competition',
                 key: 'competition.my-competitions',
-                label: 'Meine Competitions',
+                label: 'My competitions',
                 component: 'competition/hub/MyCompetitionsCard',
                 payload: static fn (ActiveEventData $event, Authenticatable $user): MyCompetitionsCardData => app(MyCompetitionsCard::class)($event, $user),
                 order: 41,
@@ -426,8 +426,8 @@ class CompetitionServiceProvider extends ModuleServiceProvider
     /**
      * The two messages §5.4 owes people, plus the one §8.2 does.
      *
-     * Participant copy is German (ADR-0001) and so is the default locale;
-     * the English bodies exist for an account whose locale says so.
+     * Both locales ship (ADR-0068); English is the default and the fallback,
+     * and the German bodies address the reader as *du*.
      *
      * Two keys rather than one template branching on `@if ($filled)`: the
      * caller knows which of the two happened, and a Blade directive glued to
@@ -461,11 +461,11 @@ class CompetitionServiceProvider extends ModuleServiceProvider
                     <p>Your teams and entries are under "My tournaments".</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'competitionName' => 'Counter-Strike 2 — 5v5',
                 'teamName' => 'Die Kellerkinder',
-                'detail' => 'Die Turnierleitung hat dich für dieses Turnier ins Team aufgenommen.',
+                'detail' => 'The organizers added you to the team for this tournament.',
             ],
         ));
 
@@ -505,11 +505,11 @@ class CompetitionServiceProvider extends ModuleServiceProvider
                     <p>Confirm it or report your own result under "My tournaments".</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'competitionName' => 'Counter-Strike 2 — 5v5',
                 'teamName' => 'Die Kellerkinder',
-                'detail' => 'Euer Gegner hat ein Ergebnis gemeldet.',
+                'detail' => 'The opposing team reported a result. Confirm it or report your own.',
             ],
         ));
 
@@ -538,11 +538,11 @@ class CompetitionServiceProvider extends ModuleServiceProvider
                     <p>The match and, later, the decision are under "My tournaments".</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'competitionName' => 'Counter-Strike 2 — 5v5',
                 'teamName' => 'Die Kellerkinder',
-                'detail' => 'Euer Gegner hat das Ergebnis angefochten. Die Turnierleitung entscheidet.',
+                'detail' => 'Your opponent disputed the result. The organizers decide.',
             ],
         ));
 
@@ -568,11 +568,11 @@ class CompetitionServiceProvider extends ModuleServiceProvider
                     <p>Your matches are under "My tournaments".</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'competitionName' => 'Counter-Strike 2 — 5v5',
                 'teamName' => 'Die Kellerkinder',
-                'detail' => 'Die Turnierleitung hat euer Team eingecheckt.',
+                'detail' => 'The organizers checked your team in.',
             ],
         ));
 
@@ -598,11 +598,11 @@ class CompetitionServiceProvider extends ModuleServiceProvider
                     <p>The slot is free again. Talk to the organizers if you can field a full roster.</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'competitionName' => 'Counter-Strike 2 — 5v5',
                 'teamName' => 'Die Kellerkinder',
-                'detail' => 'Das Team war beim Anmeldeschluss nicht vollzählig.',
+                'detail' => 'The team was not complete when signup closed.',
             ],
         ));
     }

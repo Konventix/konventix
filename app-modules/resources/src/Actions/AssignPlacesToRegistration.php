@@ -158,7 +158,7 @@ final class AssignPlacesToRegistration
             }
 
             if (count($placeIds) > $locked->quantity) {
-                throw $this->refuse(__('You may choose at most :count place(s).', ['count' => $locked->quantity]));
+                throw $this->refuse(trans_choice('{1} You may choose at most :count place.|[2,*] You may choose at most :count places.', $locked->quantity));
             }
 
             $places = $this->eligiblePlaces($locked, $placeIds);

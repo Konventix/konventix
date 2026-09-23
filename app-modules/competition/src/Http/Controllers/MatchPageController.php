@@ -54,7 +54,7 @@ final class MatchPageController
 
         $this->attempt(fn () => $report->handle($model, $side, $data, $userId), 'scores');
 
-        return $this->done(__('Ergebnis gemeldet.'));
+        return $this->done(__('Result reported.'));
     }
 
     public function confirm(Request $request, string $competition, string $match, TournamentPages $pages, ConfirmMatchResult $confirm): RedirectResponse
@@ -63,7 +63,7 @@ final class MatchPageController
 
         $this->attempt(fn () => $confirm->handle($model, $side, $userId), 'result');
 
-        return $this->done(__('Ergebnis bestätigt.'));
+        return $this->done(__('Result confirmed.'));
     }
 
     public function dispute(Request $request, string $competition, string $match, TournamentPages $pages, DisputeMatchResult $dispute): RedirectResponse
@@ -73,7 +73,7 @@ final class MatchPageController
 
         $this->attempt(fn () => $dispute->handle($model, $side, $data->reason, $userId), 'reason');
 
-        return $this->done(__('Ergebnis angefochten. Die Turnierleitung entscheidet.'));
+        return $this->done(__('Result disputed. The organizers decide.'));
     }
 
     /**

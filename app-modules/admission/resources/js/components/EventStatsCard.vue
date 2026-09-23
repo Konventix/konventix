@@ -50,7 +50,9 @@ watch(
 
 <template>
     <div class="col-span-full flex flex-col gap-4 lg:col-span-1">
-        <h2 class="text-lg font-semibold text-text">Admissions</h2>
+        <h2 class="text-lg font-semibold text-text">
+            {{ $t('Admissions') }}
+        </h2>
 
         <div v-if="loading" class="grid grid-cols-2 gap-4">
             <Skeleton v-for="i in 2" :key="i" class="h-24 w-full" />
@@ -59,19 +61,21 @@ watch(
         <template v-else-if="stats">
             <div class="grid grid-cols-2 gap-4">
                 <StatCard
-                    title="Issued"
+                    :title="$t('Issued')"
                     :value="stats.counts.issued ?? 0"
-                    :subtext="`of ${stats.total} total`"
+                    :subtext="
+                        $t('of :total total', { total: String(stats.total) })
+                    "
                 />
                 <StatCard
-                    title="Assigned"
+                    :title="$t('Assigned')"
                     :value="stats.counts.assigned ?? 0"
                 />
             </div>
         </template>
 
         <p v-else class="text-sm text-danger">
-            Could not load admission stats.
+            {{ $t('Could not load admission stats.') }}
         </p>
     </div>
 </template>

@@ -63,7 +63,9 @@ function onToggle(conditionId: string, checked: boolean): void {
         class="grid gap-4 border-t border-border pt-4"
         data-test="entry-conditions"
     >
-        <legend class="text-sm font-medium text-text">Please confirm</legend>
+        <legend class="text-sm font-medium text-text">
+            {{ $t('Please confirm') }}
+        </legend>
 
         <EntryConditionCheckbox
             v-for="condition in props.conditions"
@@ -81,7 +83,7 @@ function onToggle(conditionId: string, checked: boolean): void {
             v-if="props.alternativeRegistrationTypeId"
             class="text-sm text-text-muted"
         >
-            Not eligible?
+            {{ $t('Not eligible?') }}
             <Link
                 :href="
                     RegistrationController.show.url({
@@ -91,7 +93,11 @@ function onToggle(conditionId: string, checked: boolean): void {
                 "
                 class="text-accent hover:underline"
             >
-                Buy the {{ props.alternativeRegistrationTypeName }} instead
+                {{
+                    $t('Buy the :type instead', {
+                        type: props.alternativeRegistrationTypeName ?? '',
+                    })
+                }}
             </Link>
         </p>
     </fieldset>

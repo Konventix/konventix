@@ -6,6 +6,11 @@ import { formatDateTime } from '@/lib/datetime';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { show as showEvent } from '@/routes/event';
 import { index as myRegistrations } from '@/routes/registration/mine';
+import {
+    grantKindLabel,
+    paymentStatusLabel,
+    registrationStatusLabel,
+} from '../../../lib/labels';
 
 /**
  * One of the registrant's own registrations. Deliberately a record rather
@@ -91,7 +96,7 @@ const confirmedLabel = computed(() =>
                 class="mb-4 inline-flex items-center gap-2 text-sm text-text-muted hover:text-text"
             >
                 <ArrowLeft class="size-4" />
-                My registrations
+                {{ $t('My registrations') }}
             </Link>
 
             <header class="mb-8 space-y-0.5">
@@ -120,7 +125,7 @@ const confirmedLabel = computed(() =>
                         'bg-subtle text-text'
                     "
                 >
-                    {{ props.registration.status }}
+                    {{ registrationStatusLabel(props.registration.status) }}
                 </span>
                 <span
                     v-if="props.registration.paymentStatus !== 'none'"
@@ -130,22 +135,24 @@ const confirmedLabel = computed(() =>
                         'bg-subtle text-text'
                     "
                 >
-                    {{ props.registration.paymentStatus }}
+                    {{ paymentStatusLabel(props.registration.paymentStatus) }}
                 </span>
             </div>
         </div>
 
         <section class="flex flex-col gap-2" aria-labelledby="registration-log">
-            <h2 id="registration-log" class="text-lg font-medium">Timeline</h2>
+            <h2 id="registration-log" class="text-lg font-medium">
+                {{ $t('Timeline') }}
+            </h2>
             <dl class="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[10rem_1fr]">
-                <dt class="text-text-muted">Submitted</dt>
+                <dt class="text-text-muted">{{ $t('Submitted') }}</dt>
                 <dd>
                     <time :datetime="props.registration.submittedAt">
                         {{ submittedLabel }}
                     </time>
                 </dd>
                 <template v-if="props.registration.confirmedAt">
-                    <dt class="text-text-muted">Confirmed</dt>
+                    <dt class="text-text-muted">{{ $t('Confirmed') }}</dt>
                     <dd>
                         <time :datetime="props.registration.confirmedAt">
                             {{ confirmedLabel }}
@@ -161,7 +168,7 @@ const confirmedLabel = computed(() =>
             aria-labelledby="registration-grants"
         >
             <h2 id="registration-grants" class="text-lg font-medium">
-                What this includes
+                {{ $t('What this includes') }}
             </h2>
             <ul class="flex flex-col gap-1 text-sm">
                 <li
@@ -171,7 +178,9 @@ const confirmedLabel = computed(() =>
                 >
                     <span class="font-medium">{{ grant.quantity }}×</span>
                     <span class="capitalize">{{ grant.role }}</span>
-                    <span class="text-text-muted">({{ grant.kind }})</span>
+                    <span class="text-text-muted"
+                        >({{ grantKindLabel(grant.kind) }})</span
+                    >
                 </li>
             </ul>
         </section>
@@ -190,7 +199,7 @@ const confirmedLabel = computed(() =>
             aria-labelledby="registration-billing"
         >
             <h2 id="registration-billing" class="text-lg font-medium">
-                Billing details
+                {{ $t('Billing details') }}
             </h2>
             <address class="text-sm text-text-muted not-italic">
                 <span class="block text-text">
@@ -209,7 +218,7 @@ const confirmedLabel = computed(() =>
                     {{ props.billing.email }}
                 </span>
                 <span v-if="props.billing.vatId" class="block">
-                    VAT ID {{ props.billing.vatId }}
+                    {{ $t('VAT ID :id', { id: props.billing.vatId }) }}
                 </span>
             </address>
         </section>

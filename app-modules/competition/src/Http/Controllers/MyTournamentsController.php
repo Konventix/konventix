@@ -178,7 +178,7 @@ final class MyTournamentsController
             return back()->withErrors(['name' => $e->participantMessage()]);
         }
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Team angelegt.')]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Team created.')]);
 
         return back();
     }
@@ -190,7 +190,7 @@ final class MyTournamentsController
 
         $leaveTeam->handle($model, $userId);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Du hast das Team verlassen.')]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('You left the team.')]);
 
         return back();
     }
@@ -206,7 +206,7 @@ final class MyTournamentsController
 
         $regenerate->handle($model);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Neuer Einladungscode erzeugt.')]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('New invite code generated.')]);
 
         return back();
     }
@@ -229,7 +229,7 @@ final class MyTournamentsController
             return back()->withErrors(['entrant' => $e->participantMessage()]);
         }
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Anmeldung zurückgezogen.')]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Entry withdrawn.')]);
 
         return back();
     }
@@ -258,7 +258,7 @@ final class MyTournamentsController
             return back()->withErrors(['entrant' => $e->participantMessage()]);
         }
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Ihr seid eingecheckt.')]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Your team is checked in.')]);
 
         return back();
     }

@@ -96,7 +96,7 @@ const consentRequired = props.consentSlots.some(
 </script>
 
 <template>
-    <Head :title="`Register — ${props.name}`" />
+    <Head :title="$t('Register — :name', { name: props.name })" />
 
     <div
         class="mx-auto flex min-h-svh max-w-lg flex-col justify-center gap-6 px-4 py-12"
@@ -106,7 +106,11 @@ const consentRequired = props.consentSlots.some(
                 <Heading
                     as="h1"
                     :title="props.name"
-                    description="Complete the form below to submit your registration."
+                    :description="
+                        $t(
+                            'Complete the form below to submit your registration.',
+                        )
+                    "
                 />
 
                 <Form
@@ -135,7 +139,7 @@ const consentRequired = props.consentSlots.some(
                     </div>
 
                     <div v-if="offersQuantity" class="grid gap-2">
-                        <Label for="quantity">How many?</Label>
+                        <Label for="quantity">{{ $t('How many?') }}</Label>
                         <Input
                             id="quantity"
                             name="quantity"
@@ -153,7 +157,11 @@ const consentRequired = props.consentSlots.some(
                             "
                         />
                         <p id="quantity-hint" class="text-xs text-text-muted">
-                            Up to {{ props.maxQuantity }} per registration.
+                            {{
+                                $t('Up to :max per registration.', {
+                                    max: String(props.maxQuantity),
+                                })
+                            }}
                         </p>
                         <InputError
                             id="quantity-error"
@@ -212,20 +220,24 @@ const consentRequired = props.consentSlots.some(
                             "
                             data-test="submit-registration-button"
                         >
-                            Submit registration
+                            {{ $t('Submit registration') }}
                         </Button>
                         <p class="text-sm text-text-muted">
-                            <template v-if="props.settlement === 'free'"
-                                >This registration is free.</template
-                            >
+                            <template v-if="props.settlement === 'free'">{{
+                                $t('This registration is free.')
+                            }}</template>
                             <template v-else-if="props.price !== null">
                                 <OfferPrice
                                     :price="props.price"
                                     :end-price="props.endPrice"
                                 />
                                 <template v-if="props.settlement === 'invoice'">
-                                    — invoiced, payable within
-                                    {{ props.termsDays }} days.
+                                    {{
+                                        $tChoice(
+                                            '{1} — invoiced, payable within :count day.|[0,*] — invoiced, payable within :count days.',
+                                            props.termsDays,
+                                        )
+                                    }}
                                 </template>
                                 <template v-else>.</template>
                             </template>

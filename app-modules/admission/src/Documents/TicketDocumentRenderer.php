@@ -180,14 +180,16 @@ final class TicketDocumentRenderer
      */
     private function pageDataFor(Admission $admission, ?Brand $brand, ?string $brandLogo, ?string $operatorLegalName, ?EventSummary $event, ?Person $holder, ?string $seatLabel, ?string $banner): array
     {
-        $holderName = $holder->display_name ?? 'Unassigned';
+        // Null when nobody holds the ticket yet: the view prints the
+        // translated "Unassigned" in its own italic style.
+        $holderName = $holder?->display_name;
         $role = str_replace('_', ' ', $admission->role);
 
         // §4.3: holder name, event name, venue, operator legal name, role
         // and the admission id, in that order. Nulls (a missing summary,
         // no venue, no operator) are dropped rather than printed as gaps.
         $forensicLines = array_values(array_filter([
-            $holderName,
+            $holderName ?? (string) __('Unassigned'),
             $event?->name,
             $event?->venue_label,
             $operatorLegalName,
@@ -280,7 +282,7 @@ final class TicketDocumentRenderer
     private function validRangeFor(Admission $admission): string
     {
         if ($admission->valid_from === null || $admission->valid_until === null) {
-            return 'All event days';
+            return __('All event days');
         }
 
         return $this->dates->date($admission->valid_from).' – '.$this->dates->date($admission->valid_until);

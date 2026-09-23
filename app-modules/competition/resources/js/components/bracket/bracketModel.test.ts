@@ -92,12 +92,12 @@ describe('bracketSections', () => {
         expect(rest).toEqual([]);
         expect(section.label).toBeNull();
         expect(section.rounds.map((r) => [r.round, r.label])).toEqual([
-            [1, 'Halbfinale'],
-            [2, 'Finale'],
+            [1, 'Semi-final'],
+            [2, 'Final round'],
         ]);
         expect(section.rounds.map((r) => r.matches.map(pairing))).toEqual([
             ['A v D', 'B v C'],
-            ['Offen v Offen'],
+            ['Open v Open'],
         ]);
     });
 
@@ -113,42 +113,44 @@ describe('bracketSections', () => {
         });
 
         expect(sections.map((s) => s.label)).toEqual([
-            'Winner-Bracket',
-            'Loser-Bracket',
-            'Grand Final',
+            'Winners bracket',
+            'Losers bracket',
+            'Grand final',
         ]);
         // Double elimination's rounds have no names of their own.
         expect(sections.map((s) => s.rounds[0].label)).toEqual([
-            'Runde 1',
-            'Runde 1',
-            'Runde 1',
+            'Round 1',
+            'Round 1',
+            'Round 1',
         ]);
     });
 });
 
 describe('round and section labels', () => {
     it('names single elimination rounds from the end', () => {
-        // 8 teams: 3 rounds — 1 Viertelfinale, 2 Halbfinale, 3 Finale.
+        // 8 teams: 3 rounds — 1 Quarter-final, 2 Semi-final, 3 Final.
         expect(
             [1, 2, 3].map((r) => roundLabel('single_elimination', null, r, 3)),
-        ).toEqual(['Viertelfinale', 'Halbfinale', 'Finale']);
+        ).toEqual(['Quarter-final', 'Semi-final', 'Final round']);
         // 16 teams: 4 rounds — the first has no name of its own.
-        expect(roundLabel('single_elimination', null, 1, 4)).toBe('Runde 1');
+        expect(roundLabel('single_elimination', null, 1, 4)).toBe('Round 1');
         // 2 teams: one round, and it is the final.
-        expect(roundLabel('single_elimination', null, 1, 1)).toBe('Finale');
+        expect(roundLabel('single_elimination', null, 1, 1)).toBe(
+            'Final round',
+        );
         // Other formats count rounds.
-        expect(roundLabel('round_robin', null, 3, 3)).toBe('Runde 3');
-        expect(roundLabel('swiss', null, 5, 5)).toBe('Runde 5');
+        expect(roundLabel('round_robin', null, 3, 3)).toBe('Round 3');
+        expect(roundLabel('swiss', null, 5, 5)).toBe('Round 5');
     });
 
     it('names a group by its letter', () => {
-        expect(sectionLabel('group-a')).toBe('Gruppe A');
+        expect(sectionLabel('group-a')).toBe('Group A');
         expect(sectionLabel(null)).toBeNull();
     });
 
     it('calls an awaited slot open and an unfillable one a bye', () => {
-        expect(sideName(side(2, null, true))).toBe('Offen');
-        expect(sideName(side(2, null, false))).toBe('Freilos');
+        expect(sideName(side(2, null, true))).toBe('Open');
+        expect(sideName(side(2, null, false))).toBe('Bye');
     });
 });
 
@@ -173,7 +175,7 @@ describe('the canvas and the table show the same pairings', () => {
         expect(columns).toEqual(table);
         expect(columns).toEqual([
             ['semi-1: A v D', 'semi-2: B v C'],
-            ['final: Offen v Offen'],
+            ['final: Open v Open'],
         ]);
     });
 

@@ -38,7 +38,7 @@ function teamHref(teamId: string): string {
 
 <template>
     <Head
-        :title="`${props.page.match.sides.map((side) => sideName(side)).join(' gegen ')} – ${props.page.competition.name}`"
+        :title="`${props.page.match.sides.map((side) => sideName(side)).join(` ${$t('vs')} `)} – ${props.page.competition.name}`"
     />
 
     <div class="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
@@ -59,8 +59,12 @@ function teamHref(teamId: string): string {
                 :title="
                     [
                         sectionLabel(props.page.match.bracket),
-                        `Runde ${props.page.match.round}`,
-                        `Spiel ${props.page.match.position}`,
+                        $t('Round :round', {
+                            round: String(props.page.match.round),
+                        }),
+                        $t('Match :position', {
+                            position: String(props.page.match.position),
+                        }),
                     ]
                         .filter((part) => part !== null)
                         .join(' · ')
@@ -71,7 +75,7 @@ function teamHref(teamId: string): string {
                               props.page.match.scheduledAt,
                               props.page.event.timezone,
                           )
-                        : 'Noch nicht angesetzt'
+                        : $t('Not scheduled yet')
                 "
             />
         </div>
@@ -80,11 +84,11 @@ function teamHref(teamId: string): string {
             class="flex flex-col gap-2 rounded-xl border border-border bg-surface-raised p-4"
             aria-labelledby="sides-heading"
         >
-            <h2 id="sides-heading" class="sr-only">Paarung</h2>
+            <h2 id="sides-heading" class="sr-only">{{ $t('Pairing') }}</h2>
             <p class="text-sm text-text-muted">
                 {{
                     props.page.match.disputed
-                        ? 'Streitfall'
+                        ? $t('In dispute')
                         : matchStateLabel(props.page.match.state)
                 }}
             </p>
@@ -108,7 +112,9 @@ function teamHref(teamId: string): string {
                     }}</span>
                     <span>
                         {{ side.score ?? '–' }}
-                        <span v-if="side.winner" class="sr-only">(Sieger)</span>
+                        <span v-if="side.winner" class="sr-only"
+                            >({{ $t('Winner') }})</span
+                        >
                     </span>
                 </li>
             </ul>

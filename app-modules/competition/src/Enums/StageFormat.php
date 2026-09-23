@@ -46,16 +46,16 @@ enum StageFormat: string
         return $this !== self::Leaderboard;
     }
 
-    /** Console copy is English (ADR-0001 is about brand sites, not this). */
+    /** In the reader's locale (ADR-0068); the English is the catalog key. */
     public function label(): string
     {
         return match ($this) {
-            self::SingleElimination => 'Single elimination',
-            self::DoubleElimination => 'Double elimination',
-            self::RoundRobin => 'Round robin',
-            self::GroupStage => 'Group stage',
-            self::Swiss => 'Swiss',
-            self::Leaderboard => 'Leaderboard',
+            self::SingleElimination => __('Single elimination'),
+            self::DoubleElimination => __('Double elimination'),
+            self::RoundRobin => __('Round robin'),
+            self::GroupStage => __('Group stage'),
+            self::Swiss => __('Swiss'),
+            self::Leaderboard => __('Leaderboard'),
         };
     }
 

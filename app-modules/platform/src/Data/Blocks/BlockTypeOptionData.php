@@ -30,7 +30,7 @@ final class BlockTypeOptionData extends Data
     {
         return new self(
             key: $type->key(),
-            label: $type->label(),
+            label: __($type->label()),
             module: $type->module(),
             editorComponent: $type->editorComponent(),
             defaultData: $type->defaultData(),

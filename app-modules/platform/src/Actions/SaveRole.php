@@ -54,7 +54,7 @@ final class SaveRole
             ->exists();
 
         if ($exists) {
-            throw ValidationException::withMessages(['name' => 'This brand already has a role with that name.']);
+            throw ValidationException::withMessages(['name' => __('This brand already has a role with that name.')]);
         }
     }
 
@@ -69,7 +69,7 @@ final class SaveRole
 
         if ($unknown !== []) {
             throw ValidationException::withMessages([
-                'permissions' => 'Unknown capabilities: '.implode(', ', $unknown),
+                'permissions' => __('Unknown capabilities: :capabilities', ['capabilities' => implode(', ', $unknown)]),
             ]);
         }
 

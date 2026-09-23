@@ -60,11 +60,19 @@ function submit(): void {
         <DialogContent>
             <DialogHeader>
                 <DialogTitle>
-                    Check out ticket {{ ticket.reference }}
+                    {{
+                        $t('Check out ticket :reference', {
+                            reference: ticket.reference,
+                        })
+                    }}
                 </DialogTitle>
                 <DialogDescription>
-                    {{ ticket.holderName ?? 'This guest' }} is recorded as
-                    having left, as if scanned out at the door.
+                    {{
+                        $t(
+                            ':guest is recorded as having left, as if scanned out at the door.',
+                            { guest: ticket.holderName ?? $t('This guest') },
+                        )
+                    }}
                 </DialogDescription>
             </DialogHeader>
             <form class="flex flex-col gap-4" @submit.prevent="submit">
@@ -76,13 +84,13 @@ function submit(): void {
                         :disabled="form.processing"
                         @click="emit('update:open', false)"
                     >
-                        Cancel
+                        {{ $t('Cancel') }}
                     </Button>
                     <Button
                         type="submit"
                         :disabled="form.processing || !ticket.canCheckOut"
                     >
-                        Check out
+                        {{ $t('Check out') }}
                     </Button>
                 </div>
             </form>

@@ -121,7 +121,7 @@ final class UpdateBrand
         foreach ($fields as $field => $id) {
             if ($id !== null && ! in_array($id, $owned, true)) {
                 throw ValidationException::withMessages([
-                    $field => 'That file belongs to a different brand.',
+                    $field => __('That file belongs to a different brand.'),
                 ]);
             }
         }
@@ -130,7 +130,7 @@ final class UpdateBrand
     private function guardUniqueness(Brand $brand, UpdateBrandData $data): void
     {
         if (Brand::query()->where('slug', $data->slug)->whereKeyNot($brand->getKey())->exists()) {
-            throw ValidationException::withMessages(['slug' => 'This slug is already taken.']);
+            throw ValidationException::withMessages(['slug' => __('This slug is already taken.')]);
         }
 
         $taken = BrandDomain::query()
@@ -140,7 +140,7 @@ final class UpdateBrand
 
         if ($taken->isNotEmpty()) {
             throw ValidationException::withMessages([
-                'hosts' => 'Already answering on: '.$taken->implode(', '),
+                'hosts' => __('Already answering on: :hosts', ['hosts' => $taken->implode(', ')]),
             ]);
         }
     }

@@ -126,7 +126,7 @@ final class TicketPageController
     private function validRangeFor(Admission $admission): string
     {
         if ($admission->valid_from === null || $admission->valid_until === null) {
-            return 'All event days';
+            return __('All event days');
         }
 
         return $this->dates->date($admission->valid_from).' – '.$this->dates->date($admission->valid_until);

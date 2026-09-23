@@ -10,6 +10,7 @@ import {
     toLocalDateTimeInput,
 } from '@/lib/datetime';
 import { scheduleRound } from '@/routes/admin/competition-stages';
+import { matchStateLabel } from '../../public/labels';
 import { roundLabel } from './matchLabel';
 import type { ResultMode } from './ResultDialog.vue';
 
@@ -114,7 +115,9 @@ function canResolve(match: Match): boolean {
 
 <template>
     <section class="flex flex-col gap-6" aria-labelledby="desk-bracket">
-        <h2 id="desk-bracket" class="text-lg font-medium text-text">Matches</h2>
+        <h2 id="desk-bracket" class="text-lg font-medium text-text">
+            {{ $t('Matches') }}
+        </h2>
 
         <div
             v-for="(round, index) in rounds"
@@ -134,7 +137,7 @@ function canResolve(match: Match): boolean {
                     <DateTimeField
                         :id="`desk-round-${round.key}`"
                         :model-value="roundTime(round, index)"
-                        label="Schedule all at"
+                        :label="$t('Schedule all at')"
                         @update:model-value="
                             (value: string) => (roundTimes[round.key] = value)
                         "
@@ -145,7 +148,7 @@ function canResolve(match: Match): boolean {
                         variant="outline"
                         :disabled="roundTime(round, index) === ''"
                     >
-                        Schedule round
+                        {{ $t('Schedule round') }}
                     </Button>
                 </form>
             </div>
@@ -158,7 +161,11 @@ function canResolve(match: Match): boolean {
                 >
                     <div class="flex min-w-0 flex-col gap-1">
                         <span class="text-sm text-text-muted">
-                            Match {{ match.position }}
+                            {{
+                                $t('Match :position', {
+                                    position: String(match.position),
+                                })
+                            }}
                             <template v-if="match.scheduledAt">
                                 · {{ formatDateTime(match.scheduledAt) }}
                             </template>
@@ -168,13 +175,15 @@ function canResolve(match: Match): boolean {
                                 v-for="(side, sideIndex) in match.sides"
                                 :key="side.position"
                             >
-                                <template v-if="sideIndex > 0"> vs </template>
+                                <template v-if="sideIndex > 0">
+                                    {{ $t('vs') }}
+                                </template>
                                 <span
                                     :class="side.winner ? 'font-semibold' : ''"
                                 >
                                     {{
                                         side.teamName ??
-                                        (side.awaiting ? 'TBD' : 'Bye')
+                                        (side.awaiting ? $t('TBD') : $t('Bye'))
                                     }}
                                     <template v-if="side.score !== null">
                                         ({{ side.score }})
@@ -186,10 +195,10 @@ function canResolve(match: Match): boolean {
 
                     <div class="flex flex-wrap items-center gap-2">
                         <Badge v-if="match.disputed" variant="destructive">
-                            Disputed
+                            {{ $t('Disputed') }}
                         </Badge>
                         <Badge v-else variant="outline">{{
-                            match.state
+                            matchStateLabel(match.state)
                         }}</Badge>
 
                         <Button
@@ -202,14 +211,14 @@ function canResolve(match: Match): boolean {
                             variant="ghost"
                             @click="emit('schedule', match)"
                         >
-                            Set time
+                            {{ $t('Set time') }}
                         </Button>
                         <Button
                             v-if="match.disputed && canResolve(match)"
                             size="sm"
                             @click="emit('result', match, 'resolve')"
                         >
-                            Resolve
+                            {{ $t('Resolve') }}
                         </Button>
                         <Button
                             v-else-if="
@@ -218,7 +227,7 @@ function canResolve(match: Match): boolean {
                             size="sm"
                             @click="emit('result', match, 'record')"
                         >
-                            Record
+                            {{ $t('Record') }}
                         </Button>
                         <Button
                             v-else-if="
@@ -229,7 +238,7 @@ function canResolve(match: Match): boolean {
                             variant="outline"
                             @click="emit('result', match, 'correct')"
                         >
-                            Correct
+                            {{ $t('Correct') }}
                         </Button>
                     </div>
                 </li>

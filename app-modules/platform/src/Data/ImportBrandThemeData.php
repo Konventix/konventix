@@ -107,11 +107,11 @@ final class ImportBrandThemeData extends Data
      */
     public static function messages(): array
     {
-        $formats = BrandThemeExportData::FORMAT.' or '.BrandThemeExportData::FORMAT_V1;
+        $formats = ['current' => BrandThemeExportData::FORMAT, 'previous' => BrandThemeExportData::FORMAT_V1];
 
         return [
-            'format.required' => 'The file is not a '.$formats.' theme export.',
-            'format.in' => 'The file is not a '.$formats.' theme export.',
+            'format.required' => __('The file is not a :current or :previous theme export.', $formats),
+            'format.in' => __('The file is not a :current or :previous theme export.', $formats),
         ];
     }
 }

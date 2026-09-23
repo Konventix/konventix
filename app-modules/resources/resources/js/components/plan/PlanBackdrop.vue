@@ -119,7 +119,7 @@ const annotations = computed(() =>
                 :font-size="CONTAINER_LABEL_MM"
                 :fill="STATE_FILL.textMuted"
             >
-                {{ containerLabel(group.element, 'Group') }}
+                {{ containerLabel(group.element, $t('Group')) }}
             </text>
         </g>
 

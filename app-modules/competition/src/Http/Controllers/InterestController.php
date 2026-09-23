@@ -48,7 +48,7 @@ final class InterestController
             return back()->withErrors(['note' => $e->participantMessage()]);
         }
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Du stehst jetzt auf der Interessentenliste.')]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('You are now on the interest list.')]);
 
         return back();
     }
@@ -61,7 +61,7 @@ final class InterestController
 
         $withdraw->handle($model, (string) $user->getAuthIdentifier());
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Du stehst nicht mehr auf der Liste.')]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('You are no longer on the list.')]);
 
         return back();
     }

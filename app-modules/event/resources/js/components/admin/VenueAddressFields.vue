@@ -34,12 +34,12 @@ function textOrNull(value: string | number | null): string | null {
     <div class="flex flex-col gap-4">
         <div class="grid gap-4 sm:grid-cols-2">
             <div class="grid gap-2">
-                <Label for="venue-name">Name</Label>
+                <Label for="venue-name">{{ $t('Name') }}</Label>
                 <Input id="venue-name" v-model="name" />
                 <InputError :message="errors?.name" />
             </div>
             <div class="grid gap-2">
-                <Label for="venue-slug">Slug</Label>
+                <Label for="venue-slug">{{ $t('Slug') }}</Label>
                 <Input
                     id="venue-slug"
                     :model-value="slug ?? ''"
@@ -47,19 +47,24 @@ function textOrNull(value: string | number | null): string | null {
                     @update:model-value="slug = textOrNull($event)"
                 />
                 <p id="venue-slug-hint" class="text-xs text-text-muted">
-                    The venue's public address. Left empty, it is derived from
-                    the name.
+                    {{
+                        $t(
+                            "The venue's public address. Left empty, it is derived from the name.",
+                        )
+                    }}
                 </p>
                 <InputError :message="errors?.slug" />
             </div>
         </div>
         <div class="grid gap-2">
-            <Label for="venue-address1">Street and number</Label>
+            <Label for="venue-address1">{{ $t('Street and number') }}</Label>
             <Input id="venue-address1" v-model="addressLine1" />
             <InputError :message="errors?.addressLine1" />
         </div>
         <div class="grid gap-2">
-            <Label for="venue-address2">Address line 2 (optional)</Label>
+            <Label for="venue-address2">{{
+                $t('Address line 2 (optional)')
+            }}</Label>
             <Input
                 id="venue-address2"
                 :model-value="addressLine2 ?? ''"
@@ -69,17 +74,17 @@ function textOrNull(value: string | number | null): string | null {
         </div>
         <div class="grid gap-4 sm:grid-cols-3">
             <div class="grid gap-2">
-                <Label for="venue-postal">Postal code</Label>
+                <Label for="venue-postal">{{ $t('Postal code') }}</Label>
                 <Input id="venue-postal" v-model="postalCode" />
                 <InputError :message="errors?.postalCode" />
             </div>
             <div class="grid gap-2">
-                <Label for="venue-city">City</Label>
+                <Label for="venue-city">{{ $t('City') }}</Label>
                 <Input id="venue-city" v-model="city" />
                 <InputError :message="errors?.city" />
             </div>
             <div class="grid gap-2">
-                <Label for="venue-country">Country code</Label>
+                <Label for="venue-country">{{ $t('Country code') }}</Label>
                 <Input id="venue-country" v-model="countryCode" maxlength="2" />
                 <InputError :message="errors?.countryCode" />
             </div>

@@ -252,7 +252,7 @@ class CompetitionAdminController
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Competition is now :status.', [
-            'status' => str_replace('_', ' ', $target->value),
+            'status' => $target->label(),
         ])]);
 
         return back();
@@ -406,19 +406,19 @@ class CompetitionAdminController
         return [$next, $next === null ? null : $this->transitionLabel($status, $next)];
     }
 
-    /** Console copy is English (ADR-0001 is about brand sites, not this). */
+    /** In the reader's locale (ADR-0068); the English is the catalog key. */
     private function transitionLabel(CompetitionStatus $from, CompetitionStatus $to): string
     {
         return match (true) {
-            $to === CompetitionStatus::Published && $from === CompetitionStatus::SignupClosed => 'Reopen signup',
-            $to === CompetitionStatus::Published => 'Publish',
-            $to === CompetitionStatus::Draft => 'Unpublish',
-            $to === CompetitionStatus::SignupClosed => 'Close signup',
-            $to === CompetitionStatus::Running => 'Start',
-            $to === CompetitionStatus::Finished => 'Finish',
+            $to === CompetitionStatus::Published && $from === CompetitionStatus::SignupClosed => __('Reopen signup'),
+            $to === CompetitionStatus::Published => __('Publish'),
+            $to === CompetitionStatus::Draft => __('Unpublish'),
+            $to === CompetitionStatus::SignupClosed => __('Close signup'),
+            $to === CompetitionStatus::Running => __('Start'),
+            $to === CompetitionStatus::Finished => __('Finish'),
             // Not "Cancel", which reads as "close this form" beside a save
             // button (final review, part 3, I2).
-            $to === CompetitionStatus::Cancelled => 'Cancel competition',
+            $to === CompetitionStatus::Cancelled => __('Cancel competition'),
         };
     }
 }

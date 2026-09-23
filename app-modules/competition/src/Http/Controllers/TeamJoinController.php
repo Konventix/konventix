@@ -71,7 +71,7 @@ final class TeamJoinController
 
             if ($provider !== null) {
                 return back()->withErrors([
-                    'code' => __('Für dieses Team brauchst du ein verknüpftes :provider-Konto. Verknüpfe es und gib den Code dann noch einmal ein.', [
+                    'code' => __('This team needs you to have a linked :provider account. Link it, then enter the code again.', [
                         'provider' => $provider->label(),
                     ]),
                     'linkedAccount' => $provider->label(),
@@ -83,7 +83,7 @@ final class TeamJoinController
             ]);
         }
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Du bist jetzt im Team.')]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('You are now on the team.')]);
 
         return to_route('competition.my.tournaments');
     }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/datetime';
@@ -33,7 +34,7 @@ function sideName(matchId: string, position: number): string {
         matchesById.value
             .get(matchId)
             ?.sides.find((side) => side.position === position)?.teamName ??
-        `Side ${position}`
+        trans('Side :position', { position: String(position) })
     );
 }
 
@@ -49,12 +50,12 @@ function canResolve(
 <template>
     <section class="flex flex-col gap-3" aria-labelledby="desk-disputes">
         <h2 id="desk-disputes" class="text-lg font-medium text-text">
-            Open disputes
+            {{ $t('Open disputes') }}
             <span class="text-text-muted">({{ props.disputes.length }})</span>
         </h2>
 
         <p v-if="props.disputes.length === 0" class="text-sm text-text-muted">
-            No match is disputed.
+            {{ $t('No match is disputed.') }}
         </p>
 
         <article
@@ -67,9 +68,13 @@ function canResolve(
                     {{ matchLabel(dispute) }}
                 </h3>
                 <span class="text-sm text-text-muted">
-                    Disputed {{ formatDateTime(dispute.disputedAt) }}
+                    {{
+                        $t('Disputed :time', {
+                            time: formatDateTime(dispute.disputedAt),
+                        })
+                    }}
                     <template v-if="dispute.recorded">
-                        · a result stands; resolving corrects it
+                        · {{ $t('a result stands; resolving corrects it') }}
                     </template>
                 </span>
             </div>
@@ -84,9 +89,9 @@ function canResolve(
                     :key="report.entrantId"
                     class="flex flex-wrap items-baseline gap-2"
                 >
-                    <span class="font-medium text-text"
-                        >{{ report.teamName }} says</span
-                    >
+                    <span class="font-medium text-text">{{
+                        $t(':team says', { team: report.teamName })
+                    }}</span>
                     <span class="text-text">
                         {{
                             Object.entries(report.scores)
@@ -103,11 +108,15 @@ function canResolve(
                         target="_blank"
                         rel="noopener"
                         class="underline underline-offset-4 hover:text-accent"
-                        >View proof</a
+                        >{{ $t('View proof') }}</a
                     >
                 </li>
                 <li v-if="dispute.reports.length === 0" class="text-text-muted">
-                    Raised against the recorded result; no claims filed.
+                    {{
+                        $t(
+                            'Raised against the recorded result; no claims filed.',
+                        )
+                    }}
                 </li>
             </ul>
 
@@ -116,7 +125,7 @@ function canResolve(
                     size="sm"
                     @click="emit('resolve', matchesById.get(dispute.matchId)!)"
                 >
-                    Resolve
+                    {{ $t('Resolve') }}
                 </Button>
             </div>
         </article>

@@ -526,17 +526,17 @@ class PlatformServiceProvider extends ModuleServiceProvider
             $links[] = [
                 'label' => 'Pulse',
                 'url' => '/'.config('pulse.path'),
-                'description' => 'How the application is behaving right now',
+                'description' => __('How the application is behaving right now'),
             ];
             $links[] = [
                 'label' => 'Horizon',
                 'url' => '/'.config('horizon.path'),
-                'description' => 'The queues, and what is stuck in them',
+                'description' => __('The queues, and what is stuck in them'),
             ];
             $links[] = [
-                'label' => 'Health',
+                'label' => __('Health'),
                 'url' => route('admin.health', absolute: false),
-                'description' => 'Database, Redis, cache, scheduler and disk checks',
+                'description' => __('Database, Redis, cache, scheduler and disk checks'),
             ];
         }
 
@@ -546,7 +546,7 @@ class PlatformServiceProvider extends ModuleServiceProvider
             $links[] = [
                 'label' => 'Telescope',
                 'url' => '/'.config('telescope.path'),
-                'description' => 'Request log — records request bodies, so it is a separate capability',
+                'description' => __('Request log — records request bodies, so it is a separate capability'),
             ];
         }
 

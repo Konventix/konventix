@@ -2,6 +2,7 @@
 import { Head, useForm } from '@inertiajs/vue3';
 import { Pencil, Plus } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed, h, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -170,7 +171,7 @@ function saveEdit(): void {
 const columns: ColumnDef<QuotaRow>[] = [
     {
         accessorKey: 'name',
-        header: 'Name',
+        header: trans('Name'),
         enableSorting: true,
         cell: ({ row }) =>
             h('div', { class: 'flex flex-col' }, [
@@ -180,19 +181,19 @@ const columns: ColumnDef<QuotaRow>[] = [
                     { class: 'text-xs text-text-muted' },
                     row.original.typeNames.length > 0
                         ? row.original.typeNames.join(', ')
-                        : 'No type draws on this quota',
+                        : trans('No type draws on this quota'),
                 ),
             ]),
     },
     {
         id: 'brand',
-        header: 'Brand',
+        header: trans('Brand'),
         cell: ({ row }) =>
             h('span', { class: 'text-text-muted' }, row.original.brandName),
     },
     {
         id: 'category',
-        header: 'Category',
+        header: trans('Category'),
         cell: ({ row }) =>
             h(
                 'span',
@@ -202,19 +203,19 @@ const columns: ColumnDef<QuotaRow>[] = [
     },
     {
         accessorKey: 'capacity',
-        header: 'Capacity',
+        header: trans('Capacity'),
         enableSorting: true,
         cell: ({ row }) => String(row.original.capacity),
     },
     {
         accessorKey: 'consumed',
-        header: 'Taken',
+        header: trans('Taken'),
         enableSorting: true,
         cell: ({ row }) => String(row.original.consumed),
     },
     {
         id: 'remaining',
-        header: 'Left',
+        header: trans('Left'),
         cell: ({ row }) =>
             h(
                 'span',
@@ -239,7 +240,7 @@ const columns: ColumnDef<QuotaRow>[] = [
                         variant: 'outline',
                         onClick: () => startEdit(row.original),
                     },
-                    () => [h(Pencil, { class: 'size-3.5' }), 'Edit'],
+                    () => [h(Pencil, { class: 'size-3.5' }), trans('Edit')],
                 ),
             ]),
     },
@@ -247,18 +248,20 @@ const columns: ColumnDef<QuotaRow>[] = [
 </script>
 
 <template>
-    <Head title="Quotas" />
+    <Head :title="$t('Quotas')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Quotas"
-            description="Shared capacity pools the registration types draw on"
+            :title="$t('Quotas')"
+            :description="
+                $t('Shared capacity pools the registration types draw on')
+            "
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
-            search-placeholder="Search quotas…"
+            :search-placeholder="$t('Search quotas…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
         >
@@ -267,19 +270,21 @@ const columns: ColumnDef<QuotaRow>[] = [
                     <DialogTrigger as-child>
                         <Button>
                             <Plus class="size-4" />
-                            New quota
+                            {{ $t('New quota') }}
                         </Button>
                     </DialogTrigger>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Create quota</DialogTitle>
+                            <DialogTitle>{{ $t('Create quota') }}</DialogTitle>
                         </DialogHeader>
                         <form
                             class="flex flex-col gap-4"
                             @submit.prevent="create"
                         >
                             <div class="grid gap-2">
-                                <Label for="quota-brand">Brand</Label>
+                                <Label for="quota-brand">{{
+                                    $t('Brand')
+                                }}</Label>
                                 <select
                                     id="quota-brand"
                                     v-model="createForm.brand_id"
@@ -298,7 +303,7 @@ const columns: ColumnDef<QuotaRow>[] = [
                                 />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="quota-name">Name</Label>
+                                <Label for="quota-name">{{ $t('Name') }}</Label>
                                 <Input
                                     id="quota-name"
                                     v-model="createForm.name"
@@ -306,14 +311,16 @@ const columns: ColumnDef<QuotaRow>[] = [
                                 <InputError :message="createForm.errors.name" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="quota-category">Category</Label>
+                                <Label for="quota-category">{{
+                                    $t('Category')
+                                }}</Label>
                                 <select
                                     id="quota-category"
                                     v-model="createForm.resourceTypeId"
                                     class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                                 >
                                     <option :value="null">
-                                        No category — a plain quota
+                                        {{ $t('No category — a plain quota') }}
                                     </option>
                                     <option
                                         v-for="category in createCategories"
@@ -328,7 +335,9 @@ const columns: ColumnDef<QuotaRow>[] = [
                                 />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="quota-capacity">Capacity</Label>
+                                <Label for="quota-capacity">{{
+                                    $t('Capacity')
+                                }}</Label>
                                 <Input
                                     id="quota-capacity"
                                     v-model.number="createForm.capacity"
@@ -343,7 +352,7 @@ const columns: ColumnDef<QuotaRow>[] = [
                                 type="submit"
                                 :disabled="createForm.processing"
                             >
-                                Create
+                                {{ $t('Create') }}
                             </Button>
                         </form>
                     </DialogContent>
@@ -357,8 +366,8 @@ const columns: ColumnDef<QuotaRow>[] = [
             :data="props.quotas.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="quotas"
-            empty-message="No quotas yet."
+            :items-label="$t('quotas')"
+            :empty-message="$t('No quotas yet.')"
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />
@@ -369,23 +378,27 @@ const columns: ColumnDef<QuotaRow>[] = [
         >
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Edit {{ editing?.name }}</DialogTitle>
+                    <DialogTitle>{{
+                        $t('Edit :name', { name: editing?.name ?? '' })
+                    }}</DialogTitle>
                 </DialogHeader>
                 <form class="flex flex-col gap-4" @submit.prevent="saveEdit">
                     <div class="grid gap-2">
-                        <Label for="edit-quota-name">Name</Label>
+                        <Label for="edit-quota-name">{{ $t('Name') }}</Label>
                         <Input id="edit-quota-name" v-model="editForm.name" />
                         <InputError :message="editForm.errors.name" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="edit-quota-category">Category</Label>
+                        <Label for="edit-quota-category">{{
+                            $t('Category')
+                        }}</Label>
                         <select
                             id="edit-quota-category"
                             v-model="editForm.resourceTypeId"
                             class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                         >
                             <option :value="null">
-                                No category — a plain quota
+                                {{ $t('No category — a plain quota') }}
                             </option>
                             <option
                                 v-for="category in editCategories"
@@ -398,7 +411,9 @@ const columns: ColumnDef<QuotaRow>[] = [
                         <InputError :message="editForm.errors.resourceTypeId" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="edit-quota-capacity">Capacity</Label>
+                        <Label for="edit-quota-capacity">{{
+                            $t('Capacity')
+                        }}</Label>
                         <Input
                             id="edit-quota-capacity"
                             v-model.number="editForm.capacity"
@@ -406,13 +421,17 @@ const columns: ColumnDef<QuotaRow>[] = [
                             :min="editing?.consumed ?? 0"
                         />
                         <p class="text-xs text-text-muted">
-                            {{ editing?.consumed ?? 0 }} places are already
-                            taken and cannot be given back by lowering this.
+                            {{
+                                $tChoice(
+                                    '{1} :count place is already taken and cannot be given back by lowering this.|[0,*] :count places are already taken and cannot be given back by lowering this.',
+                                    editing?.consumed ?? 0,
+                                )
+                            }}
                         </p>
                         <InputError :message="editForm.errors.capacity" />
                     </div>
                     <Button type="submit" :disabled="editForm.processing">
-                        Save
+                        {{ $t('Save') }}
                     </Button>
                 </form>
             </DialogContent>

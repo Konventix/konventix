@@ -59,7 +59,9 @@ watch(
 
 <template>
     <div class="col-span-full flex flex-col gap-4 lg:col-span-2">
-        <h2 class="text-lg font-semibold text-text">Registrations</h2>
+        <h2 class="text-lg font-semibold text-text">
+            {{ $t('Registrations') }}
+        </h2>
 
         <div v-if="loading" class="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Skeleton v-for="i in 4" :key="i" class="h-24 w-full" />
@@ -68,19 +70,19 @@ watch(
         <template v-else-if="stats">
             <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <StatCard
-                    title="Confirmed"
+                    :title="$t('Confirmed')"
                     :value="stats.counts.confirmed ?? 0"
                 />
                 <StatCard
-                    title="Submitted"
+                    :title="$t('Submitted')"
                     :value="stats.counts.submitted ?? 0"
                 />
                 <StatCard
-                    title="Approved"
+                    :title="$t('Approved')"
                     :value="stats.counts.approved ?? 0"
                 />
                 <StatCard
-                    title="Cancelled / Rejected"
+                    :title="$t('Cancelled / Rejected')"
                     :value="
                         (stats.counts.cancelled ?? 0) +
                         (stats.counts.rejected ?? 0)
@@ -94,15 +96,17 @@ watch(
                         <tr
                             class="border-b border-border text-left text-text-muted"
                         >
-                            <th scope="col" class="p-3 font-medium">Type</th>
-                            <th scope="col" class="p-3 text-right font-medium">
-                                Sold
+                            <th scope="col" class="p-3 font-medium">
+                                {{ $t('Registration type') }}
                             </th>
                             <th scope="col" class="p-3 text-right font-medium">
-                                Quota
+                                {{ $t('Sold') }}
                             </th>
                             <th scope="col" class="p-3 text-right font-medium">
-                                Remaining
+                                {{ $t('Quota') }}
+                            </th>
+                            <th scope="col" class="p-3 text-right font-medium">
+                                {{ $t('Remaining') }}
                             </th>
                         </tr>
                     </thead>
@@ -135,7 +139,7 @@ watch(
                         </template>
                         <tr v-else>
                             <td class="p-3 text-text-muted" colspan="4">
-                                No registration types yet.
+                                {{ $t('No registration types yet.') }}
                             </td>
                         </tr>
                     </tbody>
@@ -144,7 +148,7 @@ watch(
         </template>
 
         <p v-else class="text-sm text-danger">
-            Could not load registration stats.
+            {{ $t('Could not load registration stats.') }}
         </p>
     </div>
 </template>

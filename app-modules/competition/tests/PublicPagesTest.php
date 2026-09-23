@@ -665,7 +665,7 @@ it('shows the new side of a re-paired match no claim to confirm, and refuses the
 
     $this->actingAs($ofB)
         ->post('/tournaments/'.$competition->id.'/matches/'.$final->id.'/confirm')
-        ->assertSessionHasErrors(['result' => 'Es gibt noch kein Ergebnis, das ihr bestätigen könntet.']);
+        ->assertSessionHasErrors(['result' => 'There is no result for you to confirm yet.']);
 
     expect($final->fresh()->state)->toBe(MatchState::Pending);
 });
@@ -786,7 +786,7 @@ it('lets a captain enter their team and nobody enter a team they do not captain'
     $this->actingAs($captain)
         ->post('/tournaments/'.$competition->id.'/entries', ['teamId' => $team->id])
         ->assertSessionHasErrors([
-            'teamId' => 'Alle im Team brauchen eine bestätigte Anmeldung zur Veranstaltung oder ein Ticket auf ihren Namen, bevor ihr euch anmelden könnt.',
+            'teamId' => 'Everyone on the team needs a confirmed registration for the event or a ticket in their name before you can sign up.',
         ]);
 
     expect(Entrant::query()->where('competition_id', $competition->id)->exists())->toBeFalse();
@@ -982,7 +982,7 @@ it('answers a score sent to a finished competition in German, not with the desk\
     $this->actingAs($ofA)
         ->post('/tournaments/'.$competition->id.'/score-entries', ['value' => 42])
         ->assertSessionHasErrors([
-            'value' => 'Dieses Turnier ist vorbei und nimmt keine Ergebnisse mehr an.',
+            'value' => 'This tournament is over and takes no more results.',
         ]);
 
     expect(ScoreEntry::query()->where('entrant_id', $a->id)->exists())->toBeFalse();
@@ -1023,7 +1023,7 @@ it('refuses a report, a confirm and a dispute once the competition is over, in G
 
     $ofB = publicPagesMember($b);
     $ofD = publicPagesMember($d);
-    $over = 'Dieses Turnier ist vorbei und nimmt keine Ergebnisse mehr an.';
+    $over = 'This tournament is over and takes no more results.';
 
     $this->actingAs($ofB)
         ->post('/tournaments/'.$competition->id.'/matches/'.$second->id.'/report', ['scores' => [1 => 16, 2 => 9]])
@@ -1035,7 +1035,7 @@ it('refuses a report, a confirm and a dispute once the competition is over, in G
 
     $this->actingAs($ofD)
         ->post('/tournaments/'.$competition->id.'/matches/'.$first->id.'/dispute', ['reason' => 'Das stimmt nicht.'])
-        ->assertSessionHasErrors(['reason' => 'Dieses Turnier ist vorbei. Seine Ergebnisse können nicht mehr angefochten werden.']);
+        ->assertSessionHasErrors(['reason' => 'This tournament is over. Its results can no longer be disputed.']);
 
     // Nothing filed on match 2, match 1 untouched, nobody told anything.
     expect(MatchResultReport::query()->where('competition_match_id', $second->id)->count())->toBe(0)

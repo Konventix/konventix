@@ -75,7 +75,7 @@ function onKeydown(keyEvent: KeyboardEvent): void {
         v-else-if="count > 1"
         class="venue-carousel flex flex-col gap-3"
         aria-roledescription="carousel"
-        :aria-label="`Pictures of ${props.label}`"
+        :aria-label="$t('Pictures of :name', { name: props.label })"
         tabindex="0"
         @keydown="onKeydown"
     >
@@ -85,7 +85,12 @@ function onKeydown(keyEvent: KeyboardEvent): void {
                 :key="image.url"
                 role="group"
                 aria-roledescription="slide"
-                :aria-label="`${index + 1} of ${count}`"
+                :aria-label="
+                    $t(':number of :count', {
+                        number: String(index + 1),
+                        count: String(count),
+                    })
+                "
                 :aria-hidden="index === current ? undefined : 'true'"
                 :inert="index === current ? undefined : true"
                 class="venue-carousel__slide"
@@ -93,7 +98,13 @@ function onKeydown(keyEvent: KeyboardEvent): void {
             >
                 <img
                     :src="image.url"
-                    :alt="image.alt ?? `${props.label} — picture ${index + 1}`"
+                    :alt="
+                        image.alt ??
+                        $t(':name — picture :number', {
+                            name: props.label,
+                            number: String(index + 1),
+                        })
+                    "
                     class="aspect-[3/2] w-full object-cover"
                 />
             </div>
@@ -104,7 +115,7 @@ function onKeydown(keyEvent: KeyboardEvent): void {
                 @click="current = previousSlide(current, count)"
             >
                 <ChevronLeft class="size-5" />
-                <span class="sr-only">Previous picture</span>
+                <span class="sr-only">{{ $t('Previous picture') }}</span>
             </button>
             <button
                 type="button"
@@ -112,7 +123,7 @@ function onKeydown(keyEvent: KeyboardEvent): void {
                 @click="current = nextSlide(current, count)"
             >
                 <ChevronRight class="size-5" />
-                <span class="sr-only">Next picture</span>
+                <span class="sr-only">{{ $t('Next picture') }}</span>
             </button>
         </div>
 
@@ -127,7 +138,12 @@ function onKeydown(keyEvent: KeyboardEvent): void {
                 @click="current = index"
             >
                 <span class="sr-only">
-                    Show picture {{ index + 1 }} of {{ count }}
+                    {{
+                        $t('Show picture :number of :count', {
+                            number: String(index + 1),
+                            count: String(count),
+                        })
+                    }}
                 </span>
             </button>
         </div>

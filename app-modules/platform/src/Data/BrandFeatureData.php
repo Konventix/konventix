@@ -38,8 +38,8 @@ final class BrandFeatureData extends Data
     {
         return new self(
             name: $feature->name,
-            label: $feature->label,
-            description: $feature->description,
+            label: __($feature->label),
+            description: __($feature->description),
             active: $active,
             settingsComponent: $active ? $feature->settingsComponent : null,
             settingsProps: $active && $feature->settingsProps !== null ? ($feature->settingsProps)($brand) : null,

@@ -22,7 +22,7 @@ import { edit as editLinkedAccounts } from '@/routes/linked-accounts';
  * every one of them is decided again by its Action, and a refusal comes back
  * as the form error beside the button that caused it.
  *
- * A team is started here, where the event is known — "Meine Turniere" has no
+ * A team is started here, where the event is known — "My tournaments" has no
  * such form on purpose — and then entered with the select beside it: a team
  * the viewer captains shows up there as soon as it exists.
  *
@@ -75,7 +75,7 @@ function withdrawInterest(): void {
         aria-labelledby="entry-heading"
     >
         <h2 id="entry-heading" class="text-lg font-medium text-text">
-            Mitspielen
+            {{ $t('Play') }}
         </h2>
 
         <p
@@ -83,43 +83,58 @@ function withdrawInterest(): void {
             class="text-sm text-text-muted"
         >
             <template v-if="props.competition.teamSize === 1">
-                Für dieses Turnier brauchst du ein verknüpftes
-                {{ props.competition.requiredLinkedAccount }}-Konto.
+                {{
+                    $t(
+                        'This tournament needs you to have a linked :provider account.',
+                        { provider: props.competition.requiredLinkedAccount },
+                    )
+                }}
             </template>
             <template v-else>
-                Für dieses Turnier brauchen alle im Team ein verknüpftes
-                {{ props.competition.requiredLinkedAccount }}-Konto.
+                {{
+                    $t(
+                        'This tournament needs a linked :provider account for everyone on the team.',
+                        { provider: props.competition.requiredLinkedAccount },
+                    )
+                }}
             </template>
             <template
                 v-if="
                     props.viewer.signedIn && props.viewer.missingLinkedAccount
                 "
             >
-                Deins fehlt noch:
+                {{ $t('Yours is still missing:') }}
                 <Link
                     :href="editLinkedAccounts().url"
                     class="underline underline-offset-4"
-                    >{{ props.competition.requiredLinkedAccount }}-Konto
-                    verknüpfen</Link
+                    >{{
+                        $t('Link your :provider account', {
+                            provider: props.competition.requiredLinkedAccount,
+                        })
+                    }}</Link
                 >.
             </template>
         </p>
 
         <p v-if="!props.viewer.signedIn" class="text-sm text-text-muted">
-            <Link :href="login().url" class="underline underline-offset-4"
-                >Melde dich an</Link
-            >, um ein Team anzumelden oder dich auf die Interessentenliste zu
-            setzen.
+            {{ $t('To enter a team or put yourself on the interest list:') }}
+            <Link :href="login().url" class="underline underline-offset-4">{{
+                $t('Sign in')
+            }}</Link
+            >.
         </p>
 
         <p v-else-if="!props.viewer.eligible" class="text-sm text-text-muted">
-            Mitspielen kann, wer eine bestätigte Anmeldung zur Veranstaltung
-            oder ein Ticket auf den eigenen Namen hat.
+            {{
+                $t(
+                    'Anyone with a confirmed registration for the event or a ticket in their own name can play.',
+                )
+            }}
         </p>
 
         <template v-else>
             <p v-if="props.viewer.enteredTeamName" class="text-sm text-text">
-                Du spielst für
+                {{ $t('You are playing for') }}
                 <strong>{{ props.viewer.enteredTeamName }}</strong
                 >.
             </p>
@@ -130,7 +145,9 @@ function withdrawInterest(): void {
                     class="flex flex-col gap-2"
                     @submit.prevent="enter"
                 >
-                    <Label for="entry-team">Dein Team anmelden</Label>
+                    <Label for="entry-team">{{
+                        $t('Sign up your team')
+                    }}</Label>
                     <div class="flex flex-wrap gap-2">
                         <select
                             id="entry-team"
@@ -154,13 +171,16 @@ function withdrawInterest(): void {
                             </option>
                         </select>
                         <Button type="submit" :disabled="entry.processing">
-                            Anmelden
+                            {{ $t('Sign up') }}
                         </Button>
                     </div>
                     <p class="text-sm text-text-muted">
-                        Ein Team unter {{ props.competition.teamSize }}
-                        Personen hält seinen Platz; die Turnierleitung füllt es
-                        bei Anmeldeschluss auf oder spricht euch an.
+                        {{
+                            $t(
+                                'A team of fewer than :size people keeps its slot; the organizers fill it up when signup closes or talk to you.',
+                                { size: String(props.competition.teamSize) },
+                            )
+                        }}
                     </p>
                     <InputError
                         id="entry-error"
@@ -169,7 +189,7 @@ function withdrawInterest(): void {
                 </form>
 
                 <form class="flex flex-col gap-2" @submit.prevent="startTeam">
-                    <Label for="team-name">Neues Team gründen</Label>
+                    <Label for="team-name">{{ $t('Start a new team') }}</Label>
                     <div class="flex flex-wrap gap-2">
                         <Input
                             id="team-name"
@@ -188,7 +208,7 @@ function withdrawInterest(): void {
                             variant="outline"
                             :disabled="team.processing || team.name === ''"
                         >
-                            Gründen
+                            {{ $t('Start team') }}
                         </Button>
                     </div>
                     <InputError
@@ -198,17 +218,17 @@ function withdrawInterest(): void {
                 </form>
 
                 <p class="text-sm text-text-muted">
-                    Du hast einen Einladungscode?
+                    {{ $t('Got an invite code?') }}
                     <Link
                         :href="join().url"
                         class="underline underline-offset-4"
-                        >Hier beitreten</Link
+                        >{{ $t('Join here') }}</Link
                     >.
                 </p>
             </template>
 
             <p v-else class="text-sm text-text-muted">
-                Die Anmeldung ist gerade nicht offen.
+                {{ $t('Signup is not open right now.') }}
             </p>
 
             <template
@@ -221,11 +241,11 @@ function withdrawInterest(): void {
                     v-if="props.viewer.interested"
                     class="flex flex-wrap items-center gap-2"
                 >
-                    <span class="text-sm text-text"
-                        >Du stehst auf der Interessentenliste.</span
-                    >
+                    <span class="text-sm text-text">{{
+                        $t('You are on the interest list.')
+                    }}</span>
                     <Button variant="ghost" size="sm" @click="withdrawInterest">
-                        Von der Liste nehmen
+                        {{ $t('Take me off the list') }}
                     </Button>
                 </div>
 
@@ -234,15 +254,17 @@ function withdrawInterest(): void {
                     class="flex flex-col gap-2"
                     @submit.prevent="registerInterest"
                 >
-                    <Label for="interest-note"
-                        >Noch kein Team? Auf die Interessentenliste</Label
-                    >
+                    <Label for="interest-note">{{
+                        $t('No team yet? Join the interest list')
+                    }}</Label>
                     <div class="flex flex-wrap gap-2">
                         <Input
                             id="interest-note"
                             v-model="interest.note"
                             maxlength="140"
-                            placeholder="Optional: was du spielst, wann du kannst"
+                            :placeholder="
+                                $t('Optional: what you play, when you can')
+                            "
                             class="max-w-md"
                             :aria-invalid="
                                 interest.errors.note ? 'true' : undefined
@@ -258,7 +280,7 @@ function withdrawInterest(): void {
                             variant="outline"
                             :disabled="interest.processing"
                         >
-                            Ich würde mitspielen
+                            {{ $t('I would play') }}
                         </Button>
                     </div>
                     <InputError

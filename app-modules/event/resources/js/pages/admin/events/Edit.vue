@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { Plus, Star, Trash2 } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import MediaPicker from '@/components/admin/MediaPicker.vue';
@@ -153,6 +154,16 @@ const endsAtTime = computed({
 
 useUnsavedChanges(() => form.isDirty);
 
+/**
+ * In the script, not the template: the sample path's angle brackets would
+ * read as a tag to the template parser.
+ */
+function legacySlugHint(): string {
+    return trans(
+        "Optional. The slug a previous system published this event under: /events/<legacy slug> redirects permanently to this event's page. It must not match any event's slug or another event's legacy slug.",
+    );
+}
+
 function submit(): void {
     form.put(updateEvent(props.event.id).url, { preserveScroll: true });
 }
@@ -192,40 +203,46 @@ function promoteVenue(venueId: string): void {
 </script>
 
 <template>
-    <Head :title="`Edit — ${props.event.name}`" />
+    <Head :title="$t('Edit — :name', { name: props.event.name })" />
 
     <div class="flex max-w-3xl flex-col gap-6">
         <AdminPageHeader
             :title="props.event.name"
-            description="Details, days and venues — times are wall-clock in the event's zone"
+            :description="
+                $t(
+                    'Details, days and venues — times are wall-clock in the event\'s zone',
+                )
+            "
         >
             <Link
                 :href="showEvent(props.event.id).url"
                 class="text-sm text-text-muted hover:text-text"
             >
-                Dashboard
+                {{ $t('Dashboard') }}
             </Link>
         </AdminPageHeader>
 
         <form class="flex flex-col gap-6" @submit.prevent="submit">
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Details</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{ $t('Details') }}</CardTitle></CardHeader
+                >
                 <CardContent class="flex flex-col gap-4">
                     <div class="grid grid-cols-2 gap-4">
                         <div class="grid gap-2">
-                            <Label for="edit-name">Name</Label>
+                            <Label for="edit-name">{{ $t('Name') }}</Label>
                             <Input id="edit-name" v-model="form.name" />
                             <InputError :message="form.errors.name" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="edit-slug">Slug</Label>
+                            <Label for="edit-slug">{{ $t('Slug') }}</Label>
                             <Input id="edit-slug" v-model="form.slug" />
                             <InputError :message="form.errors.slug" />
                         </div>
                     </div>
                     <div class="grid gap-2">
                         <Label for="edit-legacy-slug">
-                            Legacy slug (redirect)
+                            {{ $t('Legacy slug (redirect)') }}
                         </Label>
                         <Input
                             id="edit-legacy-slug"
@@ -236,15 +253,14 @@ function promoteVenue(venueId: string): void {
                             id="edit-legacy-slug-hint"
                             class="text-xs text-text-muted"
                         >
-                            Optional. The slug a previous system published this
-                            event under: /events/&lt;legacy slug&gt; redirects
-                            permanently to this event's page. It must not match
-                            any event's slug or another event's legacy slug.
+                            {{ legacySlugHint() }}
                         </p>
                         <InputError :message="form.errors.legacySlug" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="edit-description">Description</Label>
+                        <Label for="edit-description">{{
+                            $t('Description')
+                        }}</Label>
                         <Input
                             id="edit-description"
                             v-model="form.description"
@@ -256,14 +272,17 @@ function promoteVenue(venueId: string): void {
                              PDF, the public event page and every mail. -->
                         <MediaPicker
                             v-model="form.bannerMediaId"
-                            label="Banner"
+                            :label="$t('Banner')"
                             :media="props.media"
                             :brand-id="props.event.brandId"
                             :can-upload="canManageMedia"
                         />
                         <p class="text-xs text-text-muted">
-                            A wide picture — it heads the ticket, the public
-                            event page and every mail about this event.
+                            {{
+                                $t(
+                                    'A wide picture — it heads the ticket, the public event page and every mail about this event.',
+                                )
+                            }}
                         </p>
                         <InputError :message="form.errors.bannerMediaId" />
                     </div>
@@ -271,29 +290,29 @@ function promoteVenue(venueId: string): void {
                         <DateField
                             id="edit-starts-date"
                             v-model="startsOn"
-                            label="Starts on"
+                            :label="$t('Starts on')"
                             :error="form.errors.startsAt"
                         />
                         <TimeField
                             id="edit-starts-time"
                             v-model="startsAtTime"
-                            label="Starts at"
-                            hint="The event's own clock, not yours."
+                            :label="$t('Starts at')"
+                            :hint="$t('The event\'s own clock, not yours.')"
                         />
                         <DateField
                             id="edit-ends-date"
                             v-model="endsOn"
-                            label="Ends on"
+                            :label="$t('Ends on')"
                             :error="form.errors.endsAt"
                         />
                         <TimeField
                             id="edit-ends-time"
                             v-model="endsAtTime"
-                            label="Ends at"
-                            hint="The event's own clock, not yours."
+                            :label="$t('Ends at')"
+                            :hint="$t('The event\'s own clock, not yours.')"
                         />
                         <div class="grid gap-2 sm:col-span-2">
-                            <Label for="edit-tz">Timezone</Label>
+                            <Label for="edit-tz">{{ $t('Timezone') }}</Label>
                             <Input
                                 id="edit-tz"
                                 v-model="form.timezone"
@@ -303,8 +322,11 @@ function promoteVenue(venueId: string): void {
                                 id="edit-tz-hint"
                                 class="text-xs text-text-muted"
                             >
-                                The zone the two clocks above are read in
-                                (ADR-0027) — an IANA name such as Europe/Berlin.
+                                {{
+                                    $t(
+                                        'The zone the two clocks above are read in (ADR-0027) — an IANA name such as Europe/Berlin.',
+                                    )
+                                }}
                             </p>
                             <InputError
                                 id="edit-tz-error"
@@ -314,51 +336,74 @@ function promoteVenue(venueId: string): void {
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="grid gap-2">
-                            <Label for="edit-visibility">Visibility</Label>
+                            <Label for="edit-visibility">{{
+                                $t('Visibility')
+                            }}</Label>
                             <select
                                 id="edit-visibility"
                                 v-model="form.visibility"
                                 class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                             >
-                                <option value="public">Public</option>
-                                <option value="unlisted">Unlisted</option>
+                                <option value="public">
+                                    {{ $t('Public') }}
+                                </option>
+                                <option value="unlisted">
+                                    {{ $t('Unlisted') }}
+                                </option>
                             </select>
                         </div>
                         <div class="grid gap-2">
-                            <Label for="edit-reentry">Re-entry policy</Label>
+                            <Label for="edit-reentry">{{
+                                $t('Re-entry policy')
+                            }}</Label>
                             <select
                                 id="edit-reentry"
                                 v-model="form.reentryPolicy"
                                 class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                             >
-                                <option value="unlimited">Unlimited</option>
-                                <option value="once_per_day">
-                                    Once per day
+                                <option value="unlimited">
+                                    {{ $t('Unlimited') }}
                                 </option>
-                                <option value="once_only">Once only</option>
+                                <option value="once_per_day">
+                                    {{ $t('Once per day') }}
+                                </option>
+                                <option value="once_only">
+                                    {{ $t('Once only') }}
+                                </option>
                             </select>
                         </div>
                     </div>
                     <div class="grid gap-2">
-                        <Label for="edit-attendee-list">Attendee list</Label>
+                        <Label for="edit-attendee-list">{{
+                            $t('Attendee list')
+                        }}</Label>
                         <select
                             id="edit-attendee-list"
                             v-model="form.attendeeListVisibility"
                             class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                             aria-describedby="edit-attendee-list-hint"
                         >
-                            <option value="off">Off</option>
+                            <option value="off">{{ $t('Off') }}</option>
                             <option value="members">
-                                Count for everyone, names for signed-in members
+                                {{
+                                    $t(
+                                        'Count for everyone, names for signed-in members',
+                                    )
+                                }}
                             </option>
-                            <option value="public">Names for everyone</option>
+                            <option value="public">
+                                {{ $t('Names for everyone') }}
+                            </option>
                         </select>
                         <p
                             id="edit-attendee-list-hint"
                             class="text-sm text-text-muted"
                         >
-                            Only confirmed registrants who opted in on their
-                            profile are ever named, by username.
+                            {{
+                                $t(
+                                    'Only confirmed registrants who opted in on their profile are ever named, by username.',
+                                )
+                            }}
                         </p>
                         <InputError
                             :message="form.errors.attendeeListVisibility"
@@ -368,7 +413,9 @@ function promoteVenue(venueId: string): void {
             </Card>
 
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Days</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{ $t('Days') }}</CardTitle></CardHeader
+                >
                 <CardContent class="flex flex-col gap-3">
                     <div
                         v-for="(day, index) in form.days"
@@ -378,12 +425,12 @@ function promoteVenue(venueId: string): void {
                         <DateField
                             :id="`edit-day-${index}-date`"
                             v-model="day.date"
-                            label="Date"
+                            :label="$t('Date')"
                             class="w-44"
                         />
                         <div class="grid flex-1 gap-2">
                             <Label :for="`edit-day-${index}-label`">
-                                Label (optional)
+                                {{ $t('Label (optional)') }}
                             </Label>
                             <Input
                                 :id="`edit-day-${index}-label`"
@@ -396,7 +443,7 @@ function promoteVenue(venueId: string): void {
                         <TimeField
                             :id="`edit-day-${index}-ends`"
                             :model-value="day.day_ends_at ?? ''"
-                            label="Day ends at"
+                            :label="$t('Day ends at')"
                             class="w-32"
                             :error="form.errors[`days.${index}.day_ends_at`]"
                             @update:model-value="
@@ -420,11 +467,14 @@ function promoteVenue(venueId: string): void {
                         @click="addDay"
                     >
                         <Plus class="size-4" />
-                        Add day
+                        {{ $t('Add day') }}
                     </Button>
                     <p class="text-xs text-text-muted">
-                        Empty = 00:00. Times before 12:00 mean the night after
-                        this day (03:00 = 3 a.m. after the date).
+                        {{
+                            $t(
+                                'Empty = 00:00. Times before 12:00 mean the night after this day (03:00 = 3 a.m. after the date).',
+                            )
+                        }}
                     </p>
                     <InputError :message="form.errors.days" />
                 </CardContent>
@@ -432,26 +482,28 @@ function promoteVenue(venueId: string): void {
 
             <div class="flex items-center gap-3 self-start">
                 <Button type="submit" :disabled="form.processing">
-                    Save changes
+                    {{ $t('Save changes') }}
                 </Button>
                 <span
                     v-if="form.isDirty"
                     role="status"
                     class="text-sm text-warning"
                 >
-                    Unsaved changes
+                    {{ $t('Unsaved changes') }}
                 </span>
             </div>
         </form>
 
         <Card class="border-border bg-surface">
-            <CardHeader><CardTitle>Venues</CardTitle></CardHeader>
+            <CardHeader
+                ><CardTitle>{{ $t('Venues') }}</CardTitle></CardHeader
+            >
             <CardContent class="flex flex-col gap-4">
                 <p
                     v-if="props.venues.length === 0"
                     class="text-sm text-text-muted"
                 >
-                    No venue assigned — online-only event.
+                    {{ $t('No venue assigned — online-only event.') }}
                 </p>
                 <div
                     v-for="venue in props.venues"
@@ -466,14 +518,14 @@ function promoteVenue(venueId: string): void {
                         v-if="venue.isPrimary"
                         class="rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent"
                     >
-                        primary
+                        {{ $t('primary') }}
                     </span>
                     <Button
                         v-else
                         type="button"
                         variant="ghost"
                         size="sm"
-                        title="Make primary"
+                        :title="$t('Make primary')"
                         @click="promoteVenue(venue.id)"
                     >
                         <Star class="size-4" />
@@ -494,9 +546,9 @@ function promoteVenue(venueId: string): void {
                     @submit.prevent="submitVenue"
                 >
                     <div class="grid flex-1 gap-1">
-                        <Label for="assign-venue" class="text-xs"
-                            >Assign venue</Label
-                        >
+                        <Label for="assign-venue" class="text-xs">{{
+                            $t('Assign venue')
+                        }}</Label>
                         <select
                             id="assign-venue"
                             v-model="venueToAssign"
@@ -515,9 +567,11 @@ function promoteVenue(venueId: string): void {
                         class="flex items-center gap-1 pb-2 text-sm text-text-muted"
                     >
                         <input v-model="assignAsPrimary" type="checkbox" />
-                        primary
+                        {{ $t('primary') }}
                     </label>
-                    <Button type="submit" variant="secondary">Assign</Button>
+                    <Button type="submit" variant="secondary">{{
+                        $t('Assign')
+                    }}</Button>
                 </form>
             </CardContent>
         </Card>

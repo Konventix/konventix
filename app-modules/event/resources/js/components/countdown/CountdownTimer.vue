@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useNow } from '@vueuse/core';
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 
 /**
@@ -29,10 +30,10 @@ const remaining = computed(() => {
 });
 
 const segments = computed(() => [
-    { label: 'Days', value: remaining.value.days },
-    { label: 'Hours', value: remaining.value.hours },
-    { label: 'Minutes', value: remaining.value.minutes },
-    { label: 'Seconds', value: remaining.value.seconds },
+    { key: 'days', label: trans('Days'), value: remaining.value.days },
+    { key: 'hours', label: trans('Hours'), value: remaining.value.hours },
+    { key: 'minutes', label: trans('Minutes'), value: remaining.value.minutes },
+    { key: 'seconds', label: trans('Seconds'), value: remaining.value.seconds },
 ]);
 </script>
 
@@ -44,7 +45,7 @@ const segments = computed(() => [
     >
         <div
             v-for="segment in segments"
-            :key="segment.label"
+            :key="segment.key"
             class="rounded-lg border border-border bg-surface-raised px-4 py-6 text-center shadow-sm"
         >
             <div

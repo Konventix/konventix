@@ -29,7 +29,9 @@ const props = defineProps<{
 </script>
 
 <template>
-    <Head :title="`Attendees – ${props.listing.eventName}`" />
+    <Head
+        :title="$t('Attendees – :event', { event: props.listing.eventName })"
+    />
 
     <div
         class="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6 text-text lg:p-8"
@@ -45,13 +47,21 @@ const props = defineProps<{
         </p>
 
         <header class="flex flex-col gap-1">
-            <h1 class="text-3xl font-semibold">Who's coming</h1>
+            <h1 class="text-3xl font-semibold">{{ $t('Who’s coming') }}</h1>
             <p class="text-text-muted" data-test="attendee-count">
-                {{ props.listing.count }}
-                {{ props.listing.count === 1 ? 'attendee' : 'attendees' }}
-                so far<template v-if="props.attendees.total > 0"
-                    >, {{ props.attendees.total }} listed by name</template
-                >.
+                <template v-if="props.attendees.total > 0">{{
+                    $tChoice(
+                        '{1} :count attendee so far, :listed listed by name.|[0,*] :count attendees so far, :listed listed by name.',
+                        props.listing.count,
+                        { listed: String(props.attendees.total) },
+                    )
+                }}</template>
+                <template v-else>{{
+                    $tChoice(
+                        '{1} :count attendee so far.|[0,*] :count attendees so far.',
+                        props.listing.count,
+                    )
+                }}</template>
             </p>
         </header>
 
@@ -76,32 +86,36 @@ const props = defineProps<{
             </li>
         </ul>
         <p v-else class="text-text-muted">
-            Nobody has chosen to be listed by name yet.
+            {{ $t('Nobody has chosen to be listed by name yet.') }}
         </p>
 
         <nav
             v-if="props.attendees.last_page > 1"
             class="flex items-center justify-between text-sm"
-            aria-label="Pagination"
+            :aria-label="$t('Pagination')"
         >
             <Link
                 v-if="props.attendees.prev_page_url"
                 :href="props.attendees.prev_page_url"
                 class="text-accent underline-offset-4 hover:underline"
             >
-                Previous
+                {{ $t('Previous') }}
             </Link>
             <span v-else aria-hidden="true" />
             <span class="text-text-muted">
-                Page {{ props.attendees.current_page }} of
-                {{ props.attendees.last_page }}
+                {{
+                    $t('Page :current of :last', {
+                        current: String(props.attendees.current_page),
+                        last: String(props.attendees.last_page),
+                    })
+                }}
             </span>
             <Link
                 v-if="props.attendees.next_page_url"
                 :href="props.attendees.next_page_url"
                 class="text-accent underline-offset-4 hover:underline"
             >
-                Next
+                {{ $t('Next') }}
             </Link>
             <span v-else aria-hidden="true" />
         </nav>

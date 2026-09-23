@@ -75,7 +75,9 @@ class NavigationItem
      * The shape the two shells read. `badge` is resolved here and nowhere
      * else — serialisation is the one moment a per-request count is both
      * wanted and cheap, and every caller of this method already stands in a
-     * request.
+     * request. The label is translated here for the same reason: a module
+     * registers it in English at boot, into a singleton, and only the
+     * request knows its locale (ADR-0068).
      *
      * @return array{module: string, label: string, url: string, icon: string|null, order: int, external: bool, badge: int|null}
      */
@@ -83,7 +85,7 @@ class NavigationItem
     {
         return [
             'module' => $this->module,
-            'label' => $this->label,
+            'label' => __($this->label),
             'url' => $this->url,
             'icon' => $this->icon,
             'order' => $this->order,

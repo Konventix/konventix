@@ -28,11 +28,13 @@ function href(teamId: string): string {
     <div class="grid gap-6 md:grid-cols-2">
         <section class="flex flex-col gap-3" aria-labelledby="teams-heading">
             <h2 id="teams-heading" class="text-lg font-medium text-text">
-                Teams ({{ props.teams.length }})
+                {{
+                    $t('Teams (:count)', { count: String(props.teams.length) })
+                }}
             </h2>
 
             <p v-if="props.teams.length === 0" class="text-sm text-text-muted">
-                Noch kein Team angemeldet.
+                {{ $t('No team signed up yet.') }}
             </p>
 
             <ul v-else class="flex flex-col gap-2">
@@ -49,12 +51,12 @@ function href(teamId: string): string {
                     <span
                         v-if="team.state === 'incomplete'"
                         class="ml-2 text-xs text-warning"
-                        >noch nicht vollzählig</span
+                        >{{ $t('not complete yet') }}</span
                     >
                     <span
                         v-else-if="team.state === 'checked_in'"
                         class="ml-2 text-xs text-success"
-                        >eingecheckt</span
+                        >{{ $t('checked in') }}</span
                     >
                     <p class="text-sm text-text-muted">
                         {{ team.members.join(', ') }}
@@ -68,14 +70,18 @@ function href(teamId: string): string {
             aria-labelledby="interested-heading"
         >
             <h2 id="interested-heading" class="text-lg font-medium text-text">
-                Suchen ein Team ({{ props.interested.length }})
+                {{
+                    $t('Looking for a team (:count)', {
+                        count: String(props.interested.length),
+                    })
+                }}
             </h2>
 
             <p
                 v-if="props.interested.length === 0"
                 class="text-sm text-text-muted"
             >
-                Niemand auf der Liste.
+                {{ $t('Nobody on the list.') }}
             </p>
 
             <ul v-else class="flex flex-col gap-1">

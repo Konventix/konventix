@@ -17,21 +17,21 @@ final class HolderChangeRefusedException extends RuntimeException
 {
     public static function alreadyHeld(): self
     {
-        return new self('This ticket already has a holder.');
+        return new self(__('This ticket already has a holder.'));
     }
 
     public static function notHeld(): self
     {
-        return new self('This ticket has no holder to take back.');
+        return new self(__('This ticket has no holder to take back.'));
     }
 
     public static function notInAssignableState(): self
     {
-        return new self('This ticket is no longer valid.');
+        return new self(__('This ticket is no longer valid.'));
     }
 
     public static function checkedIn(): self
     {
-        return new self('This ticket has already been used at the door and cannot be taken back.');
+        return new self(__('This ticket has already been used at the door and cannot be taken back.'));
     }
 }

@@ -48,13 +48,14 @@ function submit(): void {
         @submit.prevent="submit"
     >
         <h2 id="score-heading" class="text-lg font-medium text-text">
-            Ergebnis einreichen
+            {{ $t('Submit a result') }}
         </h2>
 
         <div class="flex flex-wrap gap-3">
             <div class="flex flex-col gap-1">
                 <Label for="score-value"
-                    >Wertung<template v-if="props.competition.unit">
+                    >{{ $t('Score')
+                    }}<template v-if="props.competition.unit">
                         ({{ props.competition.unit }})</template
                     ></Label
                 >
@@ -78,7 +79,7 @@ function submit(): void {
                 v-if="props.competition.heats !== null"
                 class="flex flex-col gap-1"
             >
-                <Label for="score-heat">Lauf</Label>
+                <Label for="score-heat">{{ $t('Heat') }}</Label>
                 <select
                     id="score-heat"
                     v-model="form.heat"
@@ -93,7 +94,7 @@ function submit(): void {
                         :key="heat"
                         :value="String(heat)"
                     >
-                        Lauf {{ heat }}
+                        {{ $t('Heat :heat', { heat: String(heat) }) }}
                     </option>
                 </select>
                 <InputError id="score-heat-error" :message="form.errors.heat" />
@@ -101,7 +102,7 @@ function submit(): void {
         </div>
 
         <div class="flex flex-col gap-1">
-            <Label for="score-note">Anmerkung (optional)</Label>
+            <Label for="score-note">{{ $t('Note (optional)') }}</Label>
             <Input id="score-note" v-model="form.note" maxlength="255" />
         </div>
 
@@ -110,10 +111,13 @@ function submit(): void {
                 type="submit"
                 :disabled="form.processing || form.value === ''"
             >
-                Einreichen
+                {{ $t('Submit') }}
             </Button>
-            <span v-if="form.isDirty" role="status" class="text-sm text-warning"
-                >Nicht gespeicherte Änderungen</span
+            <span
+                v-if="form.isDirty"
+                role="status"
+                class="text-sm text-warning"
+                >{{ $t('Unsaved changes') }}</span
             >
         </div>
     </form>

@@ -2,6 +2,7 @@
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { Trash2, Upload } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { trans, transChoice } from 'laravel-vue-i18n';
 import { computed, h, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -101,7 +102,9 @@ function formatBytes(bytes: number): string {
     return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
-const columns: ColumnDef<MediaRow>[] = [
+// A computed, not a constant: `trans()` must run after the catalog is
+// loaded, and again when the language changes.
+const columns = computed<ColumnDef<MediaRow>[]>(() => [
     {
         id: 'preview',
         header: '',
@@ -113,7 +116,7 @@ const columns: ColumnDef<MediaRow>[] = [
             if (row.original.variantsPending) {
                 return h('div', {
                     class: 'h-10 w-14 animate-pulse rounded border border-border bg-surface-muted',
-                    title: 'Preview is being generated',
+                    title: trans('Preview is being generated'),
                 });
             }
 
@@ -129,7 +132,7 @@ const columns: ColumnDef<MediaRow>[] = [
     {
         accessorKey: 'original_filename',
         accessorFn: (row) => row.originalFilename,
-        header: 'File',
+        header: trans('File'),
         enableSorting: true,
         cell: ({ row }) =>
             h('div', { class: 'flex flex-col' }, [
@@ -152,7 +155,7 @@ const columns: ColumnDef<MediaRow>[] = [
     {
         accessorKey: 'size_bytes',
         accessorFn: (row) => row.sizeBytes,
-        header: 'Size',
+        header: trans('Size'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -163,21 +166,24 @@ const columns: ColumnDef<MediaRow>[] = [
     },
     {
         id: 'usage',
-        header: 'Used by',
+        header: trans('Used by'),
         enableSorting: false,
         cell: ({ row }) =>
             h(
                 'span',
                 { class: 'text-text-muted' },
                 row.original.usageCount === 0
-                    ? 'unused'
-                    : `${row.original.usageCount} entit${row.original.usageCount === 1 ? 'y' : 'ies'}`,
+                    ? trans('unused')
+                    : transChoice(
+                          '{1} :count entity|[2,*] :count entities',
+                          row.original.usageCount,
+                      ),
             ),
     },
     {
         accessorKey: 'created_at',
         accessorFn: (row) => row.uploadedAt,
-        header: 'Uploaded',
+        header: trans('Uploaded'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -197,28 +203,33 @@ const columns: ColumnDef<MediaRow>[] = [
                       {
                           variant: 'ghost',
                           size: 'sm',
+                          'aria-label': trans('Delete :file', {
+                              file: row.original.originalFilename,
+                          }),
                           onClick: () => deleteItem(row.original),
                       },
                       () => h(Trash2, { class: 'size-4 text-danger' }),
                   )
                 : null,
     },
-];
+]);
 </script>
 
 <template>
-    <Head title="Media" />
+    <Head :title="$t('Media')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Media"
-            description="Shared file library for badges, themes and pages"
+            :title="$t('Media')"
+            :description="
+                $t('Shared file library for badges, themes and pages')
+            "
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
-            search-placeholder="Search files…"
+            :search-placeholder="$t('Search files…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
         >
@@ -227,19 +238,21 @@ const columns: ColumnDef<MediaRow>[] = [
                     <DialogTrigger as-child>
                         <Button>
                             <Upload class="size-4" />
-                            Upload
+                            {{ $t('Upload') }}
                         </Button>
                     </DialogTrigger>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Upload file</DialogTitle>
+                            <DialogTitle>{{ $t('Upload file') }}</DialogTitle>
                         </DialogHeader>
                         <form
                             class="flex flex-col gap-4"
                             @submit.prevent="submitUpload"
                         >
                             <div class="grid gap-2">
-                                <Label for="media-brand">Brand</Label>
+                                <Label for="media-brand">{{
+                                    $t('Brand')
+                                }}</Label>
                                 <select
                                     id="media-brand"
                                     v-model="form.brand_id"
@@ -256,7 +269,7 @@ const columns: ColumnDef<MediaRow>[] = [
                                 <InputError :message="form.errors.brand_id" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="media-file">File</Label>
+                                <Label for="media-file">{{ $t('File') }}</Label>
                                 <!-- No SVG (#252): the server refuses it, and
                                      a bare image/* would still offer it here. -->
                                 <input
@@ -273,14 +286,14 @@ const columns: ColumnDef<MediaRow>[] = [
                                 <InputError :message="form.errors.file" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="media-alt"
-                                    >Alt text (optional)</Label
-                                >
+                                <Label for="media-alt">{{
+                                    $t('Alt text (optional)')
+                                }}</Label>
                                 <Input id="media-alt" v-model="form.alt_text" />
                                 <InputError :message="form.errors.alt_text" />
                             </div>
                             <Button type="submit" :disabled="form.processing">
-                                Upload
+                                {{ $t('Upload') }}
                             </Button>
                         </form>
                     </DialogContent>
@@ -294,8 +307,12 @@ const columns: ColumnDef<MediaRow>[] = [
             :data="props.media.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="files"
-            empty-message="No media yet — upload logos, block images, or badge assets."
+            :items-label="$t('files')"
+            :empty-message="
+                $t(
+                    'No media yet — upload logos, block images, or badge assets.',
+                )
+            "
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />

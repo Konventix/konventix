@@ -227,7 +227,16 @@ class RegistrationAdminController
             throw ValidationException::withMessages(['state' => $e->getMessage()]);
         }
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Declaration recorded as :state.', ['state' => $data->state->value])]);
+        // One sentence per outcome rather than the raw enum value in a
+        // placeholder: `verified` is a wire value, not a word (ADR-0068).
+        $message = match ($data->state) {
+            EntryConditionAssertionState::Verified => __('Declaration recorded as verified.'),
+            EntryConditionAssertionState::Refused => __('Declaration recorded as refused.'),
+            EntryConditionAssertionState::Waived => __('Declaration recorded as waived.'),
+            EntryConditionAssertionState::Asserted => __('Declaration recorded as declared.'),
+        };
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
 
         return back();
     }

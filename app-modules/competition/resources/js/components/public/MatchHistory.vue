@@ -25,11 +25,11 @@ function scoreLine(scores: Record<number, number | null> | null): string {
 <template>
     <section class="flex flex-col gap-3" aria-labelledby="history-heading">
         <h2 id="history-heading" class="text-lg font-medium text-text">
-            Verlauf
+            {{ $t('History') }}
         </h2>
 
         <p v-if="props.history.length === 0" class="text-sm text-text-muted">
-            Noch nichts passiert.
+            {{ $t('Nothing has happened yet.') }}
         </p>
 
         <ol v-else class="flex flex-col gap-2">

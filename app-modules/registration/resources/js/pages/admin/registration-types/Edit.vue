@@ -18,6 +18,14 @@ import {
 } from '@/routes/admin/registration-types';
 import RegistrationTypeEntryConditionsCard from '../../../components/RegistrationTypeEntryConditionsCard.vue';
 import RegistrationTypeGrantsCard from '../../../components/RegistrationTypeGrantsCard.vue';
+import {
+    approvalLabel,
+    confirmationGateLabel,
+    priceDisplayLabel,
+    settlementLabel,
+    taxClassLabel,
+    visibilityLabel,
+} from '../../../lib/labels';
 
 /**
  * One registration type: its axes (ADR-0005), the grants a confirmed
@@ -149,7 +157,7 @@ function submit(): void {
 </script>
 
 <template>
-    <Head :title="`${props.type.name} — Registration type`" />
+    <Head :title="$t(':name — Registration type', { name: props.type.name })" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
@@ -160,12 +168,17 @@ function submit(): void {
                 v-if="props.termsFrozen"
                 class="inline-flex rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning"
             >
-                {{ props.registrations }} registrations — terms frozen
+                {{
+                    $tChoice(
+                        '{1} :count registration — terms frozen|[2,*] :count registrations — terms frozen',
+                        props.registrations,
+                    )
+                }}
             </span>
             <Button variant="outline" as-child>
                 <Link :href="typesIndex().url">
                     <ArrowLeft class="size-4" />
-                    All types
+                    {{ $t('All types') }}
                 </Link>
             </Button>
         </AdminPageHeader>
@@ -174,28 +187,31 @@ function submit(): void {
             <div class="flex flex-col gap-6 lg:col-span-2">
                 <Card>
                     <CardHeader>
-                        <CardTitle>The offer</CardTitle>
+                        <CardTitle>{{ $t('The offer') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <p
                             v-if="props.termsFrozen"
                             class="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-text"
                         >
-                            People have already registered under these terms.
-                            Name, visibility and quota links stay editable;
-                            everything else would reinterpret their
-                            registrations, so it needs a new type.
+                            {{
+                                $t(
+                                    'People have already registered under these terms. Name, visibility and quota links stay editable; everything else would reinterpret their registrations, so it needs a new type.',
+                                )
+                            }}
                         </p>
 
                         <div class="grid gap-2">
-                            <Label for="type-name">Name</Label>
+                            <Label for="type-name">{{ $t('Name') }}</Label>
                             <Input id="type-name" v-model="form.name" />
                             <InputError :message="form.errors.name" />
                         </div>
 
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div class="grid gap-2">
-                                <Label for="type-event">Event</Label>
+                                <Label for="type-event">{{
+                                    $t('Event')
+                                }}</Label>
                                 <select
                                     id="type-event"
                                     v-model="form.eventId"
@@ -214,7 +230,9 @@ function submit(): void {
                             </div>
 
                             <div class="grid gap-2">
-                                <Label for="type-visibility">Visibility</Label>
+                                <Label for="type-visibility">{{
+                                    $t('Visibility')
+                                }}</Label>
                                 <select
                                     id="type-visibility"
                                     v-model="form.visibility"
@@ -226,32 +244,34 @@ function submit(): void {
                                         :key="value"
                                         :value="value"
                                     >
-                                        {{ value }}
+                                        {{ visibilityLabel(value) }}
                                     </option>
                                 </select>
                                 <InputError :message="form.errors.visibility" />
                                 <p class="text-sm text-text-muted">
                                     <template
                                         v-if="form.visibility === 'public'"
-                                        >This type is offered on the event's own
-                                        public page, never in the shop, and
-                                        appears there as soon as you
-                                        save.</template
+                                        >{{
+                                            $t(
+                                                'This type is offered on the event’s own public page, never in the shop, and appears there as soon as you save.',
+                                            )
+                                        }}</template
                                     >
                                     <template
                                         v-else-if="
                                             form.visibility === 'invite_only'
                                         "
-                                        >This type is not offered on the event's
-                                        public page. It is reachable by
-                                        invitation only — an invited person gets
-                                        their own link.</template
+                                        >{{
+                                            $t(
+                                                'This type is not offered on the event’s public page. It is reachable by invitation only — an invited person gets their own link.',
+                                            )
+                                        }}</template
                                     >
-                                    <template v-else
-                                        >This type is not offered on the event's
-                                        public page. It is reachable only by
-                                        someone who has the link.</template
-                                    >
+                                    <template v-else>{{
+                                        $t(
+                                            'This type is not offered on the event’s public page. It is reachable only by someone who has the link.',
+                                        )
+                                    }}</template>
                                     <a
                                         v-if="
                                             props.eventPageUrl &&
@@ -262,13 +282,15 @@ function submit(): void {
                                         rel="noopener"
                                         class="text-accent hover:underline"
                                     >
-                                        Open the event page
+                                        {{ $t('Open the event page') }}
                                     </a>
                                 </p>
                             </div>
 
                             <div class="grid gap-2">
-                                <Label for="type-approval">Approval</Label>
+                                <Label for="type-approval">{{
+                                    $t('Approval')
+                                }}</Label>
                                 <select
                                     id="type-approval"
                                     v-model="form.approval"
@@ -280,14 +302,16 @@ function submit(): void {
                                         :key="value"
                                         :value="value"
                                     >
-                                        {{ value }}
+                                        {{ approvalLabel(value) }}
                                     </option>
                                 </select>
                                 <InputError :message="form.errors.approval" />
                             </div>
 
                             <div class="grid gap-2">
-                                <Label for="type-settlement">Settlement</Label>
+                                <Label for="type-settlement">{{
+                                    $t('Settlement')
+                                }}</Label>
                                 <select
                                     id="type-settlement"
                                     v-model="form.settlement"
@@ -300,7 +324,7 @@ function submit(): void {
                                         :key="value"
                                         :value="value"
                                     >
-                                        {{ value }}
+                                        {{ settlementLabel(value) }}
                                     </option>
                                 </select>
                                 <InputError :message="form.errors.settlement" />
@@ -308,7 +332,7 @@ function submit(): void {
 
                             <div class="grid gap-2">
                                 <Label for="type-gate">
-                                    Confirmation gate
+                                    {{ $t('Confirmation gate') }}
                                 </Label>
                                 <select
                                     id="type-gate"
@@ -322,7 +346,7 @@ function submit(): void {
                                         :key="value"
                                         :value="value"
                                     >
-                                        {{ value }}
+                                        {{ confirmationGateLabel(value) }}
                                     </option>
                                 </select>
                                 <InputError
@@ -331,7 +355,9 @@ function submit(): void {
                             </div>
 
                             <div class="grid gap-2">
-                                <Label for="type-terms">Payment terms</Label>
+                                <Label for="type-terms">{{
+                                    $t('Payment terms')
+                                }}</Label>
                                 <Input
                                     id="type-terms"
                                     v-model.number="form.termsDays"
@@ -340,15 +366,15 @@ function submit(): void {
                                     :disabled="props.termsFrozen"
                                 />
                                 <p class="text-xs text-text-muted">
-                                    Days until an invoice is due.
+                                    {{ $t('Days until an invoice is due.') }}
                                 </p>
                                 <InputError :message="form.errors.termsDays" />
                             </div>
 
                             <div class="grid gap-2">
-                                <Label for="type-max-quantity"
-                                    >Maximum per registration</Label
-                                >
+                                <Label for="type-max-quantity">{{
+                                    $t('Maximum per registration')
+                                }}</Label>
                                 <Input
                                     id="type-max-quantity"
                                     v-model.number="
@@ -359,9 +385,11 @@ function submit(): void {
                                     placeholder="1"
                                 />
                                 <p class="text-xs text-text-muted">
-                                    How many units one person may buy in a
-                                    single registration. Empty means one, and
-                                    the form then offers no choice.
+                                    {{
+                                        $t(
+                                            'How many units one person may buy in a single registration. Empty means one, and the form then offers no choice.',
+                                        )
+                                    }}
                                 </p>
                                 <InputError
                                     :message="
@@ -401,20 +429,27 @@ function submit(): void {
             <div class="flex flex-col gap-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Price</CardTitle>
+                        <CardTitle>{{ $t('Price') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <p v-if="!needsPrice" class="text-sm text-text-muted">
-                            A
-                            <span class="font-medium">
-                                {{ form.settlement }}
-                            </span>
-                            type carries no price: no order, no invoice.
+                            {{
+                                $t(
+                                    'A “:settlement” type carries no price: no order, no invoice.',
+                                    {
+                                        settlement: settlementLabel(
+                                            form.settlement,
+                                        ),
+                                    },
+                                )
+                            }}
                         </p>
 
                         <template v-if="form.priceDeclaration">
                             <div class="grid gap-2">
-                                <Label for="price-amount">Net amount</Label>
+                                <Label for="price-amount">{{
+                                    $t('Net amount')
+                                }}</Label>
                                 <Input
                                     id="price-amount"
                                     v-model="
@@ -425,7 +460,9 @@ function submit(): void {
                                 />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="price-tax">Tax class</Label>
+                                <Label for="price-tax">{{
+                                    $t('Tax class')
+                                }}</Label>
                                 <select
                                     id="price-tax"
                                     v-model="form.priceDeclaration.taxClass"
@@ -437,16 +474,21 @@ function submit(): void {
                                         :key="value"
                                         :value="value"
                                     >
-                                        {{ value }}
+                                        {{ taxClassLabel(value) }}
                                     </option>
                                 </select>
                                 <p class="text-xs text-text-muted">
-                                    The class, not a rate — Commerce resolves
-                                    the rate at settlement.
+                                    {{
+                                        $t(
+                                            'The class, not a rate — Commerce resolves the rate at settlement.',
+                                        )
+                                    }}
                                 </p>
                             </div>
                             <div class="grid gap-2">
-                                <Label for="price-display">Display</Label>
+                                <Label for="price-display">{{
+                                    $t('Display')
+                                }}</Label>
                                 <select
                                     id="price-display"
                                     v-model="form.priceDeclaration.display"
@@ -459,7 +501,7 @@ function submit(): void {
                                         :key="value"
                                         :value="value"
                                     >
-                                        {{ value }}
+                                        {{ priceDisplayLabel(value) }}
                                     </option>
                                 </select>
                             </div>
@@ -471,28 +513,38 @@ function submit(): void {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Sales window</CardTitle>
+                        <CardTitle>{{ $t('Sales window') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <p class="text-sm text-text-muted">
-                            When this type may be bought. Leave a field empty
-                            for no bound — the start is inclusive, the end is
-                            not.
+                            {{
+                                $t(
+                                    'When this type may be bought. Leave a field empty for no bound — the start is inclusive, the end is not.',
+                                )
+                            }}
                         </p>
 
                         <DateTimeField
                             id="type-sales-start"
                             v-model="form.salesStart"
-                            label="Sale starts"
-                            hint="Before this, the landing page announces the type instead of linking to it."
+                            :label="$t('Sale starts')"
+                            :hint="
+                                $t(
+                                    'Before this, the landing page announces the type instead of linking to it.',
+                                )
+                            "
                             :error="form.errors.salesStart"
                         />
 
                         <DateTimeField
                             id="type-sales-end"
                             v-model="form.salesEnd"
-                            label="Sale ends"
-                            hint="Must be after the start. After it, the type disappears from the landing page and a new submission is refused; a cart line already placed stays payable."
+                            :label="$t('Sale ends')"
+                            :hint="
+                                $t(
+                                    'Must be after the start. After it, the type disappears from the landing page and a new submission is refused; a cart line already placed stays payable.',
+                                )
+                            "
                             :error="form.errors.salesEnd"
                         />
                     </CardContent>
@@ -500,14 +552,14 @@ function submit(): void {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Quotas</CardTitle>
+                        <CardTitle>{{ $t('Quotas') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-3">
                         <p
                             v-if="props.quotas.length === 0"
                             class="text-sm text-text-muted"
                         >
-                            This brand has no quotas yet.
+                            {{ $t('This brand has no quotas yet.') }}
                         </p>
 
                         <div
@@ -540,14 +592,14 @@ function submit(): void {
 
                 <div class="flex items-center gap-3">
                     <Button type="submit" :disabled="form.processing">
-                        Save
+                        {{ $t('Save') }}
                     </Button>
                     <span
                         v-if="form.isDirty"
                         role="status"
                         class="text-sm text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
             </div>

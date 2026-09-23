@@ -73,8 +73,8 @@ final class MyTicketCard
     }
 
     /**
-     * D-ADM-03 in the words of somebody standing at the door, in German
-     * like the rest of the participant's surface. No profile means the
+     * D-ADM-03 in the words of somebody standing at the door, in the
+     * viewer's language (ADR-0068). No profile means the
      * event never narrowed it — Admission's projection writes a row only
      * once Event says something — so the answer is the open one, which is
      * also `ReentryPolicy::Unlimited`'s.
@@ -82,9 +82,9 @@ final class MyTicketCard
     private function reentryHint(?ReentryPolicy $policy): string
     {
         return match ($policy) {
-            ReentryPolicy::OncePerDay => 'Einlass täglich neu – bitte den Code jeden Tag scannen lassen.',
-            ReentryPolicy::OnceOnly => 'Einmaliger Einlass – der Code gilt nur beim ersten Scan.',
-            default => 'Ein- und Ausgang jederzeit mit diesem Code.',
+            ReentryPolicy::OncePerDay => __('Admission renews daily – have the code scanned every day.'),
+            ReentryPolicy::OnceOnly => __('Single admission – the code is valid for the first scan only.'),
+            default => __('Come and go at any time with this code.'),
         };
     }
 }

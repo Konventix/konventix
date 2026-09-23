@@ -3,7 +3,7 @@ import { Link } from '@inertiajs/vue3';
 import { statusLabel } from '../public/labels';
 
 /**
- * The live hub's "Meine Competitions" card (competition design §10a): the
+ * The live hub's "My competitions" card (competition design §10a): the
  * competitions the viewer's teams are entered in at the running event, with
  * the status and — where the competition asks for one — the check-in.
  *
@@ -13,7 +13,7 @@ import { statusLabel } from '../public/labels';
  * (`tests/Feature/HubComponentBoundaryTest.php`). The status labels are the
  * public pages' own (`../public/labels`).
  *
- * It does not poll, and nothing refreshes it: *Nächste Spiele* fetches only
+ * It does not poll, and nothing refreshes it: *Next games* fetches only
  * its own payload from `/live/next-games` (design §10a, "Liveness"), so the
  * status and check-in shown here are the ones of the page load until the
  * hub is loaded again (final review, part 3, M3).
@@ -54,21 +54,25 @@ const props = defineProps<Props>();
                         ·
                         {{
                             entry.checkedIn
-                                ? 'Eingecheckt'
-                                : 'Noch nicht eingecheckt'
+                                ? $t('Checked in')
+                                : $t('Not checked in yet')
                         }}
                     </template>
                 </span>
             </li>
         </ul>
         <p v-else class="text-sm text-text-muted">
-            Du bist bei diesem Event noch für kein Turnier angemeldet.
+            {{
+                $t(
+                    'You are not signed up for any tournament at this event yet.',
+                )
+            }}
             <Link
                 v-if="props.tournamentsUrl"
                 :href="props.tournamentsUrl"
                 class="text-accent underline-offset-4 hover:underline"
             >
-                Zu den Turnieren
+                {{ $t('Go to the tournaments') }}
             </Link>
         </p>
 
@@ -77,7 +81,11 @@ const props = defineProps<Props>();
             :href="props.myTournamentsUrl"
             class="self-start text-sm text-accent underline-offset-4 hover:underline"
         >
-            {{ props.hasMore ? 'Alle in Meine Turniere' : 'Meine Turniere' }}
+            {{
+                props.hasMore
+                    ? $t('All in My tournaments')
+                    : $t('My tournaments')
+            }}
         </Link>
     </div>
 </template>

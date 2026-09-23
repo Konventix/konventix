@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { fixtureTypeLabel } from '../labels';
 import { tokenVar } from '../tokens';
 import type { DraftElement, PlanElement } from './document';
 import type { PlanStore } from './usePlanStore';
@@ -133,7 +134,7 @@ function onFlag(
     <div class="flex flex-col gap-3">
         <template v-if="element.kind === 'zone' || element.kind === 'fixture'">
             <div class="grid gap-1">
-                <Label for="inspector-token">Fill token</Label>
+                <Label for="inspector-token">{{ $t('Fill token') }}</Label>
                 <select
                     id="inspector-token"
                     :value="element.token ?? ''"
@@ -147,7 +148,7 @@ function onFlag(
                             })
                     "
                 >
-                    <option value="">None</option>
+                    <option value="">{{ $t('None') }}</option>
                     <option v-for="token in TOKENS" :key="token" :value="token">
                         {{ token }}
                     </option>
@@ -163,7 +164,7 @@ function onFlag(
 
         <template v-if="element.kind === 'fixture'">
             <div class="grid gap-1">
-                <Label for="inspector-fixture">Fixture</Label>
+                <Label for="inspector-fixture">{{ $t('Fixture') }}</Label>
                 <select
                     id="inspector-fixture"
                     :value="element.fixtureType ?? 'custom'"
@@ -182,7 +183,7 @@ function onFlag(
                         :key="fixture"
                         :value="fixture"
                     >
-                        {{ fixture }}
+                        {{ fixtureTypeLabel(fixture) }}
                     </option>
                 </select>
             </div>
@@ -190,21 +191,21 @@ function onFlag(
 
         <template v-if="element.kind === 'group'">
             <div class="grid gap-1">
-                <Label for="inspector-layout">Layout</Label>
+                <Label for="inspector-layout">{{ $t('Layout') }}</Label>
                 <select
                     id="inspector-layout"
                     :value="element.layout?.type ?? ''"
                     class="h-9 rounded-md border border-border bg-surface px-3 text-sm text-text"
                     @change="setLayoutType"
                 >
-                    <option value="" disabled>Choose…</option>
-                    <option value="linear">Linear</option>
-                    <option value="grid">Grid</option>
+                    <option value="" disabled>{{ $t('Choose…') }}</option>
+                    <option value="linear">{{ $t('Linear') }}</option>
+                    <option value="grid">{{ $t('Grid') }}</option>
                 </select>
             </div>
             <template v-if="element.layout">
                 <div v-if="element.layout.type === 'linear'" class="grid gap-1">
-                    <Label for="inspector-count">Count</Label>
+                    <Label for="inspector-count">{{ $t('Count') }}</Label>
                     <Input
                         id="inspector-count"
                         type="number"
@@ -217,7 +218,7 @@ function onFlag(
                 </div>
                 <div v-else class="grid grid-cols-2 gap-2">
                     <div class="grid gap-1">
-                        <Label for="inspector-rows">Rows</Label>
+                        <Label for="inspector-rows">{{ $t('Rows') }}</Label>
                         <Input
                             id="inspector-rows"
                             type="number"
@@ -229,7 +230,7 @@ function onFlag(
                         />
                     </div>
                     <div class="grid gap-1">
-                        <Label for="inspector-cols">Columns</Label>
+                        <Label for="inspector-cols">{{ $t('Columns') }}</Label>
                         <Input
                             id="inspector-cols"
                             type="number"
@@ -243,7 +244,9 @@ function onFlag(
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div class="grid gap-1">
-                        <Label for="inspector-spacing">Spacing (mm)</Label>
+                        <Label for="inspector-spacing">{{
+                            $t('Spacing (mm)')
+                        }}</Label>
                         <Input
                             id="inspector-spacing"
                             type="number"
@@ -258,9 +261,9 @@ function onFlag(
                         v-if="element.layout.type === 'grid'"
                         class="grid gap-1"
                     >
-                        <Label for="inspector-row-spacing"
-                            >Row spacing (mm)</Label
-                        >
+                        <Label for="inspector-row-spacing">{{
+                            $t('Row spacing (mm)')
+                        }}</Label>
                         <Input
                             id="inspector-row-spacing"
                             type="number"
@@ -272,7 +275,9 @@ function onFlag(
                         />
                     </div>
                     <div class="grid gap-1">
-                        <Label for="inspector-start">Start index</Label>
+                        <Label for="inspector-start">{{
+                            $t('Start index')
+                        }}</Label>
                         <Input
                             id="inspector-start"
                             type="number"
@@ -286,7 +291,9 @@ function onFlag(
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div class="grid gap-1">
-                        <Label for="inspector-schema-row">Row schema</Label>
+                        <Label for="inspector-schema-row">{{
+                            $t('Row schema')
+                        }}</Label>
                         <Input
                             id="inspector-schema-row"
                             :model-value="element.labelSchema?.row ?? '{row}'"
@@ -296,7 +303,9 @@ function onFlag(
                         />
                     </div>
                     <div class="grid gap-1">
-                        <Label for="inspector-schema-place">Place schema</Label>
+                        <Label for="inspector-schema-place">{{
+                            $t('Place schema')
+                        }}</Label>
                         <Input
                             id="inspector-schema-place"
                             :model-value="
@@ -309,8 +318,8 @@ function onFlag(
                     </div>
                 </div>
                 <p class="text-xs text-text-muted">
-                    Placeholders: {row}, {n}, {n:02}, {col}. Regenerating keeps
-                    ids and hand-moved places.
+                    {{ $t('Placeholders:') }} {row}, {n}, {n:02}, {col}.
+                    {{ $t('Regenerating keeps ids and hand-moved places.') }}
                 </p>
                 <Button
                     type="button"
@@ -319,14 +328,14 @@ function onFlag(
                     @click="emit('regenerate', element.id)"
                 >
                     <RefreshCw class="size-4" />
-                    Regenerate places
+                    {{ $t('Regenerate places') }}
                 </Button>
             </template>
         </template>
 
         <template v-if="element.kind === 'place'">
             <div class="grid gap-1">
-                <Label for="inspector-category">Category</Label>
+                <Label for="inspector-category">{{ $t('Category') }}</Label>
                 <select
                     id="inspector-category"
                     :value="element.resourceTypeId ?? ''"
@@ -334,7 +343,7 @@ function onFlag(
                     :aria-invalid="element.resourceTypeId === null"
                     @change="onCategory"
                 >
-                    <option value="">— none —</option>
+                    <option value="">{{ $t('— none —') }}</option>
                     <option
                         v-for="category in categories"
                         :key="category.id"
@@ -349,27 +358,27 @@ function onFlag(
                     :model-value="element.blocked"
                     @update:model-value="(value) => onFlag('blocked', value)"
                 />
-                Blocked (nobody can pick it)
+                {{ $t('Blocked (nobody can pick it)') }}
             </label>
             <label class="flex items-center gap-2 text-sm text-text">
                 <Checkbox
                     :model-value="element.accessible"
                     @update:model-value="(value) => onFlag('accessible', value)"
                 />
-                Accessible place
+                {{ $t('Accessible place') }}
             </label>
             <label class="flex items-center gap-2 text-sm text-text">
                 <Checkbox
                     :model-value="element.detached"
                     @update:model-value="(value) => onFlag('detached', value)"
                 />
-                Detached from the generator
+                {{ $t('Detached from the generator') }}
             </label>
         </template>
 
         <template v-if="element.kind === 'annotation'">
             <div class="grid gap-1">
-                <Label for="inspector-text">Text</Label>
+                <Label for="inspector-text">{{ $t('Text') }}</Label>
                 <Input
                     id="inspector-text"
                     :model-value="element.text"
@@ -382,7 +391,7 @@ function onFlag(
                 />
             </div>
             <div class="grid gap-1">
-                <Label for="inspector-font">Font size (mm)</Label>
+                <Label for="inspector-font">{{ $t('Font size (mm)') }}</Label>
                 <Input
                     id="inspector-font"
                     type="number"

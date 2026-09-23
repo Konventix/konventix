@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -49,11 +50,14 @@ const props = defineProps<{
     mode: ResultMode;
 }>();
 
-const TITLES: Record<ResultMode, string> = {
-    record: 'Record result',
-    correct: 'Correct result',
-    resolve: 'Resolve dispute',
-};
+const title = computed(
+    () =>
+        ({
+            record: trans('Record result'),
+            correct: trans('Correct result'),
+            resolve: trans('Resolve dispute'),
+        })[props.mode],
+);
 
 const sides = computed(() =>
     (props.match?.sides ?? []).filter((side) => side.entrantId !== null),
@@ -156,7 +160,7 @@ function submit(): void {
     <Dialog v-model:open="open">
         <DialogContent>
             <DialogHeader>
-                <DialogTitle>{{ TITLES[props.mode] }}</DialogTitle>
+                <DialogTitle>{{ title }}</DialogTitle>
                 <DialogDescription v-if="props.match">
                     {{ matchLabel(props.match) }}
                 </DialogDescription>
@@ -182,14 +186,16 @@ function submit(): void {
                 <InputError :message="form.errors.scores" />
 
                 <div class="grid gap-2">
-                    <Label for="desk-winner">Winner</Label>
+                    <Label for="desk-winner">{{ $t('Winner') }}</Label>
                     <select
                         id="desk-winner"
                         v-model="form.winnerEntrantId"
                         class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                         @change="winnerTouched = true"
                     >
-                        <option :value="null">Draw — nobody advances</option>
+                        <option :value="null">
+                            {{ $t('Draw — nobody advances') }}
+                        </option>
                         <option
                             v-for="side in sides"
                             :key="side.position"
@@ -205,8 +211,8 @@ function submit(): void {
                     <Label for="desk-note">
                         {{
                             props.mode === 'resolve'
-                                ? 'Why (both teams see this)'
-                                : 'Why (needed if a later result is voided)'
+                                ? $t('Why (both teams see this)')
+                                : $t('Why (needed if a later result is voided)')
                         }}
                     </Label>
                     <Textarea
@@ -224,7 +230,7 @@ function submit(): void {
 
                 <div class="flex justify-end">
                     <Button type="submit" :disabled="form.processing">
-                        {{ TITLES[props.mode] }}
+                        {{ title }}
                     </Button>
                 </div>
             </form>

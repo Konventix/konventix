@@ -53,14 +53,14 @@ function href(competitionSlug: string, matchId: string): string {
 
         <section class="flex flex-col gap-3" aria-labelledby="matches-heading">
             <h2 id="matches-heading" class="text-lg font-medium text-text">
-                Spiele
+                {{ $t('Matches') }}
             </h2>
 
             <p
                 v-if="props.page.matches.length === 0"
                 class="text-sm text-text-muted"
             >
-                Noch keine Spiele.
+                {{ $t('No matches yet.') }}
             </p>
 
             <ul v-else class="flex flex-col gap-2">
@@ -70,15 +70,20 @@ function href(competitionSlug: string, matchId: string): string {
                     class="flex flex-col gap-0.5 rounded-lg border border-border px-3 py-2 text-sm"
                 >
                     <span class="text-text-muted">
-                        {{ entry.competitionName }} · Runde
-                        {{ entry.match.round }} ·
+                        {{ entry.competitionName }} ·
+                        {{
+                            $t('Round :round', {
+                                round: String(entry.match.round),
+                            })
+                        }}
+                        ·
                         {{
                             entry.match.scheduledAt
                                 ? formatEventDateTime(
                                       entry.match.scheduledAt,
                                       props.page.event.timezone,
                                   )
-                                : 'noch nicht angesetzt'
+                                : $t('not scheduled yet')
                         }}
                         · {{ matchStateLabel(entry.match.state) }}
                     </span>
@@ -90,7 +95,9 @@ function href(competitionSlug: string, matchId: string): string {
                             v-for="(side, index) in entry.match.sides"
                             :key="side.position"
                         >
-                            <template v-if="index > 0"> gegen </template>
+                            <template v-if="index > 0">
+                                {{ $t('vs') }}
+                            </template>
                             {{ sideName(side)
                             }}<template v-if="side.score !== null">
                                 ({{ side.score }})</template

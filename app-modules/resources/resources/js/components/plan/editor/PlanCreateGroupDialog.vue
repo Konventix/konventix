@@ -93,11 +93,12 @@ function submit(): void {
     <Dialog :open="open" @update:open="(value) => emit('update:open', value)">
         <DialogContent class="max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-                <DialogTitle>Add a group</DialogTitle>
-                <DialogDescription
-                    >A row or a grid of places; the labels come from the schema.
-                    Everything is in millimetres.</DialogDescription
-                >
+                <DialogTitle>{{ $t('Add a group') }}</DialogTitle>
+                <DialogDescription>{{
+                    $t(
+                        'A row or a grid of places; the labels come from the schema. Everything is in millimetres.',
+                    )
+                }}</DialogDescription>
             </DialogHeader>
 
             <form class="flex flex-col gap-4" @submit.prevent="submit">
@@ -105,17 +106,20 @@ function submit(): void {
                     v-if="categories.length === 0"
                     class="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-text"
                 >
-                    This event has no categories yet. Create one under
-                    Categories first — every place needs one.
+                    {{
+                        $t(
+                            'This event has no categories yet. Create one under Categories first — every place needs one.',
+                        )
+                    }}
                 </p>
 
                 <div class="grid grid-cols-2 gap-3">
                     <div class="grid gap-1">
-                        <Label for="group-label">Group label</Label>
+                        <Label for="group-label">{{ $t('Group label') }}</Label>
                         <Input id="group-label" v-model="form.label" required />
                     </div>
                     <div class="grid gap-1">
-                        <Label for="group-category">Category</Label>
+                        <Label for="group-category">{{ $t('Category') }}</Label>
                         <select
                             id="group-category"
                             v-model="form.resourceTypeId"
@@ -134,14 +138,14 @@ function submit(): void {
                 </div>
 
                 <div class="grid gap-1">
-                    <Label for="group-type">Layout</Label>
+                    <Label for="group-type">{{ $t('Layout') }}</Label>
                     <select
                         id="group-type"
                         v-model="form.type"
                         class="h-9 rounded-md border border-border bg-surface px-3 text-sm text-text"
                     >
-                        <option value="linear">Linear row</option>
-                        <option value="grid">Grid</option>
+                        <option value="linear">{{ $t('Linear row') }}</option>
+                        <option value="grid">{{ $t('Grid') }}</option>
                     </select>
                 </div>
 
@@ -150,7 +154,7 @@ function submit(): void {
                     class="grid grid-cols-2 gap-3"
                 >
                     <div class="grid gap-1">
-                        <Label for="group-count">Places</Label>
+                        <Label for="group-count">{{ $t('Places') }}</Label>
                         <Input
                             id="group-count"
                             v-model.number="form.count"
@@ -160,7 +164,7 @@ function submit(): void {
                         />
                     </div>
                     <div class="grid gap-1">
-                        <Label for="group-spacing">Spacing</Label>
+                        <Label for="group-spacing">{{ $t('Spacing') }}</Label>
                         <Input
                             id="group-spacing"
                             v-model.number="form.spacing"
@@ -171,7 +175,7 @@ function submit(): void {
                 </div>
                 <div v-else class="grid grid-cols-2 gap-3">
                     <div class="grid gap-1">
-                        <Label for="group-rows">Rows</Label>
+                        <Label for="group-rows">{{ $t('Rows') }}</Label>
                         <Input
                             id="group-rows"
                             v-model.number="form.rows"
@@ -181,7 +185,7 @@ function submit(): void {
                         />
                     </div>
                     <div class="grid gap-1">
-                        <Label for="group-cols">Columns</Label>
+                        <Label for="group-cols">{{ $t('Columns') }}</Label>
                         <Input
                             id="group-cols"
                             v-model.number="form.cols"
@@ -191,7 +195,9 @@ function submit(): void {
                         />
                     </div>
                     <div class="grid gap-1">
-                        <Label for="group-spacing-grid">Column spacing</Label>
+                        <Label for="group-spacing-grid">{{
+                            $t('Column spacing')
+                        }}</Label>
                         <Input
                             id="group-spacing-grid"
                             v-model.number="form.spacing"
@@ -200,7 +206,9 @@ function submit(): void {
                         />
                     </div>
                     <div class="grid gap-1">
-                        <Label for="group-row-spacing">Row spacing</Label>
+                        <Label for="group-row-spacing">{{
+                            $t('Row spacing')
+                        }}</Label>
                         <Input
                             id="group-row-spacing"
                             v-model.number="form.rowSpacing"
@@ -212,7 +220,7 @@ function submit(): void {
 
                 <div class="grid grid-cols-3 gap-3">
                     <div class="grid gap-1">
-                        <Label for="group-start">Start index</Label>
+                        <Label for="group-start">{{ $t('Start index') }}</Label>
                         <Input
                             id="group-start"
                             v-model.number="form.startIndex"
@@ -221,11 +229,15 @@ function submit(): void {
                         />
                     </div>
                     <div class="grid gap-1">
-                        <Label for="group-row-schema">Row schema</Label>
+                        <Label for="group-row-schema">{{
+                            $t('Row schema')
+                        }}</Label>
                         <Input id="group-row-schema" v-model="form.rowSchema" />
                     </div>
                     <div class="grid gap-1">
-                        <Label for="group-place-schema">Place schema</Label>
+                        <Label for="group-place-schema">{{
+                            $t('Place schema')
+                        }}</Label>
                         <Input
                             id="group-place-schema"
                             v-model="form.placeSchema"
@@ -233,8 +245,11 @@ function submit(): void {
                     </div>
                 </div>
                 <p class="text-xs text-text-muted">
-                    Placeholders: {row} (the group label), {n} and {n:02}
-                    (running index), {col} (grid column).
+                    {{
+                        $t(
+                            'Placeholders: {row} (the group label), {n} and {n:02} (running index), {col} (grid column).',
+                        )
+                    }}
                 </p>
 
                 <DialogFooter>
@@ -242,11 +257,11 @@ function submit(): void {
                         type="button"
                         variant="outline"
                         @click="emit('update:open', false)"
-                        >Cancel</Button
+                        >{{ $t('Cancel') }}</Button
                     >
-                    <Button type="submit" :disabled="categories.length === 0"
-                        >Create group</Button
-                    >
+                    <Button type="submit" :disabled="categories.length === 0">{{
+                        $t('Create group')
+                    }}</Button>
                 </DialogFooter>
             </form>
         </DialogContent>

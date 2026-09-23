@@ -2,6 +2,7 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { Pencil, Plus } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed, h, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -117,10 +118,10 @@ function submit(): void {
     });
 }
 
-const columns: ColumnDef<VenueRow>[] = [
+const columns = computed<ColumnDef<VenueRow>[]>(() => [
     {
         accessorKey: 'name',
-        header: 'Name',
+        header: trans('Name'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -134,7 +135,7 @@ const columns: ColumnDef<VenueRow>[] = [
     },
     {
         id: 'address',
-        header: 'Address',
+        header: trans('Address'),
         enableSorting: false,
         cell: ({ row }) =>
             h(
@@ -145,7 +146,7 @@ const columns: ColumnDef<VenueRow>[] = [
     },
     {
         accessorKey: 'city',
-        header: 'City',
+        header: trans('City'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -166,35 +167,37 @@ const columns: ColumnDef<VenueRow>[] = [
                 Link,
                 {
                     href: editVenue(row.original.id).url,
-                    'aria-label': `Edit ${row.original.name}`,
+                    'aria-label': trans('Edit :name', {
+                        name: row.original.name,
+                    }),
                     class: 'inline-flex size-8 items-center justify-center rounded-md text-text-muted hover:bg-subtle hover:text-text',
                 },
                 () => h(Pencil, { class: 'size-4' }),
             ),
     },
-];
+]);
 </script>
 
 <template>
-    <Head title="Venues" />
+    <Head :title="$t('Venues')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Venues"
-            description="Locations events take place at"
+            :title="$t('Venues')"
+            :description="$t('Locations events take place at')"
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
-            search-placeholder="Search venues…"
+            :search-placeholder="$t('Search venues…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
         >
             <template #actions>
                 <Button @click="openCreate">
                     <Plus class="size-4" />
-                    New venue
+                    {{ $t('New venue') }}
                 </Button>
             </template>
         </DataTableToolbar>
@@ -205,8 +208,8 @@ const columns: ColumnDef<VenueRow>[] = [
             :data="props.venues.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="venues"
-            empty-message="No venues yet."
+            :items-label="$t('venues')"
+            :empty-message="$t('No venues yet.')"
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />
@@ -214,11 +217,11 @@ const columns: ColumnDef<VenueRow>[] = [
         <Dialog v-model:open="open">
             <DialogContent class="max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Create venue</DialogTitle>
+                    <DialogTitle>{{ $t('Create venue') }}</DialogTitle>
                 </DialogHeader>
                 <form class="flex flex-col gap-4" @submit.prevent="submit">
                     <div class="grid gap-2">
-                        <Label for="venue-brand">Brand</Label>
+                        <Label for="venue-brand">{{ $t('Brand') }}</Label>
                         <select
                             id="venue-brand"
                             v-model="form.brand_id"
@@ -235,12 +238,14 @@ const columns: ColumnDef<VenueRow>[] = [
                         <InputError :message="form.errors.brand_id" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="venue-name">Name</Label>
+                        <Label for="venue-name">{{ $t('Name') }}</Label>
                         <Input id="venue-name" v-model="form.name" />
                         <InputError :message="form.errors.name" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="venue-address1">Street and number</Label>
+                        <Label for="venue-address1">{{
+                            $t('Street and number')
+                        }}</Label>
                         <Input
                             id="venue-address1"
                             v-model="form.addressLine1"
@@ -249,7 +254,9 @@ const columns: ColumnDef<VenueRow>[] = [
                     </div>
                     <div class="grid grid-cols-3 gap-2">
                         <div class="grid gap-2">
-                            <Label for="venue-postal">Postal code</Label>
+                            <Label for="venue-postal">{{
+                                $t('Postal code')
+                            }}</Label>
                             <Input
                                 id="venue-postal"
                                 v-model="form.postalCode"
@@ -257,13 +264,15 @@ const columns: ColumnDef<VenueRow>[] = [
                             <InputError :message="form.errors.postalCode" />
                         </div>
                         <div class="col-span-2 grid gap-2">
-                            <Label for="venue-city">City</Label>
+                            <Label for="venue-city">{{ $t('City') }}</Label>
                             <Input id="venue-city" v-model="form.city" />
                             <InputError :message="form.errors.city" />
                         </div>
                     </div>
                     <div class="grid gap-2">
-                        <Label for="venue-country">Country code</Label>
+                        <Label for="venue-country">{{
+                            $t('Country code')
+                        }}</Label>
                         <Input
                             id="venue-country"
                             v-model="form.countryCode"
@@ -273,7 +282,7 @@ const columns: ColumnDef<VenueRow>[] = [
                         <InputError :message="form.errors.countryCode" />
                     </div>
                     <Button type="submit" :disabled="form.processing">
-                        Create
+                        {{ $t('Create') }}
                     </Button>
                 </form>
             </DialogContent>

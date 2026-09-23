@@ -8,7 +8,7 @@ namespace Konventix\Competition\Enums;
  * Why an entrant stopped being part of the field (design §5.4, §5.5).
  *
  * A closed set rather than free text: the console groups by it, the
- * participant page explains it in German, and `EntrantWithdrawn` carries it
+ * participant page explains it in the reader's language, and `EntrantWithdrawn` carries it
  * as a scalar to consumers that have no way to parse a sentence.
  *
  * `IncompleteRoster` is the one the organizer never types — it is written by
@@ -22,14 +22,14 @@ enum WithdrawalReason: string
     case OrganizerWithdrew = 'organizer_withdrew';
     case Disqualified = 'disqualified';
 
-    /** Participant-facing copy is German (ADR-0001). */
+    /** In the reader's locale (ADR-0068); the English is the catalog key. */
     public function label(): string
     {
         return match ($this) {
-            self::IncompleteRoster => __('Das Team war beim Anmeldeschluss nicht vollzählig.'),
-            self::CaptainWithdrew => __('Das Team hat sich selbst zurückgezogen.'),
-            self::OrganizerWithdrew => __('Die Turnierleitung hat das Team zurückgezogen.'),
-            self::Disqualified => __('Das Team wurde disqualifiziert.'),
+            self::IncompleteRoster => __('The team was not complete when signup closed.'),
+            self::CaptainWithdrew => __('The team withdrew itself.'),
+            self::OrganizerWithdrew => __('The organizers withdrew the team.'),
+            self::Disqualified => __('The team was disqualified.'),
         };
     }
 }

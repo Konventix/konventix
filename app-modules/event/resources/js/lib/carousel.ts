@@ -4,6 +4,7 @@
  * `@vue/test-utils` — .ai/rules/js.md). `VenueCarousel.vue` owns the
  * markup, the focus and the live region; this owns which slide is next.
  */
+import { trans } from 'laravel-vue-i18n';
 
 /** Clamp an index into a carousel of `count` slides. Empty means 0. */
 export function clampSlide(index: number, count: number): number {
@@ -69,8 +70,11 @@ export function slideForKey(
  */
 export function slideStatus(current: number, count: number): string {
     if (count <= 0) {
-        return 'No pictures';
+        return trans('No pictures');
     }
 
-    return `Picture ${clampSlide(current, count) + 1} of ${count}`;
+    return trans('Picture :number of :count', {
+        number: String(clampSlide(current, count) + 1),
+        count: String(count),
+    });
 }

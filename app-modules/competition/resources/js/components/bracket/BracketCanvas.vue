@@ -54,14 +54,14 @@ const {
         <div class="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" @click="zoomOut">
                 <span aria-hidden="true">−</span>
-                <span class="sr-only">Verkleinern</span>
+                <span class="sr-only">{{ $t('Zoom out') }}</span>
             </Button>
             <Button variant="outline" size="sm" @click="zoomIn">
                 <span aria-hidden="true">+</span>
-                <span class="sr-only">Vergrößern</span>
+                <span class="sr-only">{{ $t('Zoom in') }}</span>
             </Button>
             <Button variant="outline" size="sm" @click="fitToScreen">
-                Einpassen
+                {{ $t('Fit to screen') }}
             </Button>
             <span class="text-xs text-text-muted" aria-live="off">
                 {{ Math.round(scale * 100) }} %
@@ -71,7 +71,11 @@ const {
         <canvas
             ref="canvas"
             role="img"
-            aria-label="Turnierbaum als Grafik. Dieselben Paarungen stehen in der Tabellenansicht."
+            :aria-label="
+                $t(
+                    'The bracket as a graphic. The same pairings are in the table view.',
+                )
+            "
             class="h-[32rem] w-full touch-none rounded-xl border border-border"
             :class="isDragging ? 'cursor-grabbing' : 'cursor-grab'"
             @pointerdown="onPointerDown"

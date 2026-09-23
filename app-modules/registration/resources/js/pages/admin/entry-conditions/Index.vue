@@ -2,6 +2,7 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { Plus } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed, h, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -27,6 +28,7 @@ import {
     index as conditionsIndex,
     store as storeCondition,
 } from '@/routes/admin/entry-conditions';
+import { verificationLabel } from '../../../lib/labels';
 
 /**
  * What a reduced fare rests on (ADR-0066 §9.1): the catalogue of conditions
@@ -77,7 +79,7 @@ const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
 const filterDefs = computed<DataTableFilterDef[]>(() => [
     {
         name: 'brand',
-        label: 'Brands',
+        label: trans('Brands'),
         value: props.filters.brand,
         options: props.brands.map((brand) => ({
             value: brand.id,
@@ -86,9 +88,9 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
     },
     {
         name: 'archived',
-        label: 'Archived',
+        label: trans('Archived'),
         value: props.filters.archived,
-        options: [{ value: 'yes', label: 'Show archived' }],
+        options: [{ value: 'yes', label: trans('Show archived') }],
     },
 ]);
 
@@ -113,7 +115,7 @@ const pagination = computed(() => ({
 const columns: ColumnDef<ConditionRow>[] = [
     {
         accessorKey: 'name',
-        header: 'Name',
+        header: trans('Name'),
         enableSorting: true,
         cell: ({ row }) =>
             h('div', { class: 'flex flex-col' }, [
@@ -134,7 +136,7 @@ const columns: ColumnDef<ConditionRow>[] = [
     },
     {
         accessorKey: 'key',
-        header: 'Key',
+        header: trans('Key'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -145,14 +147,14 @@ const columns: ColumnDef<ConditionRow>[] = [
     },
     {
         id: 'assertionText',
-        header: 'What the registrant confirms',
+        header: trans('What the registrant confirms'),
         enableSorting: false,
         cell: ({ row }) =>
             h('span', { class: 'text-text-muted' }, row.original.assertionText),
     },
     {
         accessorKey: 'verification',
-        header: 'Verification',
+        header: trans('Verification'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -160,12 +162,12 @@ const columns: ColumnDef<ConditionRow>[] = [
                 {
                     class: 'rounded-full bg-subtle px-2 py-0.5 text-xs text-text-muted',
                 },
-                row.original.verification,
+                verificationLabel(row.original.verification),
             ),
     },
     {
         id: 'types',
-        header: 'On types',
+        header: trans('On types'),
         enableSorting: false,
         cell: ({ row }) =>
             h('div', { class: 'flex flex-col' }, [
@@ -175,7 +177,11 @@ const columns: ColumnDef<ConditionRow>[] = [
                     String(row.original.types),
                 ),
                 row.original.archived
-                    ? h('span', { class: 'text-xs text-warning' }, 'archived')
+                    ? h(
+                          'span',
+                          { class: 'text-xs text-warning' },
+                          trans('archived'),
+                      )
                     : null,
             ]),
     },
@@ -205,25 +211,31 @@ function submit(): void {
 </script>
 
 <template>
-    <Head title="Entry conditions" />
+    <Head :title="$t('Entry conditions')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Entry conditions"
-            description="What a reduced fare rests on: the sentence a registrant confirms, and the document the door asks for"
+            :title="$t('Entry conditions')"
+            :description="
+                $t(
+                    'What a reduced fare rests on: the sentence a registrant confirms, and the document the door asks for',
+                )
+            "
         />
 
         <p class="text-sm text-text-muted">
-            A condition is written once per brand and reused on as many
-            registration types as you like. It is archived, never deleted —
-            every declaration that ever named it stays readable.
+            {{
+                $t(
+                    'A condition is written once per brand and reused on as many registration types as you like. It is archived, never deleted — every declaration that ever named it stays readable.',
+                )
+            }}
         </p>
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
             :filters="filterDefs"
-            search-placeholder="Search name or key…"
+            :search-placeholder="$t('Search name or key…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
             @update:filter="setFilter"
@@ -233,19 +245,23 @@ function submit(): void {
                     <DialogTrigger as-child>
                         <Button>
                             <Plus class="size-4" />
-                            New condition
+                            {{ $t('New condition') }}
                         </Button>
                     </DialogTrigger>
                     <DialogContent class="max-h-[85vh] overflow-y-auto">
                         <DialogHeader>
-                            <DialogTitle>Create entry condition</DialogTitle>
+                            <DialogTitle>{{
+                                $t('Create entry condition')
+                            }}</DialogTitle>
                         </DialogHeader>
                         <form
                             class="flex flex-col gap-4"
                             @submit.prevent="submit"
                         >
                             <div class="grid gap-2">
-                                <Label for="condition-brand">Brand</Label>
+                                <Label for="condition-brand">{{
+                                    $t('Brand')
+                                }}</Label>
                                 <select
                                     id="condition-brand"
                                     v-model="form.brand_id"
@@ -263,36 +279,47 @@ function submit(): void {
                             </div>
 
                             <div class="grid gap-2">
-                                <Label for="condition-key">Key</Label>
+                                <Label for="condition-key">{{
+                                    $t('Key')
+                                }}</Label>
                                 <Input id="condition-key" v-model="form.key" />
                                 <p class="text-xs text-text-muted">
-                                    Lower case, words joined by hyphens
-                                    (<code>student</code>). It travels to the
-                                    door and onto the ticket, so keep it stable.
+                                    {{
+                                        $t(
+                                            'It travels to the door and onto the ticket, so keep it stable. Lower case, words joined by hyphens, for example:',
+                                        )
+                                    }}
+                                    <code>student</code>
                                 </p>
                                 <InputError :message="form.errors.key" />
                             </div>
 
                             <div class="grid gap-2">
-                                <Label for="condition-name">Name</Label>
+                                <Label for="condition-name">{{
+                                    $t('Name')
+                                }}</Label>
                                 <Input
                                     id="condition-name"
                                     v-model="form.name"
-                                    placeholder="Student ticket"
+                                    :placeholder="$t('Student ticket')"
                                 />
                                 <InputError :message="form.errors.name" />
                             </div>
 
                             <div class="grid gap-2">
                                 <Label for="condition-assertion">
-                                    What the registrant confirms
+                                    {{ $t('What the registrant confirms') }}
                                 </Label>
                                 <textarea
                                     id="condition-assertion"
                                     v-model="form.assertionText"
                                     rows="3"
                                     class="rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                                    placeholder="I confirm that I am enrolled as a student and will present a valid student ID at the door."
+                                    :placeholder="
+                                        $t(
+                                            'I confirm that I am enrolled as a student and will present a valid student ID at the door.',
+                                        )
+                                    "
                                 />
                                 <InputError
                                     :message="form.errors.assertionText"
@@ -301,7 +328,7 @@ function submit(): void {
 
                             <div class="grid gap-2">
                                 <Label for="condition-verification">
-                                    Verification
+                                    {{ $t('Verification') }}
                                 </Label>
                                 <select
                                     id="condition-verification"
@@ -314,7 +341,7 @@ function submit(): void {
                                         :key="value"
                                         :value="value"
                                     >
-                                        {{ value }}
+                                        {{ verificationLabel(value) }}
                                     </option>
                                 </select>
                                 <InputError
@@ -327,7 +354,7 @@ function submit(): void {
                                     type="submit"
                                     :disabled="form.processing"
                                 >
-                                    Create
+                                    {{ $t('Create') }}
                                 </Button>
                             </div>
                         </form>
@@ -342,8 +369,8 @@ function submit(): void {
             :data="props.conditions.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="entry conditions"
-            empty-message="No entry conditions yet."
+            :items-label="$t('entry conditions')"
+            :empty-message="$t('No entry conditions yet.')"
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />

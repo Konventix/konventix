@@ -92,7 +92,7 @@ final readonly class PlanDiffResult
         /** @var PlanElementData $element */
         foreach ($document->elements as $element) {
             if (in_array($element->id, $this->foreign, true)) {
-                $errors["document.elements.{$index}.id"] = ['This place id already exists under another plan or brand.'];
+                $errors["document.elements.{$index}.id"] = [__('This place id already exists under another plan or brand.')];
             }
 
             $index++;

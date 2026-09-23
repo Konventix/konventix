@@ -27,9 +27,9 @@ final class CookieDeclarationData extends Data
     {
         return new self(
             name: $declaration->name,
-            purpose: $declaration->purpose,
+            purpose: __($declaration->purpose),
             category: $declaration->category,
-            lifetime: $declaration->lifetime,
+            lifetime: __($declaration->lifetime),
             module: $declaration->module,
         );
     }

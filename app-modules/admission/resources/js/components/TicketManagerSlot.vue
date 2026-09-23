@@ -43,7 +43,12 @@ const holderError = computed(
     >
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
             <h2 id="registration-tickets" class="text-lg font-medium">
-                {{ props.manager.ticketCount === 1 ? 'Ticket' : 'Tickets' }}
+                {{
+                    $tChoice(
+                        '{1} Ticket|[2,*] Tickets',
+                        props.manager.ticketCount,
+                    )
+                }}
             </h2>
             <span class="flex-1" />
             <a
@@ -55,15 +60,21 @@ const holderError = computed(
                 class="inline-flex min-h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-medium text-text hover:border-accent"
             >
                 <TicketIcon class="size-4" aria-hidden="true" />
-                Download
-                {{ props.manager.ticketCount === 1 ? 'ticket' : 'all tickets' }}
-                (PDF)
+                {{
+                    $tChoice(
+                        '{1} Download ticket (PDF)|[2,*] Download all tickets (PDF)',
+                        props.manager.ticketCount,
+                    )
+                }}
             </a>
         </div>
 
         <p class="text-sm text-text-muted">
-            Each ticket admits one person. Claim one for yourself, invite the
-            others, and everyone can choose their own seat.
+            {{
+                $t(
+                    'Each ticket admits one person. Claim one for yourself, invite the others, and everyone can choose their own seat.',
+                )
+            }}
         </p>
 
         <ul class="flex flex-col gap-3">

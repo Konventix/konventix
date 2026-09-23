@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatDateTime } from '@/lib/datetime';
+import { checkInSourceLabel } from '../../lib/labels';
 
 type HistoryRow = Konventix.Admission.Data.CheckInHistoryRowData;
 
@@ -14,19 +15,27 @@ defineProps<{ history: HistoryRow[] }>();
 
 <template>
     <p v-if="history.length === 0" class="text-sm text-text-muted">
-        This ticket has never been scanned or checked in.
+        {{ $t('This ticket has never been scanned or checked in.') }}
     </p>
     <div v-else class="overflow-x-auto">
         <table class="w-full text-sm" data-test="ticket-history">
             <thead>
                 <tr class="border-b border-border text-left text-text-muted">
-                    <th scope="col" class="py-2 pr-4 font-medium">Time</th>
-                    <th scope="col" class="py-2 pr-4 font-medium">Direction</th>
-                    <th scope="col" class="py-2 pr-4 font-medium">Result</th>
                     <th scope="col" class="py-2 pr-4 font-medium">
-                        Checkpoint
+                        {{ $t('Time') }}
                     </th>
-                    <th scope="col" class="py-2 font-medium">By</th>
+                    <th scope="col" class="py-2 pr-4 font-medium">
+                        {{ $t('Direction') }}
+                    </th>
+                    <th scope="col" class="py-2 pr-4 font-medium">
+                        {{ $t('Result') }}
+                    </th>
+                    <th scope="col" class="py-2 pr-4 font-medium">
+                        {{ $t('Checkpoint') }}
+                    </th>
+                    <th scope="col" class="py-2 font-medium">
+                        {{ $t('By') }}
+                    </th>
                 </tr>
             </thead>
             <tbody>
@@ -39,17 +48,18 @@ defineProps<{ history: HistoryRow[] }>();
                         {{ formatDateTime(row.scannedAt) }}
                     </td>
                     <td class="py-2 pr-4">
-                        {{ row.direction === 'in' ? 'In' : 'Out' }}
+                        {{ row.direction === 'in' ? $t('In') : $t('Out') }}
                     </td>
                     <td class="py-2 pr-4">
                         <span
                             v-if="row.result === 'accepted'"
                             class="text-success"
                         >
-                            Accepted
+                            {{ $t('Accepted') }}
                         </span>
                         <span v-else class="text-danger">
-                            Rejected<template v-if="row.reason">
+                            {{ $t('Rejected')
+                            }}<template v-if="row.reason">
                                 — {{ row.reason }}</template
                             >
                         </span>
@@ -57,15 +67,15 @@ defineProps<{ history: HistoryRow[] }>();
                     <td class="py-2 pr-4">
                         {{ row.checkpointName ?? '—' }}
                         <span class="text-xs text-text-muted">
-                            ({{ row.source }})
+                            ({{ checkInSourceLabel(row.source) }})
                         </span>
                     </td>
                     <td class="py-2">
                         <template v-if="row.source === 'console'">
-                            {{ row.actorName ?? 'An admin' }}
+                            {{ row.actorName ?? $t('An admin') }}
                         </template>
                         <template v-else>
-                            {{ row.deviceLabel ?? 'Door device' }}
+                            {{ row.deviceLabel ?? $t('Door device') }}
                         </template>
                     </td>
                 </tr>

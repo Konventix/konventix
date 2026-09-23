@@ -153,7 +153,7 @@ it('refuses a proof for a finished or cancelled competition and from a team that
         $competition->forceFill(['status' => $over])->save();
 
         $upload()->assertUnprocessable()
-            ->assertJsonValidationErrors(['file' => 'Dieses Turnier ist vorbei und nimmt keine Beweisbilder mehr an.']);
+            ->assertJsonValidationErrors(['file' => 'This tournament is over and takes no more proof images.']);
     }
 
     $competition->forceFill(['status' => CompetitionStatus::SignupClosed])->save();
@@ -162,7 +162,7 @@ it('refuses a proof for a finished or cancelled competition and from a team that
         $a->forceFill(['state' => $gone])->save();
 
         $upload()->assertUnprocessable()
-            ->assertJsonValidationErrors(['file' => 'Euer Team ist nicht mehr im Turnier und kann keine Ergebnisse mehr einreichen.']);
+            ->assertJsonValidationErrors(['file' => 'Your team is no longer in the tournament and cannot submit results.']);
     }
 
     // A draft competition is not there at all (the item 3 rule).
@@ -199,7 +199,7 @@ it('takes interest while signup is on or closed, refuses it once the competition
     competitionEligibleUser($eventId, $brand->id, (string) $player->getKey());
 
     $url = '/tournaments/'.$competition->id.'/interest';
-    $refusal = 'Für dieses Turnier kannst du dich nicht mehr als interessiert eintragen: es hat schon begonnen oder ist vorbei.';
+    $refusal = 'You can no longer register interest in this tournament: it has already started or is over.';
 
     foreach ([CompetitionStatus::Running, CompetitionStatus::Finished, CompetitionStatus::Cancelled] as $status) {
         $competition->forceFill(['status' => $status])->save();

@@ -26,7 +26,7 @@ const id = useId();
 <template>
     <div class="grid gap-4">
         <div class="grid gap-2">
-            <Label :for="`${id}-event`">Event</Label>
+            <Label :for="`${id}-event`">{{ $t('Event') }}</Label>
             <select
                 :id="`${id}-event`"
                 class="rounded-md border border-border bg-surface px-3 py-2 text-sm"
@@ -35,7 +35,7 @@ const id = useId();
                     set('eventId', ($event.target as HTMLSelectElement).value)
                 "
             >
-                <option value="">Choose an event</option>
+                <option value="">{{ $t('Choose an event') }}</option>
                 <option
                     v-for="event in props.context.events"
                     :key="event.id"
@@ -49,15 +49,15 @@ const id = useId();
                 v-if="props.context.events.length === 0"
                 class="text-sm text-text-muted"
             >
-                No events on this brand yet.
+                {{ $t('No events on this brand yet.') }}
             </p>
         </div>
         <div class="grid gap-2">
-            <Label :for="`${id}-heading`">Heading (optional)</Label>
+            <Label :for="`${id}-heading`">{{ $t('Heading (optional)') }}</Label>
             <Input
                 :id="`${id}-heading`"
                 :model-value="props.modelValue.heading ?? ''"
-                placeholder="Defaults to the event's name"
+                :placeholder="$t('Defaults to the event’s name')"
                 @update:model-value="(v) => set('heading', String(v) || null)"
             />
             <InputError :message="props.errors.heading" />

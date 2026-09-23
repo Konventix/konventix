@@ -68,7 +68,7 @@ final class HubPage
 
             try {
                 if ($item instanceof HubCard) {
-                    $cardData[] = new HubCardData($item->key, $item->label, $item->component, ($item->payload)($event, $user));
+                    $cardData[] = new HubCardData($item->key, __($item->label), $item->component, ($item->payload)($event, $user));
 
                     continue;
                 }
@@ -83,7 +83,7 @@ final class HubPage
                     continue;
                 }
 
-                $linkData[] = new HubLinkData($item->key, $item->label, $url, $item->component, $item->icon);
+                $linkData[] = new HubLinkData($item->key, __($item->label), $url, $item->component, $item->icon);
             } catch (Throwable $exception) {
                 $this->drop($exception, $item, $brand);
             }

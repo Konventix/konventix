@@ -58,13 +58,13 @@ trait AnswersTheParticipant
             // finished or was called off while their page was open — so it
             // gets one German sentence and no internals.
             throw ValidationException::withMessages([
-                $field => __('Dieses Turnier ist vorbei und nimmt keine Ergebnisse mehr an.'),
+                $field => __('This tournament is over and takes no more results.'),
             ]);
         } catch (IllegalMatchStateTransitionException) {
             // The match moved on under them — the desk recorded it, or the
             // other side confirmed a moment earlier.
             throw ValidationException::withMessages([
-                $field => __('Dieses Spiel hat sich inzwischen geändert. Lade die Seite neu.'),
+                $field => __('This match has changed in the meantime. Reload the page.'),
             ]);
         }
     }
@@ -80,7 +80,7 @@ trait AnswersTheParticipant
     private function linkedAccountRefusal(LinkedProvider $provider, array $missingUserIds, ?string $viewerId): string
     {
         if ($viewerId !== null && $missingUserIds === [$viewerId]) {
-            return __('Für dieses Turnier brauchst du ein verknüpftes :provider-Konto.', [
+            return __('This tournament needs you to have a linked :provider account.', [
                 'provider' => $provider->label(),
             ]);
         }
@@ -88,10 +88,10 @@ trait AnswersTheParticipant
         $names = [];
 
         foreach (ParticipantProfile::displayNamesFor($missingUserIds) as $userId => $name) {
-            $names[] = $userId === $viewerId ? __('du') : $name;
+            $names[] = $userId === $viewerId ? __('you') : $name;
         }
 
-        return __('Für dieses Turnier brauchen alle im Team ein verknüpftes :provider-Konto – noch ohne: :names.', [
+        return __('This tournament needs a linked :provider account for everyone on the team – still missing: :names.', [
             'provider' => $provider->label(),
             'names' => implode(', ', $names),
         ]);

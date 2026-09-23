@@ -89,7 +89,7 @@ final class SubmitScoreEntry
 
             if ($entry !== null && $entry->isVerified() && ! $asOrganizer) {
                 throw ValidationException::withMessages([
-                    'value' => __('Dieses Ergebnis ist schon bestätigt. Ersetzen kann es nur noch die Turnierleitung.'),
+                    'value' => __('This result is already confirmed. Only the organizers can replace it now.'),
                 ]);
             }
 
@@ -174,8 +174,8 @@ final class SubmitScoreEntry
         $message = match (true) {
             $asOrganizer && $settings->heats === null => __('This leaderboard has no heats; submit one entry without a heat number.'),
             $asOrganizer => __('This leaderboard has :count heats; pick one of them.', ['count' => $settings->heats]),
-            $settings->heats === null => __('Diese Wertung hat keine Läufe. Trag dein Ergebnis ohne Laufnummer ein.'),
-            default => __('Diese Wertung hat :count Läufe. Wähle einen davon aus.', ['count' => $settings->heats]),
+            $settings->heats === null => __('This leaderboard has no heats. Enter your result without a heat number.'),
+            default => __('This leaderboard has :count heats. Pick one of them.', ['count' => $settings->heats]),
         };
 
         throw ValidationException::withMessages(['heat' => $message]);

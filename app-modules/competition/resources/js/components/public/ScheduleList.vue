@@ -44,11 +44,11 @@ function href(matchId: string): string {
 <template>
     <section class="flex flex-col gap-3" aria-labelledby="schedule-heading">
         <h2 id="schedule-heading" class="text-lg font-medium text-text">
-            Spielplan
+            {{ $t('Schedule') }}
         </h2>
 
         <p v-if="upcoming.length === 0" class="text-sm text-text-muted">
-            Keine angesetzten Spiele.
+            {{ $t('No scheduled matches.') }}
         </p>
 
         <ul v-else class="flex flex-col gap-1">
@@ -67,7 +67,7 @@ function href(matchId: string): string {
                     {{
                         match.sides
                             .map((side) => sideName(side))
-                            .join(' gegen ')
+                            .join(` ${$t('vs')} `)
                     }}
                 </Link>
             </li>

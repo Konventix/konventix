@@ -2,6 +2,7 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { Plus } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed, h, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -35,6 +36,7 @@ import {
     show as showEvent,
     store as storeEvent,
 } from '@/routes/admin/events';
+import { eventStateLabel } from '../../../lib/labels';
 
 type EventRow = {
     id: string;
@@ -82,7 +84,7 @@ const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
 const filterDefs = computed<DataTableFilterDef[]>(() => [
     {
         name: 'brand',
-        label: 'Brands',
+        label: trans('Brands'),
         value: props.filters.brand,
         options: props.brands.map((brand) => ({
             value: brand.id,
@@ -120,10 +122,10 @@ const stateClasses: Record<string, string> = {
     cancelled: 'bg-danger/15 text-danger',
 };
 
-const columns: ColumnDef<EventRow>[] = [
+const columns = computed<ColumnDef<EventRow>[]>(() => [
     {
         accessorKey: 'name',
-        header: 'Name',
+        header: trans('Name'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -137,7 +139,7 @@ const columns: ColumnDef<EventRow>[] = [
     },
     {
         accessorKey: 'slug',
-        header: 'Slug',
+        header: trans('Slug'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -148,7 +150,7 @@ const columns: ColumnDef<EventRow>[] = [
     },
     {
         accessorKey: 'state',
-        header: 'State',
+        header: trans('State'),
         enableSorting: true,
         cell: ({ row }) => {
             const state = row.getValue<string>('state');
@@ -158,14 +160,14 @@ const columns: ColumnDef<EventRow>[] = [
                 {
                     class: `inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${stateClasses[state] ?? 'bg-subtle text-text-muted'}`,
                 },
-                state,
+                eventStateLabel(state),
             );
         },
     },
     {
         accessorKey: 'starts_at',
         accessorFn: (row) => row.startsAt,
-        header: 'Starts',
+        header: trans('Starts'),
         enableSorting: true,
         cell: ({ row }) =>
             h('span', { class: 'text-text-muted' }, [
@@ -173,7 +175,7 @@ const columns: ColumnDef<EventRow>[] = [
                 h('span', { class: 'text-xs' }, `(${row.original.timezone})`),
             ]),
     },
-];
+]);
 
 const open = ref(false);
 
@@ -209,19 +211,19 @@ function submit(): void {
     not an instant: it is printed exactly as promised and must not be
     converted to the reader's own zone.
 -->
-    <Head title="Events" />
+    <Head :title="$t('Events')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Events"
-            description="Every event across its lifecycle"
+            :title="$t('Events')"
+            :description="$t('Every event across its lifecycle')"
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
             :filters="filterDefs"
-            search-placeholder="Search events…"
+            :search-placeholder="$t('Search events…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
             @update:filter="setFilter"
@@ -231,19 +233,21 @@ function submit(): void {
                     <DialogTrigger as-child>
                         <Button>
                             <Plus class="size-4" />
-                            New event
+                            {{ $t('New event') }}
                         </Button>
                     </DialogTrigger>
                     <DialogContent class="max-h-[85vh] overflow-y-auto">
                         <DialogHeader>
-                            <DialogTitle>Create event</DialogTitle>
+                            <DialogTitle>{{ $t('Create event') }}</DialogTitle>
                         </DialogHeader>
                         <form
                             class="flex flex-col gap-4"
                             @submit.prevent="submit"
                         >
                             <div class="grid gap-2">
-                                <Label for="event-brand">Brand</Label>
+                                <Label for="event-brand">{{
+                                    $t('Brand')
+                                }}</Label>
                                 <Select v-model="form.brand_id">
                                     <SelectTrigger id="event-brand">
                                         <SelectValue />
@@ -261,20 +265,20 @@ function submit(): void {
                                 <InputError :message="form.errors.brand_id" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="event-name">Name</Label>
+                                <Label for="event-name">{{ $t('Name') }}</Label>
                                 <Input id="event-name" v-model="form.name" />
                                 <InputError :message="form.errors.name" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="event-slug">Slug</Label>
+                                <Label for="event-slug">{{ $t('Slug') }}</Label>
                                 <Input id="event-slug" v-model="form.slug" />
                                 <InputError :message="form.errors.slug" />
                             </div>
                             <div class="grid grid-cols-2 gap-2">
                                 <div class="grid gap-2">
-                                    <Label for="event-starts"
-                                        >Starts (local)</Label
-                                    >
+                                    <Label for="event-starts">{{
+                                        $t('Starts (local)')
+                                    }}</Label>
                                     <Input
                                         id="event-starts"
                                         v-model="form.startsAt"
@@ -285,7 +289,9 @@ function submit(): void {
                                     />
                                 </div>
                                 <div class="grid gap-2">
-                                    <Label for="event-ends">Ends (local)</Label>
+                                    <Label for="event-ends">{{
+                                        $t('Ends (local)')
+                                    }}</Label>
                                     <Input
                                         id="event-ends"
                                         v-model="form.endsAt"
@@ -295,12 +301,14 @@ function submit(): void {
                                 </div>
                             </div>
                             <div class="grid gap-2">
-                                <Label for="event-tz">Timezone</Label>
+                                <Label for="event-tz">{{
+                                    $t('Timezone')
+                                }}</Label>
                                 <Input id="event-tz" v-model="form.timezone" />
                                 <InputError :message="form.errors.timezone" />
                             </div>
                             <Button type="submit" :disabled="form.processing">
-                                Create
+                                {{ $t('Create') }}
                             </Button>
                         </form>
                     </DialogContent>
@@ -314,8 +322,8 @@ function submit(): void {
             :data="props.events.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="events"
-            empty-message="No events yet."
+            :items-label="$t('events')"
+            :empty-message="$t('No events yet.')"
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />

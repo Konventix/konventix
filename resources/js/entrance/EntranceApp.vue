@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { checkedInKey, evaluateScan } from './lib/evaluate';
+import { checkedInKey, evaluateScan, REJECTION } from './lib/evaluate';
 import type {
     Decision,
     EventDay,
     LocalState,
     ReentryPolicy,
+    RejectionReason,
 } from './lib/evaluate';
+import { t } from './lib/i18n';
 import {
     allConditions,
     allDeltaEntries,
@@ -76,6 +78,39 @@ const conditionsByAdmission = ref<Map<string, DoorCondition[]>>(new Map());
 const pendingChecks = ref<DoorCondition[]>([]);
 const pendingScanId = ref<string | null>(null);
 const pendingOutcomes = ref<Record<string, 'confirmed' | 'refused'>>({});
+
+/**
+ * The refusal as a sentence staff can read out. The same words the console
+ * uses for the same reason code (`CheckInRejectionReason::consoleSentence()`),
+ * so the two surfaces share one translation.
+ */
+function reasonSentence(reason: RejectionReason): string {
+    const sentences: Record<RejectionReason, string> = {
+        [REJECTION.UnknownAdmission]: t('This ticket does not exist.'),
+        [REJECTION.InvalidSignature]: t(
+            'The ticket code could not be verified.',
+        ),
+        [REJECTION.TokenExpired]: t('The ticket code has expired.'),
+        [REJECTION.NonceSuperseded]: t(
+            'This ticket code has been replaced by a newer one.',
+        ),
+        [REJECTION.AdmissionNotValid]: t(
+            'This ticket is not valid: it has been revoked or is outside its validity period.',
+        ),
+        [REJECTION.OutsideEventDay]: t(
+            'There is no event day today, so nobody can be checked in right now.',
+        ),
+        [REJECTION.NotValidOnThisDay]: t(
+            'This ticket is not valid on this event day.',
+        ),
+        [REJECTION.ReentryNotPermitted]: t(
+            'This event does not permit re-entry, and this ticket has already been used to enter.',
+        ),
+        [REJECTION.WrongEvent]: t('This ticket belongs to a different event.'),
+    };
+
+    return sentences[reason] ?? reason;
+}
 
 const stale = computed(() =>
     isStale(lastSyncedAt.value, staleAfterSeconds.value, now.value),
@@ -359,34 +394,37 @@ onUnmounted(() => {
 <template>
     <div class="door">
         <header class="bar">
-            <span class="brand">Konventix Entrance</span>
+            <span class="brand">{{ $t('Konventix Entrance') }}</span>
             <span :class="['pill', stale ? 'pill-warn' : 'pill-ok']">
-                {{ stale ? 'Signature-only (feed stale)' : 'Synced' }}
+                {{ stale ? $t('Signature-only (feed stale)') : $t('Synced') }}
             </span>
-            <span v-if="pendingCount > 0" class="pill pill-info"
-                >{{ pendingCount }} buffered</span
-            >
+            <span v-if="pendingCount > 0" class="pill pill-info">{{
+                $t(':count buffered', { count: String(pendingCount) })
+            }}</span>
         </header>
 
         <section v-if="enrolling" class="panel">
-            <h1>Enrol this device</h1>
+            <h1>{{ $t('Enrol this device') }}</h1>
             <p>
-                Paste the device token issued when this scanner was registered,
-                and the event it serves.
+                {{
+                    $t(
+                        'Paste the device code issued when this scanner was registered, and the event it serves.',
+                    )
+                }}
             </p>
             <input
                 v-model="deviceToken"
                 class="field"
-                placeholder="Device token"
+                :placeholder="$t('Device code')"
                 autocomplete="off"
             />
             <input
                 v-model="eventId"
                 class="field"
-                placeholder="Event ID"
+                :placeholder="$t('Event ID')"
                 autocomplete="off"
             />
-            <button class="btn" @click="enrol">Enrol</button>
+            <button class="btn" @click="enrol">{{ $t('Enrol') }}</button>
         </section>
 
         <section v-else class="panel">
@@ -395,10 +433,10 @@ onUnmounted(() => {
                 :class="['verdict', lastDecision.accepted ? 'ok' : 'no']"
             >
                 <strong>{{
-                    lastDecision.accepted ? 'ADMIT' : 'REFUSE'
+                    lastDecision.accepted ? $t('ADMIT') : $t('REFUSE')
                 }}</strong>
                 <span v-if="!lastDecision.accepted" class="reason">{{
-                    lastDecision.reason
+                    reasonSentence(lastDecision.reason)
                 }}</span>
                 <!-- No name is shown, and none can be: ADR-0033 keeps the
                      device PII-free, so the id is all the door has. -->
@@ -412,7 +450,9 @@ onUnmounted(() => {
                  refusal records a fact — it never turns the ADMIT above
                  into a REFUSE (T-8, ADR-0005). -->
             <div v-for="check in pendingChecks" :key="check.key" class="check">
-                <strong>Document check — {{ check.label }}</strong>
+                <strong>{{
+                    $t('Document check — :label', { label: check.label })
+                }}</strong>
                 <span v-if="check.document_hint" class="hint">{{
                     check.document_hint
                 }}</span>
@@ -424,14 +464,14 @@ onUnmounted(() => {
                         "
                         @click="answerCheck(check.key, 'confirmed')"
                     >
-                        Confirmed
+                        {{ $t('Confirmed') }}
                     </button>
                     <button
                         class="btn btn-no"
                         :aria-pressed="pendingOutcomes[check.key] === 'refused'"
                         @click="answerCheck(check.key, 'refused')"
                     >
-                        Refused
+                        {{ $t('Refused') }}
                     </button>
                 </div>
             </div>
@@ -439,11 +479,13 @@ onUnmounted(() => {
             <input
                 v-model="manualToken"
                 class="field"
-                placeholder="Scan or paste token"
+                :placeholder="$t('Scan or paste code')"
                 autocomplete="off"
                 @keyup.enter="submitManual"
             />
-            <button class="btn" @click="submitManual">Check</button>
+            <button class="btn" @click="submitManual">
+                {{ $t('Check') }}
+            </button>
         </section>
     </div>
 </template>

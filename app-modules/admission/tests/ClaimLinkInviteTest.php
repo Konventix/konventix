@@ -121,7 +121,7 @@ it('renders the template with and without an inviter handle, directives on their
         expiresAt: '28.08.2026 18:00',
     ), 'de'));
 
-    expect($anonymous->body)->toContain('Die Veranstalter haben ein Ticket für Sie reserviert.')
+    expect($anonymous->body)->toContain('Die Veranstalter haben ein Ticket für dich reserviert.')
         ->not->toContain('@');
 
     $anonymousEnglish = $renderer->render($envelope(new ClaimLinkMailData(

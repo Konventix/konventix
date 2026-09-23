@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -19,6 +20,10 @@ import {
 import TeamRosterEditor from '../../../components/admin/TeamRosterEditor.vue';
 import ConfirmDialog from '../../../components/confirm/ConfirmDialog.vue';
 import { useConfirmation } from '../../../components/confirm/useConfirmation';
+import {
+    entrantStateLabel,
+    withdrawalReasonLabel,
+} from '../../../components/public/labels';
 
 /**
  * The field of one competition (design §5.2, §5.4, §5.5).
@@ -147,11 +152,12 @@ const {
 
 function decline(entrant: EntrantRow): void {
     ask({
-        title: `Decline ${entrant.teamName}?`,
-        description:
+        title: trans('Decline :team?', { team: entrant.teamName }),
+        description: trans(
             'The entry is withdrawn as an incomplete roster, its members are notified, and the slot is freed. It cannot be undone.',
-        confirmLabel: 'Decline entry',
-        cancelLabel: 'Keep it',
+        ),
+        confirmLabel: trans('Decline entry'),
+        cancelLabel: trans('Keep it'),
         run: () =>
             router.post(
                 declineEntrant(entrant.id).url,
@@ -163,11 +169,12 @@ function decline(entrant: EntrantRow): void {
 
 function withdraw(entrant: EntrantRow): void {
     ask({
-        title: `Withdraw ${entrant.teamName}?`,
-        description:
+        title: trans('Withdraw :team?', { team: entrant.teamName }),
+        description: trans(
             'The team leaves this competition and its slot is freed. It cannot be undone.',
-        confirmLabel: 'Withdraw entry',
-        cancelLabel: 'Keep it',
+        ),
+        confirmLabel: trans('Withdraw entry'),
+        cancelLabel: trans('Keep it'),
         run: () =>
             router.post(
                 withdrawEntrant(entrant.id).url,
@@ -179,13 +186,17 @@ function withdraw(entrant: EntrantRow): void {
 
 function disqualify(entrant: EntrantRow): void {
     ask({
-        title: `Disqualify ${entrant.teamName}?`,
+        title: trans('Disqualify :team?', { team: entrant.teamName }),
         description:
             props.competition.status === 'running'
-                ? 'The team is taken out of every match it has still to play, and the bracket goes on without it. It cannot be undone.'
-                : 'The team is out of this competition for good. It cannot be undone.',
-        confirmLabel: 'Disqualify',
-        cancelLabel: 'Keep it',
+                ? trans(
+                      'The team is taken out of every match it has still to play, and the bracket goes on without it. It cannot be undone.',
+                  )
+                : trans(
+                      'The team is out of this competition for good. It cannot be undone.',
+                  ),
+        confirmLabel: trans('Disqualify'),
+        cancelLabel: trans('Keep it'),
         run: () =>
             router.post(
                 disqualifyEntrant(entrant.id).url,
@@ -201,13 +212,22 @@ function regenerate(entrant: EntrantRow): void {
 </script>
 
 <template>
-    <Head :title="`Entrants — ${props.competition.name}`" />
+    <Head :title="$t('Entrants — :name', { name: props.competition.name })" />
 
     <div class="flex w-full flex-col gap-6 p-4">
         <Heading
             as="h1"
-            :title="`Entrants — ${props.competition.name}`"
-            :description="`Team size ${props.competition.teamSize}. ${active.length} full roster(s), ${incomplete.length} incomplete.`"
+            :title="$t('Entrants — :name', { name: props.competition.name })"
+            :description="
+                $t(
+                    'Team size :size. :full full roster(s), :incomplete incomplete.',
+                    {
+                        size: String(props.competition.teamSize),
+                        full: String(active.length),
+                        incomplete: String(incomplete.length),
+                    },
+                )
+            "
         />
 
         <p class="flex flex-wrap gap-4 text-sm">
@@ -215,24 +235,28 @@ function regenerate(entrant: EntrantRow): void {
                 :href="competitionDesk(props.competition.id).url"
                 class="underline underline-offset-4 hover:text-accent"
             >
-                Tournament desk
+                {{ $t('Tournament desk') }}
             </Link>
             <Link
                 :href="competitionCheckIn(props.competition.id).url"
                 class="underline underline-offset-4 hover:text-accent"
             >
-                Check-in desk
+                {{ $t('Check-in desk') }}
             </Link>
         </p>
 
         <InputError :message="refusal" role="alert" />
 
         <section v-if="incomplete.length > 0" class="flex flex-col gap-4">
-            <h2 class="text-lg font-medium text-text">Incomplete rosters</h2>
+            <h2 class="text-lg font-medium text-text">
+                {{ $t('Incomplete rosters') }}
+            </h2>
             <p class="text-sm text-text-muted">
-                Each of these holds a slot. Fill it from the interested list, or
-                decline it and free the slot. The competition cannot start while
-                any of them is left.
+                {{
+                    $t(
+                        'Each of these holds a slot. Fill it from the interested list, or decline it and free the slot. The competition cannot start while any of them is left.',
+                    )
+                }}
             </p>
 
             <article
@@ -246,9 +270,12 @@ function regenerate(entrant: EntrantRow): void {
                     <h3 class="font-medium text-text">
                         {{ entrant.teamName }}
                     </h3>
-                    <span class="text-sm text-warning"
-                        >{{ entrant.missing }} player(s) short</span
-                    >
+                    <span class="text-sm text-warning">{{
+                        $tChoice(
+                            '{1} :count player short|[0,*] :count players short',
+                            entrant.missing,
+                        )
+                    }}</span>
                 </div>
 
                 <ul class="flex flex-wrap gap-2 text-sm text-text-muted">
@@ -261,7 +288,9 @@ function regenerate(entrant: EntrantRow): void {
                     v-if="props.interested.length > 0"
                     class="flex flex-col gap-2"
                 >
-                    <legend class="text-sm text-text-muted">Interested</legend>
+                    <legend class="text-sm text-text-muted">
+                        {{ $t('Interested') }}
+                    </legend>
 
                     <label
                         v-for="person in props.interested"
@@ -291,7 +320,7 @@ function regenerate(entrant: EntrantRow): void {
                 </fieldset>
 
                 <p v-else class="text-sm text-text-muted">
-                    Nobody registered interest in this competition.
+                    {{ $t('Nobody registered interest in this competition.') }}
                 </p>
 
                 <div class="flex flex-wrap gap-2">
@@ -300,19 +329,19 @@ function regenerate(entrant: EntrantRow): void {
                         :disabled="selection(entrant.id).length === 0"
                         @click="fill(entrant)"
                     >
-                        Fill up
+                        {{ $t('Fill up') }}
                     </Button>
                     <Button
                         variant="outline"
                         size="sm"
                         @click="decline(entrant)"
-                        >Decline</Button
+                        >{{ $t('Decline') }}</Button
                     >
                     <Button
                         variant="ghost"
                         size="sm"
                         @click="regenerate(entrant)"
-                        >New invite code</Button
+                        >{{ $t('New invite code') }}</Button
                     >
                     <Button
                         v-if="props.canManage"
@@ -320,7 +349,7 @@ function regenerate(entrant: EntrantRow): void {
                         size="sm"
                         :aria-expanded="editing === entrant.teamId"
                         @click="toggleEditing(entrant.teamId)"
-                        >Edit roster</Button
+                        >{{ $t('Edit roster') }}</Button
                     >
                 </div>
 
@@ -336,10 +365,10 @@ function regenerate(entrant: EntrantRow): void {
         </section>
 
         <section class="flex flex-col gap-3">
-            <h2 class="text-lg font-medium text-text">Entered</h2>
+            <h2 class="text-lg font-medium text-text">{{ $t('Entered') }}</h2>
 
             <p v-if="active.length === 0" class="text-sm text-text-muted">
-                No full roster has entered yet.
+                {{ $t('No full roster has entered yet.') }}
             </p>
 
             <article
@@ -367,19 +396,19 @@ function regenerate(entrant: EntrantRow): void {
                         size="sm"
                         :aria-expanded="editing === entrant.teamId"
                         @click="toggleEditing(entrant.teamId)"
-                        >Edit roster</Button
+                        >{{ $t('Edit roster') }}</Button
                     >
                     <Button
                         variant="outline"
                         size="sm"
                         @click="withdraw(entrant)"
-                        >Withdraw</Button
+                        >{{ $t('Withdraw') }}</Button
                     >
                     <Button
                         variant="outline"
                         size="sm"
                         @click="disqualify(entrant)"
-                        >Disqualify</Button
+                        >{{ $t('Disqualify') }}</Button
                     >
                 </div>
 
@@ -397,14 +426,17 @@ function regenerate(entrant: EntrantRow): void {
 
         <section v-if="gone.length > 0" class="flex flex-col gap-2">
             <h2 class="text-lg font-medium text-text">
-                No longer in the field
+                {{ $t('No longer in the field') }}
             </h2>
 
             <ul class="flex flex-col gap-1 text-sm text-text-muted">
                 <li v-for="entrant in gone" :key="entrant.id">
-                    {{ entrant.teamName }} — {{ entrant.state }}
+                    {{ entrant.teamName }} —
+                    {{ entrantStateLabel(entrant.state) }}
                     <template v-if="entrant.withdrawalReason">
-                        ({{ entrant.withdrawalReason }})</template
+                        ({{
+                            withdrawalReasonLabel(entrant.withdrawalReason)
+                        }})</template
                     >
                 </li>
             </ul>

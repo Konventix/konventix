@@ -23,12 +23,17 @@ defineProps<{ brands: BrandRow[]; deploymentDisk: string }>();
 </script>
 
 <template>
-    <Head title="Storage" />
+    <Head :title="$t('Storage')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Storage"
-            :description="`Where each brand's media is kept — the deployment uses '${deploymentDisk}' unless a brand brings its own bucket`"
+            :title="$t('Storage')"
+            :description="
+                $t(
+                    'Where each brand’s media is kept — the deployment uses “:disk” unless a brand brings its own bucket',
+                    { disk: deploymentDisk },
+                )
+            "
         />
 
         <div class="rounded-xl border border-border">
@@ -38,15 +43,17 @@ defineProps<{ brands: BrandRow[]; deploymentDisk: string }>();
                         <tr
                             class="border-b border-border text-left text-text-muted"
                         >
-                            <th scope="col" class="p-3 font-medium">Brand</th>
                             <th scope="col" class="p-3 font-medium">
-                                New uploads go to
+                                {{ $t('Brand') }}
                             </th>
                             <th scope="col" class="p-3 font-medium">
-                                Delivery
+                                {{ $t('New uploads go to') }}
                             </th>
                             <th scope="col" class="p-3 font-medium">
-                                Files in own bucket
+                                {{ $t('Storage delivery') }}
+                            </th>
+                            <th scope="col" class="p-3 font-medium">
+                                {{ $t('Files in own bucket') }}
                             </th>
                             <th scope="col" class="p-3"></th>
                         </tr>
@@ -63,11 +70,13 @@ defineProps<{ brands: BrandRow[]; deploymentDisk: string }>();
                                 <template v-if="brand.bucket">
                                     {{ brand.bucket }}
                                     <span class="text-text-muted">
-                                        (own bucket)
+                                        ({{ $t('own bucket') }})
                                     </span>
                                 </template>
                                 <span v-else class="text-text-muted">
-                                    {{ deploymentDisk }} (deployment)
+                                    {{ deploymentDisk }} ({{
+                                        $t('deployment')
+                                    }})
                                 </span>
                             </td>
                             <td class="p-3">
@@ -81,8 +90,8 @@ defineProps<{ brands: BrandRow[]; deploymentDisk: string }>();
                                 >
                                     {{
                                         brand.publicDirect
-                                            ? 'Public bucket'
-                                            : 'Through the app'
+                                            ? $t('Public bucket')
+                                            : $t('Through the app')
                                     }}
                                 </Badge>
                                 <span v-else class="text-text-muted">—</span>
@@ -96,7 +105,7 @@ defineProps<{ brands: BrandRow[]; deploymentDisk: string }>();
                             <td class="p-3 text-right" @click.stop>
                                 <Button as-child variant="outline" size="sm">
                                     <Link :href="editStorageSettings(brand.id)">
-                                        Edit
+                                        {{ $t('Edit') }}
                                     </Link>
                                 </Button>
                             </td>
@@ -106,7 +115,7 @@ defineProps<{ brands: BrandRow[]; deploymentDisk: string }>();
                                 colspan="5"
                                 class="p-6 text-center text-text-muted"
                             >
-                                No brands yet.
+                                {{ $t('No brands yet.') }}
                             </td>
                         </tr>
                     </tbody>

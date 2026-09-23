@@ -1,3 +1,5 @@
+import { trans } from 'laravel-vue-i18n';
+
 /**
  * Whether a place can be picked, and why not (design §7.4: "taken" versus
  * "not in your category", inline, never a modal — LanCore Picker.vue:348-408
@@ -69,28 +71,33 @@ export function isSelectable(reason: Reason): boolean {
     );
 }
 
-const STATE_TEXT: Record<Reason, string> = {
-    free: 'Free',
-    selected: 'Selected',
-    mine: 'Yours',
-    taken: 'Taken',
-    'not-in-category': 'Not in your category',
-    unavailable: 'Unavailable',
-    swap: 'Free, swaps',
-};
-
+/**
+ * A lookup at call time, never a module constant: the words are catalog
+ * entries, and the catalog is loaded after this module is imported
+ * (ADR-0068).
+ */
 export function stateText(reason: Reason): string {
-    return STATE_TEXT[reason];
+    const texts: Record<Reason, string> = {
+        free: trans('Free'),
+        selected: trans('Selected'),
+        mine: trans('Yours'),
+        taken: trans('Taken'),
+        'not-in-category': trans('Not in your category'),
+        unavailable: trans('Unavailable'),
+        swap: trans('Free, swaps'),
+    };
+
+    return texts[reason];
 }
 
 export function hintFor(reason: Reason): string | null {
     switch (reason) {
         case 'taken':
-            return 'This place is already taken.';
+            return trans('This place is already taken.');
         case 'not-in-category':
-            return 'This place is not in your category.';
+            return trans('This place is not in your category.');
         case 'unavailable':
-            return 'This place is not available.';
+            return trans('This place is not available.');
         default:
             return null;
     }

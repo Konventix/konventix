@@ -1,3 +1,4 @@
+import { trans } from 'laravel-vue-i18n';
 import type { Bbox, Point } from './transform';
 
 /**
@@ -328,15 +329,15 @@ export function compareRefs(a: string, b: string): number {
     });
 }
 
-const LOOSE_ZONE = 'Other places';
-const LOOSE_GROUP = 'Ungrouped';
-
 /**
  * Zone → group → place, zones and groups in document order, places by
  * ref. Places outside any zone or group land in trailing "Other places" /
  * "Ungrouped" nodes so the list view never drops a place the scene shows.
  */
 export function planTree(document: Document): PlanZoneNode[] {
+    // Catalog lookups at call time, never module constants (ADR-0068).
+    const looseZoneLabel = trans('Other places');
+    const looseGroupLabel = trans('Ungrouped');
     const index = elementIndex(document);
     const zones = new Map<string, PlanZoneNode>();
 
@@ -344,13 +345,17 @@ export function planTree(document: Document): PlanZoneNode[] {
         if (element.kind === 'zone') {
             zones.set(element.id, {
                 id: element.id,
-                label: element.label ?? element.ref ?? 'Zone',
+                label: element.label ?? element.ref ?? trans('Zone'),
                 groups: [],
             });
         }
     }
 
-    const looseZone: PlanZoneNode = { id: '', label: LOOSE_ZONE, groups: [] };
+    const looseZone: PlanZoneNode = {
+        id: '',
+        label: looseZoneLabel,
+        groups: [],
+    };
 
     for (const element of document.elements) {
         if (element.kind !== 'place') {
@@ -369,8 +374,8 @@ export function planTree(document: Document): PlanZoneNode[] {
             groupNode = {
                 id: groupId,
                 label: group
-                    ? (group.label ?? group.ref ?? 'Group')
-                    : LOOSE_GROUP,
+                    ? (group.label ?? group.ref ?? trans('Group'))
+                    : looseGroupLabel,
                 places: [],
             };
             zoneNode.groups.push(groupNode);

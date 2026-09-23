@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
@@ -21,8 +22,10 @@ const props = defineProps<{ hub: Konventix.Platform.Data.HubPageData }>();
 
 const windowHint = computed(() =>
     props.hub.event.windowEndsAt
-        ? `Zugang bis ${formatTime(props.hub.event.windowEndsAt)}`
-        : 'Zugang bis Eventende',
+        ? trans('Access until :time', {
+              time: formatTime(props.hub.event.windowEndsAt),
+          })
+        : trans('Access until the event ends'),
 );
 
 const cards = computed(() =>
@@ -43,13 +46,13 @@ const links = computed(() =>
 </script>
 
 <template>
-    <Head :title="hub.event.eventName ?? 'Live'" />
+    <Head :title="hub.event.eventName ?? $t('Live')" />
 
     <div class="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6">
         <div class="flex flex-wrap items-start justify-between gap-3">
             <Heading
                 as="h1"
-                :title="hub.event.eventName ?? 'Live'"
+                :title="hub.event.eventName ?? $t('Live')"
                 :description="
                     [hub.event.dayLabel, windowHint].filter(Boolean).join(' · ')
                 "
@@ -63,14 +66,14 @@ const links = computed(() =>
                     :class="hub.event.onSite ? 'bg-success' : 'bg-text-muted'"
                     aria-hidden="true"
                 />
-                {{ hub.event.onSite ? 'Vor Ort' : 'Nicht vor Ort' }}
+                {{ hub.event.onSite ? $t('On site') : $t('Not on site') }}
             </Badge>
         </div>
 
         <nav
             v-if="hub.events.length > 1"
             class="flex flex-wrap gap-2"
-            aria-label="Events"
+            :aria-label="$t('Events')"
         >
             <span
                 v-for="e in hub.events"

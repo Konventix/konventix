@@ -8,6 +8,8 @@
  * puts on every generated property, which `useForm` assigns straight
  * through.
  */
+import { trans } from 'laravel-vue-i18n';
+
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
 export type VenuePlaceForm = Mutable<Konventix.Event.Data.VenuePlaceData>;
@@ -33,16 +35,21 @@ export function emptyPlace(): VenuePlaceForm {
  * offered. `dayOfWeek` is the ISO-8601 number `OpeningPeriodData` validates
  * (1 Monday through 7 Sunday), so Monday leads and Sunday closes the week —
  * not the Sunday-first order a `Date` would give.
+ *
+ * A function, not a constant: the labels come from the catalog, which is
+ * loaded after the modules are imported (ADR-0068).
  */
-export const WEEKDAYS: ReadonlyArray<{ value: number; label: string }> = [
-    { value: 1, label: 'Monday' },
-    { value: 2, label: 'Tuesday' },
-    { value: 3, label: 'Wednesday' },
-    { value: 4, label: 'Thursday' },
-    { value: 5, label: 'Friday' },
-    { value: 6, label: 'Saturday' },
-    { value: 7, label: 'Sunday' },
-];
+export function weekdays(): ReadonlyArray<{ value: number; label: string }> {
+    return [
+        { value: 1, label: trans('Monday') },
+        { value: 2, label: trans('Tuesday') },
+        { value: 3, label: trans('Wednesday') },
+        { value: 4, label: trans('Thursday') },
+        { value: 5, label: trans('Friday') },
+        { value: 6, label: trans('Saturday') },
+        { value: 7, label: trans('Sunday') },
+    ];
+}
 
 /**
  * A blank opening period. It starts on the day after the last one in the

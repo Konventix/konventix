@@ -4,6 +4,7 @@ import InputError from '@/components/InputError.vue';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { verificationLabel } from '../lib/labels';
 
 /**
  * Which declarations this type demands (ADR-0066 §9.1, D-REG-18/19), and the
@@ -91,22 +92,22 @@ const strandedAssertions = computed(() =>
 <template>
     <Card>
         <CardHeader>
-            <CardTitle>Entry conditions</CardTitle>
+            <CardTitle>{{ $t('Entry conditions') }}</CardTitle>
         </CardHeader>
         <CardContent class="flex flex-col gap-4">
             <p class="text-sm text-text-muted">
-                What a registrant has to declare before they may buy this type.
-                Each one becomes a required checkbox on the registration form,
-                carrying its sentence word for word. This list stays editable
-                after the type has sold — nothing already declared is ever
-                rewritten.
+                {{
+                    $t(
+                        'What a registrant has to declare before they may buy this type. Each one becomes a required checkbox on the registration form, carrying its sentence word for word. This list stays editable after the type has sold — nothing already declared is ever rewritten.',
+                    )
+                }}
             </p>
 
             <p
                 v-if="props.conditions.length === 0"
                 class="text-sm text-text-muted"
             >
-                This brand has no entry conditions yet.
+                {{ $t('This brand has no entry conditions yet.') }}
             </p>
 
             <div
@@ -132,13 +133,13 @@ const strandedAssertions = computed(() =>
                         <span
                             class="rounded-full bg-subtle px-2 py-0.5 text-xs text-text-muted"
                         >
-                            {{ condition.verification }}
+                            {{ verificationLabel(condition.verification) }}
                         </span>
                         <span
                             v-if="condition.archived"
                             class="rounded-full bg-warning/15 px-2 py-0.5 text-xs text-warning"
                         >
-                            archived
+                            {{ $t('archived') }}
                         </span>
                     </span>
                     <span class="text-xs font-normal text-text-muted">
@@ -153,24 +154,35 @@ const strandedAssertions = computed(() =>
                 class="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-text"
             >
                 <template v-if="added.length > 0">
-                    {{ props.registrations }} existing registration(s) will show
-                    {{ added.length }} newly added condition(s) as
-                    <em>not asserted</em>. Nothing is written for them and
-                    nothing is blocked — you can waive each one on the
-                    registration.
+                    {{
+                        $t(
+                            ':registrations existing registration(s) will show :added newly added condition(s) as “not asserted”. Nothing is written for them and nothing is blocked — you can waive each one on the registration.',
+                            {
+                                registrations: String(props.registrations),
+                                added: String(added.length),
+                            },
+                        )
+                    }}
                 </template>
                 <template v-if="removed.length > 0">
-                    Removing {{ removed.length }} condition(s) leaves
-                    {{ strandedAssertions }} existing declaration(s) standing:
-                    they stay on the registrations that made them and in their
-                    data export.
+                    {{
+                        $t(
+                            'Removing :removed condition(s) leaves :stranded existing declaration(s) standing: they stay on the registrations that made them and in their data export.',
+                            {
+                                removed: String(removed.length),
+                                stranded: String(strandedAssertions),
+                            },
+                        )
+                    }}
                 </template>
             </p>
 
             <InputError :message="props.error" />
 
             <div class="grid gap-2 border-t border-border pt-4">
-                <Label for="type-alternative">Alternative type</Label>
+                <Label for="type-alternative">{{
+                    $t('Alternative type')
+                }}</Label>
                 <select
                     id="type-alternative"
                     class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
@@ -182,7 +194,7 @@ const strandedAssertions = computed(() =>
                         )
                     "
                 >
-                    <option value="">None</option>
+                    <option value="">{{ $t('No alternative') }}</option>
                     <option
                         v-for="type in props.alternativeTypes"
                         :key="type.id"
@@ -192,9 +204,11 @@ const strandedAssertions = computed(() =>
                     </option>
                 </select>
                 <p class="text-xs text-text-muted">
-                    Offered as "buy this instead" beside a submission refused at
-                    one of these checkboxes. It grants nothing and may be
-                    changed at any time.
+                    {{
+                        $t(
+                            'Offered as “buy this instead” beside a submission refused at one of these checkboxes. It grants nothing and may be changed at any time.',
+                        )
+                    }}
                 </p>
                 <InputError :message="props.alternativeError" />
             </div>

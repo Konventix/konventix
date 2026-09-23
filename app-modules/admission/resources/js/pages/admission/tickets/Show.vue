@@ -60,7 +60,13 @@ const props = defineProps<Props>();
 </script>
 
 <template>
-    <Head :title="props.eventName ? `Ticket · ${props.eventName}` : 'Ticket'" />
+    <Head
+        :title="
+            props.eventName
+                ? $t('Ticket · :event', { event: props.eventName })
+                : $t('Ticket')
+        "
+    />
 
     <div class="mx-auto w-full max-w-2xl px-4 py-6">
         <Link
@@ -68,12 +74,12 @@ const props = defineProps<Props>();
             class="mb-4 inline-flex items-center gap-1 text-sm text-text-muted hover:text-text"
         >
             <ArrowLeft class="size-4" aria-hidden="true" />
-            My tickets
+            {{ $t('My tickets') }}
         </Link>
 
         <article
             class="overflow-hidden rounded-2xl border border-border bg-surface-raised shadow-sm"
-            aria-label="Ticket"
+            :aria-label="$t('Ticket')"
         >
             <TicketEventBand
                 :event-name="props.eventName"
@@ -103,7 +109,7 @@ const props = defineProps<Props>();
                     class="inline-flex min-h-11 items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent hover:bg-accent/90"
                 >
                     <FileDown class="size-4" aria-hidden="true" />
-                    Download PDF
+                    {{ $t('Download PDF') }}
                 </a>
                 <Link
                     v-if="props.isManager && props.registrationId"
@@ -111,7 +117,7 @@ const props = defineProps<Props>();
                     class="inline-flex min-h-11 items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium text-text hover:border-accent"
                 >
                     <ClipboardList class="size-4" aria-hidden="true" />
-                    Registration
+                    {{ $t('Registration') }}
                 </Link>
                 <a
                     v-if="props.eventSlug"
@@ -119,7 +125,7 @@ const props = defineProps<Props>();
                     class="inline-flex min-h-11 items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium text-text hover:border-accent"
                 >
                     <CalendarPlus class="size-4" aria-hidden="true" />
-                    Add to calendar
+                    {{ $t('Add to calendar') }}
                 </a>
                 <!-- Resources' seat button, when the viewer may pick (§6.4). -->
                 <template v-for="slot in props.slots" :key="slot.component">

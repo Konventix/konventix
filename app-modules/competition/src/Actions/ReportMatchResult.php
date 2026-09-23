@@ -186,7 +186,7 @@ final class ReportMatchResult
             return $this->disputes->handle(
                 $match,
                 $entrant,
-                __('Die beiden Seiten haben unterschiedliche Ergebnisse gemeldet.'),
+                __('The two sides reported different results.'),
                 $reportedByUserId,
             );
         });
@@ -284,7 +284,7 @@ final class ReportMatchResult
             new EntrantNoticeData(
                 competitionName: $competition->name,
                 teamName: $team->name ?? '',
-                detail: __('Das gegnerische Team hat ein Ergebnis gemeldet. Bestätige es oder melde dein eigenes.'),
+                detail: __('The opposing team reported a result. Confirm it or report your own.'),
             ),
         );
     }
