@@ -74,7 +74,7 @@ final class DisputeMatchResult
 
             if (trim($reason) === '') {
                 throw ValidationException::withMessages([
-                    'reason' => __('Say what is wrong with the reported result.'),
+                    'reason' => __('Schreib bitte dazu, was an dem gemeldeten Ergebnis nicht stimmt.'),
                 ]);
             }
 

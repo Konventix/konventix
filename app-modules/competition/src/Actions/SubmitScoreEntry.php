@@ -81,7 +81,7 @@ final class SubmitScoreEntry
 
             $this->guardStage($stage, $entrant);
             $this->guardSubmissionMode($competition, $asOrganizer);
-            $this->guardHeat($stage, $data);
+            $this->guardHeat($stage, $data, $asOrganizer);
 
             $proofMediaId = $this->proofs->resolve($competition, $stage->brand_id, $data->proofMediaId);
 
@@ -89,7 +89,7 @@ final class SubmitScoreEntry
 
             if ($entry !== null && $entry->isVerified() && ! $asOrganizer) {
                 throw ValidationException::withMessages([
-                    'value' => __('This score has already been verified; only an organizer can replace it.'),
+                    'value' => __('Dieses Ergebnis ist schon bestätigt. Ersetzen kann es nur noch die Turnierleitung.'),
                 ]);
             }
 
@@ -159,7 +159,11 @@ final class SubmitScoreEntry
         }
     }
 
-    private function guardHeat(Stage $stage, ScoreEntryData $data): void
+    /**
+     * Both doors reach this, so it answers in the language of the one that
+     * asked (ADR-0001): English on the desk, German on the competition page.
+     */
+    private function guardHeat(Stage $stage, ScoreEntryData $data, bool $asOrganizer): void
     {
         $settings = $stage->leaderboardSettings();
 
@@ -167,11 +171,14 @@ final class SubmitScoreEntry
             return;
         }
 
-        throw ValidationException::withMessages([
-            'heat' => $settings->heats === null
-                ? __('This leaderboard has no heats; submit one entry without a heat number.')
-                : __('This leaderboard has :count heats; pick one of them.', ['count' => $settings->heats]),
-        ]);
+        $message = match (true) {
+            $asOrganizer && $settings->heats === null => __('This leaderboard has no heats; submit one entry without a heat number.'),
+            $asOrganizer => __('This leaderboard has :count heats; pick one of them.', ['count' => $settings->heats]),
+            $settings->heats === null => __('Diese Wertung hat keine Läufe. Trag dein Ergebnis ohne Laufnummer ein.'),
+            default => __('Diese Wertung hat :count Läufe. Wähle einen davon aus.', ['count' => $settings->heats]),
+        };
+
+        throw ValidationException::withMessages(['heat' => $message]);
     }
 
     /**

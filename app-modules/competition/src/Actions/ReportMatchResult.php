@@ -152,10 +152,12 @@ final class ReportMatchResult
                 );
             }
 
+            // The dispute's reason lands in the match history, which both
+            // sides read on the match page, so it is German (ADR-0001).
             return $this->disputes->handle(
                 $match,
                 $entrant,
-                __('The two sides reported different results.'),
+                __('Die beiden Seiten haben unterschiedliche Ergebnisse gemeldet.'),
                 $reportedByUserId,
             );
         });
