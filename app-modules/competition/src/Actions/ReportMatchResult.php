@@ -46,7 +46,9 @@ use Konventix\Competition\Proofs\ProofGate;
  * `RecordMatchResult` directly, and a participant is refused here rather than
  * only hidden from on the page. A report on a match that already has a
  * recorded result is refused outright (§8.2, step 4) — from there only a
- * correction can change anything.
+ * correction can change anything. So is a report on a match whose other side
+ * has not arrived yet (`guardEverySideHasArrived`), which is the desk's rule
+ * too.
  */
 final class ReportMatchResult
 {
@@ -74,8 +76,17 @@ final class ReportMatchResult
             $this->guardIsASideOf($match, $entrant);
             $this->guardIsOnTheRoster($entrant, $reportedByUserId);
 
+            // A side still to come — an empty slot fed by an undecided match —
+            // has nobody who could confirm or contradict this claim, and a
+            // claim filed against nobody would sit on the match as the only
+            // report once the opponent arrives. The desk refuses the same
+            // match for the same reason (`RecordResultAtDesk`); a bye, which
+            // nothing will ever fill, passes.
+            $sides = $this->entrantIdsByPosition($match);
+            $this->guardEverySideHasArrived($match, $sides);
+
             $scores = $data->normalisedScores();
-            $this->guardScoreLineIsComplete($match, $scores, $this->entrantIdsByPosition($match));
+            $this->guardScoreLineIsComplete($match, $scores, $sides);
 
             $proofMediaId = $this->proofs->resolve($competition, $match->brand_id, $data->proofMediaId);
 

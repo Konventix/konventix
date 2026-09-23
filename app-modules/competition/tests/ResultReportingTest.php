@@ -10,6 +10,7 @@ use Illuminate\Validation\ValidationException;
 use Konventix\Competition\Actions\ConfirmMatchResult;
 use Konventix\Competition\Actions\DisputeMatchResult;
 use Konventix\Competition\Actions\RecordMatchResult;
+use Konventix\Competition\Actions\RecordResultAtDesk;
 use Konventix\Competition\Actions\ReportMatchResult;
 use Konventix\Competition\Actions\ResolveDispute;
 use Konventix\Competition\Actions\StoreProofImage;
@@ -272,6 +273,62 @@ describe('reporting and confirming (§8.2)', function (): void {
             new MatchReportData(scores: [1 => 16]),
             $members[$sides[1]],
         ))->toThrow(ResultSubmissionException::class);
+    });
+
+    it('refuses a report while the other side is still to come, and takes it once they arrive', function (): void {
+        // The desk's rule (`RecordResultAtDesk`, fix round of the desk task),
+        // now on the participant's door too: a claim against nobody would be
+        // the only report on the match when the opponent finally arrives.
+        $this->withBrand();
+
+        // Three entrants in a bracket of four. S(4) = [1, 4, 2, 3]:
+        //   round 1, match 1: seed 1 ($a) v seed 4 — absent, a bye
+        //   round 1, match 2: seed 2 ($b) v seed 3 ($c)
+        //   round 2, match 1: slot 1 from match 1, slot 2 from match 2
+        [$competition, [$a, $b, $c], $members] = competitionFieldWithRosters(3, [
+            'result_submission_mode' => ResultSubmissionMode::Participants,
+        ]);
+        $stage = competitionGeneratedStage($competition);
+        $desk = (string) Str::ulid();
+
+        expect(competitionSidesOf(competitionMatchAt($stage, 1, 1)))->toBe([1 => $a->id])
+            ->and(competitionSidesOf(competitionMatchAt($stage, 1, 2)))->toBe([1 => $b->id, 2 => $c->id]);
+
+        // The bye is settled by the desk; $a moves to the final's slot 1.
+        app(RecordResultAtDesk::class)->handle(competitionMatchAt($stage, 1, 1), [1 => 0], $a->id, $desk);
+
+        $final = competitionMatchAt($stage, 2, 1);
+        expect(competitionSidesOf($final))->toBe([1 => $a->id]);
+
+        // Slot 2 still waits on $b v $c, so $a's claim is refused and leaves
+        // no trace on the match.
+        expect(fn () => app(ReportMatchResult::class)->handle(
+            $final,
+            $a,
+            new MatchReportData(scores: [1 => 16]),
+            $members[$a->id],
+        ))->toThrow(ResultSubmissionException::class);
+
+        expect(MatchResultReport::query()->where('competition_match_id', $final->getKey())->count())->toBe(0)
+            ->and($final->fresh()->reported_at)->toBeNull()
+            ->and(reportTestHistoryKinds($final->fresh()))->toBe([]);
+
+        // $b beats $c 2:0 and fills slot 2; now both sides are there and the
+        // same person's report on the final is filed.
+        app(RecordResultAtDesk::class)->handle(competitionMatchAt($stage, 1, 2), [1 => 2, 2 => 0], $b->id, $desk);
+
+        $final = competitionMatchAt($stage, 2, 1);
+        expect(competitionSidesOf($final))->toBe([1 => $a->id, 2 => $b->id]);
+
+        app(ReportMatchResult::class)->handle(
+            $final,
+            $a,
+            new MatchReportData(scores: [1 => 16, 2 => 9]),
+            $members[$a->id],
+        );
+
+        expect($final->fresh()->reported_at)->not->toBeNull()
+            ->and(MatchResultReport::query()->where('competition_match_id', $final->getKey())->count())->toBe(1);
     });
 
     it('refuses to confirm when nobody has reported, and refuses to confirm one\'s own claim', function (): void {
