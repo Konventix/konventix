@@ -168,7 +168,7 @@ async function signInWithPasskey(): Promise<void> {
                 data-test="login-button"
             >
                 <Spinner v-if="processing" />
-                Log in
+                {{ $t('Log in') }}
             </Button>
         </div>
 

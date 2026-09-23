@@ -9,6 +9,7 @@ import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { configureDateTime } from '@/lib/datetime';
 import { initializeFlashToast } from '@/lib/flashToast';
+import { installI18n, loadCatalogs } from '@/lib/i18n';
 import { resolveReverbEndpoint } from '@/lib/reverbEndpoint';
 
 /**
@@ -177,7 +178,12 @@ createInertiaApp({
             throw new Error(`Inertia page not found: ${name}`);
         }
 
-        const component = await loader();
+        // The catalogs ride along with the page chunk, so `installI18n` can
+        // hand them to the plugin synchronously (see `loadCatalogs`).
+        const [component] = await Promise.all([
+            loader(),
+            loadCatalogs(visit?.props?.localeChain ?? ['en']),
+        ]);
 
         // Last, with no await after it: see `applyDateTimeSettings`.
         applyDateTimeSettings(visit?.props);
@@ -185,6 +191,11 @@ createInertiaApp({
         return component;
     },
     layout: (name: string) => layoutFor(name),
+    // ADR-0068 §1: `$t` reads the module catalogs along the server's locale
+    // chain. Once per Vue app — per request under SSR, once in the browser.
+    withApp: (app, { ssr, page }) => {
+        installI18n(app, { chain: page.props.localeChain ?? ['en'], ssr });
+    },
     progress: {
         // Semantic token, not a palette value — the brand accent re-colors the
         // progress bar along with everything else (ADR-0008).
