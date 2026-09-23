@@ -17,6 +17,7 @@ const props = defineProps<{
     bracket: Konventix.Competition.Data.BracketData;
     eventSlug: string;
     competitionSlug: string;
+    eventTimezone: string | null;
 }>();
 
 const view = ref<'table' | 'canvas'>('table');
@@ -70,6 +71,7 @@ onMounted(() => {
             :bracket="props.bracket"
             :event-slug="props.eventSlug"
             :competition-slug="props.competitionSlug"
+            :event-timezone="props.eventTimezone"
         />
     </div>
 </template>

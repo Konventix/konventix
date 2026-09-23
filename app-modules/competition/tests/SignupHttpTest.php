@@ -536,6 +536,32 @@ it('sends the teams of the signed-in person and nobody else', function (): void 
             ->where('teams.0.name', 'Meins'));
 });
 
+it('sends each team its event\'s zone, so the check-in time reads on the event\'s wall clock', function (): void {
+    // ADR-0027 (final review, part 3, I1): "Check-in ab …" is rendered with
+    // `formatEventDateTime()` in the team's event zone. An event the
+    // projection never heard of has none, and the page falls back to the
+    // reader's zone, like the match page.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+
+    $projected = competitionPublicEvent($brand->id);
+    $unknown = (string) Str::ulid();
+    $player = signupHttpPlayer($projected, $brand->id);
+    competitionEligibleUser($unknown, $brand->id, (string) $player->getKey());
+
+    app(CreateTeam::class)->handle($brand->id, $projected, 'Aaa Berlin', (string) $player->getKey());
+    app(CreateTeam::class)->handle($brand->id, $unknown, 'Bbb Nirgendwo', (string) $player->getKey());
+
+    // Ordered by name: "Aaa Berlin" first.
+    $this->actingAs($player)
+        ->get('/my/tournaments')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('teams', 2)
+            ->where('teams.0.eventTimezone', 'Europe/Berlin')
+            ->where('teams.1.eventTimezone', null));
+});
+
 it('requires an account on every participant route', function (): void {
     // `auth` and nothing else — there is no capability for reading back the
     // teams you are on, and none is missing.

@@ -1,19 +1,23 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
-import { formatDateTime } from '@/lib/datetime';
 import { page as matchPage } from '@/routes/competition/match';
 import { sideName } from '../bracket/bracketModel';
+import { formatEventDateTime } from './eventTime';
 
 /**
  * The schedule (design §10): the matches with a time that are still to be
  * played, soonest first. It is the bracket's own `scheduledAt`s, not a
  * second list from the server.
+ *
+ * Times are on the event's wall clock (ADR-0027), like the match page each
+ * row links to, so the two never disagree about when a match is.
  */
 const props = defineProps<{
     eventSlug: string;
     competitionSlug: string;
     matches: Konventix.Competition.Data.BracketMatchData[];
+    eventTimezone: string | null;
 }>();
 
 const upcoming = computed(() =>
@@ -54,7 +58,7 @@ function href(matchId: string): string {
                 class="flex flex-wrap gap-x-3 text-sm"
             >
                 <span class="text-text-muted">{{
-                    formatDateTime(match.scheduledAt!)
+                    formatEventDateTime(match.scheduledAt!, props.eventTimezone)
                 }}</span>
                 <Link
                     :href="href(match.id)"

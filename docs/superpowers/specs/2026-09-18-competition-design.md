@@ -693,9 +693,11 @@ November (CET) and 20:00 in July (CEST), whoever is looking. Without a
 projected zone, both fall back to the reader's zone.
 
 The first version of this paragraph said the timezone could not be
-projected. That was wrong, and fix round 1 corrected it. The team page (§10)
-still shows match times in the reader's zone; that is a follow-up in the
-module's TODO.
+projected. That was wrong, and fix round 1 corrected it. The final review's
+fix wave B put every other time on the tournament pages on the same clock:
+the competition page's start, schedule and bracket table, the event's
+tournament index, the team page, and "Check-in ab …" on *Meine Turniere*,
+whose controller sends each team's event zone (final review, part 3, I1).
 
 **Liveness** (hub design §7.1). *Nächste Spiele* carries `pollSeconds`: 60
 while any competition the viewer has an active entry in is `Running`,

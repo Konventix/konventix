@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
-import { formatDateTime } from '@/lib/datetime';
 import { page as matchPage } from '@/routes/competition/match';
+import { formatEventDateTime } from '../public/eventTime';
 import { matchStateLabel } from '../public/labels';
 import { bracketSections, sideName } from './bracketModel';
 
@@ -14,12 +14,13 @@ import { bracketSections, sideName } from './bracketModel';
  * (`bracketModel.test.ts`).
  *
  * Every row links to its match, which is where the history and the result
- * forms are.
+ * forms are. Its time is on the event's wall clock (ADR-0027), as there.
  */
 const props = defineProps<{
     bracket: Konventix.Competition.Data.BracketData;
     eventSlug: string;
     competitionSlug: string;
+    eventTimezone: string | null;
 }>();
 
 const sections = computed(() => bracketSections(props.bracket));
@@ -108,7 +109,10 @@ function href(matchId: string): string {
                             <td class="py-2 pr-3 align-top text-text-muted">
                                 {{
                                     match.scheduledAt
-                                        ? formatDateTime(match.scheduledAt)
+                                        ? formatEventDateTime(
+                                              match.scheduledAt,
+                                              props.eventTimezone,
+                                          )
                                         : '—'
                                 }}
                             </td>

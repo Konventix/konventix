@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
-import { formatDateTime } from '@/lib/datetime';
 import { page as competitionPage } from '@/routes/competition';
+import { formatEventDateTime } from '../../components/public/eventTime';
 import {
     formatLabel,
     statusLabel,
@@ -105,7 +105,10 @@ function href(slug: string): string {
                         <dd class="text-text">
                             {{
                                 competition.startsAt
-                                    ? formatDateTime(competition.startsAt)
+                                    ? formatEventDateTime(
+                                          competition.startsAt,
+                                          props.page.event.timezone,
+                                      )
                                     : 'noch offen'
                             }}
                         </dd>

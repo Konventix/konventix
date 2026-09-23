@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
-import { formatDateTime } from '@/lib/datetime';
 import { page as competitionPage } from '@/routes/competition';
 import { page as matchPage } from '@/routes/competition/match';
 import { sideName } from '../../components/bracket/bracketModel';
+import { formatEventDateTime } from '../../components/public/eventTime';
 import { matchStateLabel } from '../../components/public/labels';
 import { usePollWhile } from '../../components/public/usePollWhile';
 
@@ -74,7 +74,10 @@ function href(competitionSlug: string, matchId: string): string {
                         {{ entry.match.round }} ·
                         {{
                             entry.match.scheduledAt
-                                ? formatDateTime(entry.match.scheduledAt)
+                                ? formatEventDateTime(
+                                      entry.match.scheduledAt,
+                                      props.page.event.timezone,
+                                  )
                                 : 'noch nicht angesetzt'
                         }}
                         · {{ matchStateLabel(entry.match.state) }}

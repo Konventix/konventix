@@ -72,6 +72,16 @@ final class MyTournamentsController
             ->get()
             ->keyBy('id');
 
+        // Each team's event zone, so "Check-in ab …" reads on the event's
+        // wall clock like every other time on the tournament pages (ADR-0027,
+        // final review, part 3, I1). Null for an event the projection has
+        // not heard of, and the page then falls back to the reader's zone.
+        /** @var array<string, string|null> $timezones */
+        $timezones = EventSummary::query()
+            ->whereIn('event_id', $teams->pluck('event_id')->unique()->values())
+            ->pluck('timezone', 'event_id')
+            ->all();
+
         $rosterNames = ParticipantProfile::displayNamesFor(
             array_values($teams->flatMap(fn (CompetitionTeam $team): array => $team->memberUserIds())->all())
         );
@@ -93,6 +103,7 @@ final class MyTournamentsController
                 $entrants,
                 $competitions,
                 $rosterNames,
+                $timezones,
             ): array {
                 $isCaptain = $team->isCaptain($userId);
 
@@ -100,6 +111,7 @@ final class MyTournamentsController
                     'id' => (string) $team->getKey(),
                     'name' => $team->name,
                     'eventId' => $team->event_id,
+                    'eventTimezone' => $timezones[$team->event_id] ?? null,
                     'isCaptain' => $isCaptain,
                     // The code is a shared secret: only the captain sees it,
                     // because only the captain is accountable for where it

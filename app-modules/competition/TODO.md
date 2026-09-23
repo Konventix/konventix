@@ -187,8 +187,9 @@ Found on the way and not built. Each one is still true as of #302.
       rather than on `entrants.seed`.
 - [ ] **Free text on erasure**: a note that names its own author survives
       the author's erasure (design §14).
-- [ ] The team page still shows match times in the reader's zone, where the
-      match page and the hub card use the event's (§10a).
+- [x] Every time on the tournament pages is on the event's wall clock
+      (§10a, final review fix wave B): the schedule, the bracket table, the
+      team page, both start times and *Meine Turniere*'s check-in time.
 - [ ] A knocked-out entrant keeps polling *Nächste Spiele* until the
       competition ends: there is no eliminated state.
 - [x] **Final review, fix wave A** (bracket and result correctness): every

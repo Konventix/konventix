@@ -4,8 +4,8 @@ import { ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
-import { formatDateTime } from '@/lib/datetime';
 import { page as matchPage } from '@/routes/competition/match';
+import { formatEventDateTime } from '../../../components/public/eventTime';
 import { usePollWhile } from '../../../components/public/usePollWhile';
 
 /**
@@ -69,6 +69,7 @@ type Team = {
     id: string;
     name: string;
     eventId: string;
+    eventTimezone: string | null;
     isCaptain: boolean;
     inviteCode: string | null;
     members: Member[];
@@ -187,9 +188,10 @@ function checkIn(entry: Entry): void {
 /**
  * What to say about check-in when there is no button: the window has not
  * opened yet, the desk does it, or the team is already in. An empty string
- * means there is nothing worth saying.
+ * means there is nothing worth saying. The opening time is on the event's
+ * wall clock (ADR-0027), which is why the team, whose event it is, comes too.
  */
-function checkInHint(entry: Entry): string {
+function checkInHint(entry: Entry, team: Team): string {
     if (entry.state === 'checked_in') {
         return 'Ihr seid eingecheckt.';
     }
@@ -200,7 +202,7 @@ function checkInHint(entry: Entry): string {
 
     if (entry.checkInMode === 'self_service' && !entry.canCheckIn) {
         return entry.checkInOpensAt
-            ? `Check-in ab ${formatDateTime(entry.checkInOpensAt)}.`
+            ? `Check-in ab ${formatEventDateTime(entry.checkInOpensAt, team.eventTimezone)}.`
             : 'Der Check-in öffnet, sobald die Orga eine Startzeit gesetzt hat.';
     }
 
@@ -365,10 +367,10 @@ function canWithdraw(entry: Entry): boolean {
 
                     <div class="flex flex-wrap items-center gap-2">
                         <span
-                            v-if="checkInHint(entry)"
+                            v-if="checkInHint(entry, team)"
                             class="text-xs text-text-muted"
                         >
-                            {{ checkInHint(entry) }}
+                            {{ checkInHint(entry, team) }}
                         </span>
 
                         <Button

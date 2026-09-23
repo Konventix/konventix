@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
-import { formatDateTime } from '@/lib/datetime';
 import { tournaments } from '@/routes/competition/event';
 import BracketView from '../../components/bracket/BracketView.vue';
 import EntryPanel from '../../components/public/EntryPanel.vue';
+import { formatEventDateTime } from '../../components/public/eventTime';
 import FieldList from '../../components/public/FieldList.vue';
 import {
     formatLabel,
@@ -68,7 +68,12 @@ usePollWhile(() => props.page.pollSeconds);
                 Teams
                 <template v-if="props.page.competition.startsAt">
                     · Start
-                    {{ formatDateTime(props.page.competition.startsAt) }}
+                    {{
+                        formatEventDateTime(
+                            props.page.competition.startsAt,
+                            props.page.event.timezone,
+                        )
+                    }}
                 </template>
             </p>
         </div>
@@ -148,6 +153,7 @@ usePollWhile(() => props.page.pollSeconds);
                     :bracket="props.page.bracket"
                     :event-slug="props.page.event.slug"
                     :competition-slug="props.page.competition.slug"
+                    :event-timezone="props.page.event.timezone"
                 />
                 <p v-else class="text-sm text-text-muted">
                     Der Turnierbaum wird nach dem Anmeldeschluss ausgelost.
@@ -159,6 +165,7 @@ usePollWhile(() => props.page.pollSeconds);
                 :event-slug="props.page.event.slug"
                 :competition-slug="props.page.competition.slug"
                 :matches="props.page.bracket.matches"
+                :event-timezone="props.page.event.timezone"
             />
 
             <section
