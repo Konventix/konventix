@@ -1,5 +1,6 @@
 import { Link } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { h } from 'vue';
 import { formatDateTime } from '@/lib/datetime';
 import { show as showSupportRequest } from '@/routes/admin/support/requests';
@@ -27,7 +28,7 @@ export function supportRequestColumns(): ColumnDef<SupportRequestRow>[] {
     return [
         {
             id: 'reference',
-            header: 'Reference',
+            header: trans('Reference'),
             enableSorting: false,
             // A real link, not a row click: the detail has to be reachable
             // by keyboard (WCAG 2.1.1, `.ai/rules/js.md`).
@@ -46,16 +47,16 @@ export function supportRequestColumns(): ColumnDef<SupportRequestRow>[] {
                               'span',
                               {
                                   class: 'rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning',
-                                  title: 'Marked as a known issue',
+                                  title: trans('Marked as a known issue'),
                               },
-                              'Known',
+                              trans('Known'),
                           )
                         : null,
                 ]),
         },
         {
             id: 'categories',
-            header: 'Categories',
+            header: trans('Categories'),
             enableSorting: false,
             cell: ({ row }) =>
                 h(
@@ -66,7 +67,7 @@ export function supportRequestColumns(): ColumnDef<SupportRequestRow>[] {
         },
         {
             accessorKey: 'state',
-            header: 'State',
+            header: trans('State'),
             enableSorting: true,
             cell: ({ row }) =>
                 h(
@@ -79,7 +80,7 @@ export function supportRequestColumns(): ColumnDef<SupportRequestRow>[] {
         },
         {
             id: 'brand',
-            header: 'Brand',
+            header: trans('Brand'),
             enableSorting: false,
             // "Console" for a report filed on the operator host, which has
             // no brand at all (ADR-0063) — resolved on the server so this
@@ -88,7 +89,7 @@ export function supportRequestColumns(): ColumnDef<SupportRequestRow>[] {
         },
         {
             id: 'release',
-            header: 'Release',
+            header: trans('Release'),
             enableSorting: false,
             cell: ({ row }) =>
                 h(
@@ -99,7 +100,7 @@ export function supportRequestColumns(): ColumnDef<SupportRequestRow>[] {
         },
         {
             id: 'reporter',
-            header: 'Reporter',
+            header: trans('Reporter'),
             enableSorting: false,
             // Masked, always. The unmasked address is behind
             // `support.view-reporter-contact` on the detail page and every
@@ -115,7 +116,7 @@ export function supportRequestColumns(): ColumnDef<SupportRequestRow>[] {
         {
             accessorKey: 'created_at',
             accessorFn: (row) => row.createdAt,
-            header: 'Received',
+            header: trans('Received'),
             enableSorting: true,
             cell: ({ row }) =>
                 h(
@@ -129,7 +130,7 @@ export function supportRequestColumns(): ColumnDef<SupportRequestRow>[] {
         },
         {
             id: 'assignee',
-            header: 'Assignee',
+            header: trans('Assignee'),
             enableSorting: false,
             // A ULID, because the account's display name lives in Identity
             // and this module may not read it (ADR-0004) — the same reason
@@ -138,7 +139,7 @@ export function supportRequestColumns(): ColumnDef<SupportRequestRow>[] {
                 h(
                     'span',
                     { class: 'font-mono text-xs text-text-muted' },
-                    row.original.assignedToUserId ?? 'Unassigned',
+                    row.original.assignedToUserId ?? trans('Unassigned'),
                 ),
         },
     ];

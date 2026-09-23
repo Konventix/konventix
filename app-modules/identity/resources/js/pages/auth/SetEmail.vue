@@ -32,14 +32,14 @@ defineOptions({
 </script>
 
 <template>
-    <Head title="Set your email address" />
+    <Head :title="$t('Set your email address')" />
 
     <div
         v-if="status === 'verification-link-sent'"
         class="mb-4 text-center text-sm font-medium text-success"
         role="status"
     >
-        We have sent a confirmation link to the address you entered.
+        {{ $t('We have sent a confirmation link to the address you entered.') }}
     </div>
 
     <div class="flex flex-col gap-6">
@@ -49,7 +49,7 @@ defineOptions({
             class="flex flex-col gap-6"
         >
             <div class="grid gap-2">
-                <Label for="email">Email address</Label>
+                <Label for="email">{{ $t('Email address') }}</Label>
                 <Input
                     id="email"
                     name="email"
@@ -62,14 +62,17 @@ defineOptions({
                 />
                 <InputError id="email-error" :message="errors.email" />
                 <p class="text-xs text-text-muted">
-                    We will send you a link to confirm this address. Until it is
-                    confirmed, orders and settings stay locked.
+                    {{
+                        $t(
+                            'We will send you a link to confirm this address. Until it is confirmed, orders and settings stay locked.',
+                        )
+                    }}
                 </p>
             </div>
 
             <Button type="submit" :disabled="processing" class="w-full">
                 <Spinner v-if="processing" />
-                Save and send confirmation link
+                {{ $t('Save and send confirmation link') }}
             </Button>
         </Form>
 
@@ -80,7 +83,7 @@ defineOptions({
                 class="w-full"
                 data-test="logout-button"
             >
-                Log out
+                {{ $t('Log out') }}
             </Button>
         </Form>
     </div>

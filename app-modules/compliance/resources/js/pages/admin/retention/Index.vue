@@ -20,6 +20,7 @@ import {
     store as storeRule,
     update as updateRule,
 } from '@/routes/admin/retention';
+import { retentionClockStartLabel } from '../../../lib/labels';
 
 /**
  * How long each category of data may be kept.
@@ -89,34 +90,40 @@ function toggleActive(rule: RuleRow): void {
 </script>
 
 <template>
-    <Head title="Retention" />
+    <Head :title="$t('Retention')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Retention"
-            description="How long each category of data may be kept — published here, discharged by the module that holds it"
+            :title="$t('Retention')"
+            :description="
+                $t(
+                    'How long each category of data may be kept — published here, discharged by the module that holds it',
+                )
+            "
         >
             <Dialog v-model:open="open">
                 <DialogTrigger as-child>
                     <Button>
                         <Plus class="size-4" />
-                        New rule
+                        {{ $t('New rule') }}
                     </Button>
                 </DialogTrigger>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>New retention rule</DialogTitle>
+                        <DialogTitle>{{
+                            $t('New retention rule')
+                        }}</DialogTitle>
                     </DialogHeader>
                     <form class="flex flex-col gap-4" @submit.prevent="submit">
                         <div class="grid gap-2">
-                            <Label for="rule-brand">Brand</Label>
+                            <Label for="rule-brand">{{ $t('Brand') }}</Label>
                             <select
                                 id="rule-brand"
                                 v-model="form.brand_id"
                                 class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                             >
                                 <option :value="null">
-                                    All brands (operator-wide)
+                                    {{ $t('All brands (operator-wide)') }}
                                 </option>
                                 <option
                                     v-for="brand in props.brands"
@@ -129,22 +136,28 @@ function toggleActive(rule: RuleRow): void {
                             <InputError :message="form.errors.brand_id" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="rule-category">Data category</Label>
+                            <Label for="rule-category">{{
+                                $t('Data category')
+                            }}</Label>
                             <Input
                                 id="rule-category"
                                 v-model="form.data_category"
                                 placeholder="admission.check-ins"
                             />
                             <p class="text-xs text-text-muted">
-                                Dot-namespaced by the owning module. The module
-                                recognises its own categories; nothing here
-                                knows which tables they cover.
+                                {{
+                                    $t(
+                                        'Dot-namespaced by the owning module. The module recognises its own categories; nothing here knows which tables they cover.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.data_category" />
                         </div>
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div class="grid gap-2">
-                                <Label for="rule-months">Months</Label>
+                                <Label for="rule-months">{{
+                                    $t('Months')
+                                }}</Label>
                                 <Input
                                     id="rule-months"
                                     v-model="form.retention_months"
@@ -156,7 +169,9 @@ function toggleActive(rule: RuleRow): void {
                                 />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="rule-clock">Clock starts</Label>
+                                <Label for="rule-clock">{{
+                                    $t('Clock starts')
+                                }}</Label>
                                 <select
                                     id="rule-clock"
                                     v-model="form.clock_start"
@@ -167,7 +182,7 @@ function toggleActive(rule: RuleRow): void {
                                         :key="clock"
                                         :value="clock"
                                     >
-                                        {{ clock }}
+                                        {{ retentionClockStartLabel(clock) }}
                                     </option>
                                 </select>
                                 <InputError
@@ -176,7 +191,9 @@ function toggleActive(rule: RuleRow): void {
                             </div>
                         </div>
                         <div class="grid gap-2">
-                            <Label for="rule-description">Description</Label>
+                            <Label for="rule-description">{{
+                                $t('Description')
+                            }}</Label>
                             <Input
                                 id="rule-description"
                                 v-model="form.description"
@@ -184,7 +201,7 @@ function toggleActive(rule: RuleRow): void {
                             <InputError :message="form.errors.description" />
                         </div>
                         <Button type="submit" :disabled="form.processing">
-                            Create
+                            {{ $t('Create') }}
                         </Button>
                     </form>
                 </DialogContent>
@@ -192,10 +209,12 @@ function toggleActive(rule: RuleRow): void {
         </AdminPageHeader>
 
         <p class="text-sm text-text-muted">
-            {{ props.clocks }} concluded event{{
-                props.clocks === 1 ? '' : 's'
+            {{
+                $tChoice(
+                    '{0} No concluded events currently counting for event-scoped rules.|{1} :count concluded event currently counting for event-scoped rules.|[2,*] :count concluded events currently counting for event-scoped rules.',
+                    props.clocks,
+                )
             }}
-            currently counting for event-scoped rules.
         </p>
 
         <div class="grid gap-4 md:grid-cols-2">
@@ -205,22 +224,31 @@ function toggleActive(rule: RuleRow): void {
                 </CardHeader>
                 <CardContent class="flex flex-col gap-3">
                     <p class="text-sm">
-                        {{ rule.retentionMonths }} months from
                         {{
                             rule.clockStart === 'record_age'
-                                ? 'each record'
-                                : 'the end of the event'
+                                ? $tChoice(
+                                      '{1} :count month from each record|[2,*] :count months from each record',
+                                      rule.retentionMonths,
+                                  )
+                                : $tChoice(
+                                      '{1} :count month from the end of the event|[2,*] :count months from the end of the event',
+                                      rule.retentionMonths,
+                                  )
                         }}
                     </p>
                     <p
                         v-if="rule.currentCutoff"
                         class="text-xs text-text-muted"
                     >
-                        Next sweep removes everything before
-                        {{ rule.currentCutoff }}.
+                        {{
+                            $t(
+                                'Next sweep removes everything before :cutoff.',
+                                { cutoff: rule.currentCutoff },
+                            )
+                        }}
                     </p>
                     <p class="text-xs text-text-muted">
-                        {{ rule.brandName ?? 'All brands' }}
+                        {{ rule.brandName ?? $t('All brands') }}
                         <template v-if="rule.description">
                             · {{ rule.description }}
                         </template>
@@ -228,17 +256,21 @@ function toggleActive(rule: RuleRow): void {
                     <label class="flex items-center gap-2 text-sm">
                         <Checkbox
                             :model-value="rule.active"
-                            :aria-label="`Rule ${rule.dataCategory} active`"
+                            :aria-label="
+                                $t('Rule :category active', {
+                                    category: rule.dataCategory,
+                                })
+                            "
                             @update:model-value="() => toggleActive(rule)"
                         />
-                        Active
+                        {{ $t('Active') }}
                     </label>
                 </CardContent>
             </Card>
         </div>
 
         <p v-if="props.rules.length === 0" class="text-sm text-text-muted">
-            No retention rules.
+            {{ $t('No retention rules.') }}
         </p>
     </div>
 </template>

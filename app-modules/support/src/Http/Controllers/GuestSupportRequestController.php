@@ -84,11 +84,11 @@ final class GuestSupportRequestController
             $postReporterReply->handle($model, $data->body, null);
         } catch (SupportRequestClosed) {
             throw ValidationException::withMessages([
-                'body' => 'This report has been closed, so it takes no further replies. File a new one if it is still happening.',
+                'body' => __('This report has been closed, so it takes no further replies. File a new one if it is still happening.'),
             ]);
         }
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Your reply was added.']);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Your reply was added.')]);
 
         // Back to the signed page explicitly rather than through `back()`:
         // a redirect that depended on a `Referer` header would land a guest

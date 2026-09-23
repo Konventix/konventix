@@ -129,7 +129,9 @@ function open(notification: { id: string; url: string | null }): void {
             <div
                 class="flex items-center justify-between border-b border-border px-3 py-2"
             >
-                <span class="text-sm font-medium">Notifications</span>
+                <span class="text-sm font-medium">{{
+                    $t('Notifications')
+                }}</span>
                 <Button
                     v-if="inbox.unread > 0"
                     variant="ghost"
@@ -137,7 +139,7 @@ function open(notification: { id: string; url: string | null }): void {
                     class="h-auto px-2 py-1 text-xs"
                     @click="markAllRead"
                 >
-                    Mark all read
+                    {{ $t('Mark all read') }}
                 </Button>
             </div>
             <div class="max-h-96 overflow-y-auto">
@@ -146,14 +148,14 @@ function open(notification: { id: string; url: string | null }): void {
                     class="px-3 py-6 text-center text-sm text-text-muted"
                     role="status"
                 >
-                    Loading…
+                    {{ $t('Loading…') }}
                 </p>
                 <div
                     v-else-if="view === 'failed'"
                     class="flex flex-col items-center gap-2 px-3 py-6 text-center"
                 >
                     <p class="text-sm text-danger" role="alert">
-                        Notifications could not be loaded.
+                        {{ $t('Notifications could not be loaded.') }}
                     </p>
                     <Button
                         type="button"
@@ -162,14 +164,14 @@ function open(notification: { id: string; url: string | null }): void {
                         class="h-auto px-3 py-1 text-xs"
                         @click="reload"
                     >
-                        Retry
+                        {{ $t('Retry') }}
                     </Button>
                 </div>
                 <p
                     v-else-if="view === 'empty'"
                     class="px-3 py-6 text-center text-sm text-text-muted"
                 >
-                    Nothing here yet.
+                    {{ $t('Nothing here yet.') }}
                 </p>
                 <div
                     v-for="notification in inbox.notifications"
@@ -224,7 +226,11 @@ function open(notification: { id: string; url: string | null }): void {
                         v-if="!notification.readAt"
                         type="button"
                         class="mt-1.5 mr-2 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-text-muted transition hover:bg-surface-muted hover:text-text"
-                        :aria-label="`Mark &quot;${notification.title}&quot; as read`"
+                        :aria-label="
+                            $t('Mark “:title” as read', {
+                                title: notification.title,
+                            })
+                        "
                         @click="markRead(notification.id)"
                     >
                         <Check class="size-4" />
@@ -238,13 +244,13 @@ function open(notification: { id: string; url: string | null }): void {
                     :href="notificationsIndex()"
                     class="text-xs font-medium text-text hover:underline"
                 >
-                    All notifications
+                    {{ $t('All notifications') }}
                 </Link>
                 <Link
                     :href="notificationSettings()"
                     class="text-xs text-text-muted hover:text-text"
                 >
-                    Settings
+                    {{ $t('Settings') }}
                 </Link>
             </div>
         </DropdownMenuContent>

@@ -42,13 +42,13 @@ function formatDate(value: string | null): string {
                 :href="newsIndex().url"
                 class="inline-flex items-center gap-1 text-sm text-text-muted hover:text-accent"
             >
-                All news
+                {{ $t('All news') }}
                 <ArrowRight class="size-4" />
             </Link>
         </div>
 
         <p v-if="entries.length === 0" class="text-sm text-text-muted">
-            Nothing published yet.
+            {{ $t('Nothing published yet.') }}
         </p>
 
         <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">

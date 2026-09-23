@@ -173,7 +173,7 @@ class AgendaServiceProvider extends ModuleServiceProvider
         $this->app->make(HubRegistry::class)->add(new HubCard(
             module: 'agenda',
             key: 'agenda.now-next',
-            label: 'Jetzt / Gleich',
+            label: 'Now / Up next',
             component: 'agenda/hub/NowNextCard',
             payload: static fn (ActiveEventData $event, Authenticatable $user): NowNextCardData => app(NowNextCard::class)($event, $user),
             order: 20,

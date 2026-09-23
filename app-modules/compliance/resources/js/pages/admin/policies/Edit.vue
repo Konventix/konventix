@@ -42,6 +42,7 @@ import type {
     BindingRow,
 } from '../../../components/policyBindings';
 import PolicyBindingsCard from '../../../components/PolicyBindingsCard.vue';
+import { policyVersionStateLabel } from '../../../lib/labels';
 import { toInstant, versionFormValues } from './versionForm';
 
 /**
@@ -217,21 +218,27 @@ function openVersion(id: string): void {
 </script>
 
 <template>
-    <Head :title="`${props.policy.name} — Policies`" />
+    <Head :title="$t(':name — Policies', { name: props.policy.name })" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
             :title="props.policy.name"
             :description="
                 props.policy.scope === 'operator'
-                    ? `${props.policy.slug} · ${props.policy.brandName} — every brand inherits this text unless it publishes its own`
+                    ? $t(
+                          ':slug · :brand — every brand inherits this text unless it publishes its own',
+                          {
+                              slug: props.policy.slug,
+                              brand: props.policy.brandName,
+                          },
+                      )
                     : `${props.policy.slug} · ${props.policy.brandName}`
             "
         >
             <Button variant="outline" as-child>
                 <Link :href="policiesIndex().url">
                     <ArrowLeft class="size-4" />
-                    All policies
+                    {{ $t('All policies') }}
                 </Link>
             </Button>
         </AdminPageHeader>
@@ -255,8 +262,10 @@ function openVersion(id: string): void {
                         <CardTitle>
                             {{
                                 props.selected
-                                    ? `Version ${props.selected.version}`
-                                    : 'No versions yet'
+                                    ? $t('Version :version', {
+                                          version: props.selected.version,
+                                      })
+                                    : $t('No versions yet')
                             }}
                         </CardTitle>
                     </CardHeader>
@@ -265,7 +274,11 @@ function openVersion(id: string): void {
                             v-if="props.selected === null"
                             class="text-sm text-text-muted"
                         >
-                            Draft the first version to give this policy a text.
+                            {{
+                                $t(
+                                    'Draft the first version to give this policy a text.',
+                                )
+                            }}
                         </p>
 
                         <form
@@ -278,15 +291,23 @@ function openVersion(id: string): void {
                                 class="rounded-md bg-warning/10 p-3 text-sm text-warning"
                                 role="status"
                             >
-                                This version is
-                                {{ props.selected.state }} and can no longer be
-                                edited — people agreed to this exact text. Draft
-                                a new version instead.
+                                {{
+                                    $t(
+                                        'This version is :state and can no longer be edited — people agreed to this exact text. Draft a new version instead.',
+                                        {
+                                            state: policyVersionStateLabel(
+                                                props.selected.state,
+                                            ),
+                                        },
+                                    )
+                                }}
                             </p>
 
                             <div class="grid gap-4 sm:grid-cols-2">
                                 <div class="grid gap-2">
-                                    <Label for="version-label">Version</Label>
+                                    <Label for="version-label">{{
+                                        $t('Version')
+                                    }}</Label>
                                     <Input
                                         id="version-label"
                                         v-model="versionForm.version"
@@ -299,8 +320,12 @@ function openVersion(id: string): void {
                                 <DateTimeField
                                     id="version-effective"
                                     v-model="versionForm.effectiveAt"
-                                    label="Effective from"
-                                    hint="Before this moment the public page answers 404."
+                                    :label="$t('Effective from')"
+                                    :hint="
+                                        $t(
+                                            'Before this moment the public page answers 404.',
+                                        )
+                                    "
                                     :disabled="!props.selected.editable"
                                     :error="versionForm.errors.effectiveAt"
                                 />
@@ -319,18 +344,20 @@ function openVersion(id: string): void {
                                     "
                                 />
                                 <Label for="version-consent">
-                                    Requires explicit agreement
+                                    {{ $t('Requires explicit agreement') }}
                                 </Label>
                             </div>
                             <p class="text-xs text-text-muted">
-                                A required version puts the consent screen in
-                                front of everyone who has not agreed to it, on
-                                every route that carries the gate.
+                                {{
+                                    $t(
+                                        'A required version puts the consent screen in front of everyone who has not agreed to it, on every route that carries the gate.',
+                                    )
+                                }}
                             </p>
 
                             <div class="grid gap-2">
                                 <Label for="version-lawful-basis">
-                                    Lawful basis
+                                    {{ $t('Lawful basis') }}
                                 </Label>
                                 <Select
                                     v-model="versionForm.lawfulBasis"
@@ -344,15 +371,25 @@ function openVersion(id: string): void {
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="consent">
-                                            Consent — the person may withdraw at
-                                            any time
+                                            {{
+                                                $t(
+                                                    'Consent — the person may withdraw at any time',
+                                                )
+                                            }}
                                         </SelectItem>
                                         <SelectItem value="contract">
-                                            Contract — withdrawal is a request
+                                            {{
+                                                $t(
+                                                    'Contract — withdrawal is a request',
+                                                )
+                                            }}
                                         </SelectItem>
                                         <SelectItem value="legitimate_interest">
-                                            Legitimate interest — withdrawal is
-                                            a request
+                                            {{
+                                                $t(
+                                                    'Legitimate interest — withdrawal is a request',
+                                                )
+                                            }}
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
@@ -364,7 +401,7 @@ function openVersion(id: string): void {
                             <div class="grid gap-2">
                                 <div class="flex items-center justify-between">
                                     <Label for="version-content">
-                                        Text (Markdown)
+                                        {{ $t('Text (Markdown)') }}
                                     </Label>
                                     <button
                                         type="button"
@@ -373,8 +410,8 @@ function openVersion(id: string): void {
                                     >
                                         {{
                                             showPreview
-                                                ? 'Hide preview'
-                                                : 'Show preview'
+                                                ? $t('Hide preview')
+                                                : $t('Show preview')
                                         }}
                                     </button>
                                 </div>
@@ -405,14 +442,14 @@ function openVersion(id: string): void {
                                     type="submit"
                                     :disabled="versionForm.processing"
                                 >
-                                    Save draft
+                                    {{ $t('Save draft') }}
                                 </Button>
                                 <span
                                     v-if="versionForm.isDirty"
                                     role="status"
                                     class="text-sm text-warning"
                                 >
-                                    Unsaved changes
+                                    {{ $t('Unsaved changes') }}
                                 </span>
                             </div>
                         </form>
@@ -423,7 +460,7 @@ function openVersion(id: string): void {
             <div class="flex flex-col gap-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Policy</CardTitle>
+                        <CardTitle>{{ $t('Policy') }}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <form
@@ -431,7 +468,9 @@ function openVersion(id: string): void {
                             @submit.prevent="savePolicy"
                         >
                             <div class="grid gap-2">
-                                <Label for="policy-name">Name</Label>
+                                <Label for="policy-name">{{
+                                    $t('Name')
+                                }}</Label>
                                 <Input
                                     id="policy-name"
                                     v-model="policyForm.name"
@@ -439,7 +478,9 @@ function openVersion(id: string): void {
                                 <InputError :message="policyForm.errors.name" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="policy-slug">Slug</Label>
+                                <Label for="policy-slug">{{
+                                    $t('Slug')
+                                }}</Label>
                                 <Input
                                     id="policy-slug"
                                     v-model="policyForm.slug"
@@ -449,8 +490,11 @@ function openVersion(id: string): void {
                                     v-if="props.policy.slugFrozen"
                                     class="text-xs text-text-muted"
                                 >
-                                    Frozen: a version has been published, and
-                                    consent records resolve through this URL.
+                                    {{
+                                        $t(
+                                            'Frozen: a version has been published, and consent records resolve through this URL.',
+                                        )
+                                    }}
                                 </p>
                                 <!--
                                     #200: the slug is what the checkout looks
@@ -462,14 +506,20 @@ function openVersion(id: string): void {
                                     class="text-xs text-text-muted"
                                 >
                                     <span class="font-medium text-text">
-                                        Checkout role:
-                                        {{ props.checkoutRole.name }}
+                                        {{
+                                            $t('Checkout role: :role', {
+                                                role: props.checkoutRole.name,
+                                            })
+                                        }}
                                     </span>
                                     {{ props.checkoutRole.description }}
                                 </p>
                                 <p v-else class="text-xs text-text-muted">
-                                    The checkout never asks for this text — it
-                                    resolves only
+                                    {{
+                                        $t(
+                                            'The checkout never asks for this text — it resolves only',
+                                        )
+                                    }}
                                     <code>{{
                                         props.checkoutRoles
                                             .map((role) => role.slug)
@@ -484,14 +534,14 @@ function openVersion(id: string): void {
                                     type="submit"
                                     :disabled="policyForm.processing"
                                 >
-                                    Save
+                                    {{ $t('Save') }}
                                 </Button>
                                 <span
                                     v-if="policyForm.isDirty"
                                     role="status"
                                     class="text-sm text-warning"
                                 >
-                                    Unsaved changes
+                                    {{ $t('Unsaved changes') }}
                                 </span>
                             </div>
                         </form>
@@ -508,7 +558,7 @@ function openVersion(id: string): void {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Versions</CardTitle>
+                        <CardTitle>{{ $t('Versions') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-3">
                         <button
@@ -531,7 +581,7 @@ function openVersion(id: string): void {
                                     class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
                                     :class="stateClasses[version.state]"
                                 >
-                                    {{ version.state }}
+                                    {{ policyVersionStateLabel(version.state) }}
                                 </span>
                             </span>
                             <span class="text-xs text-text-muted">
@@ -545,9 +595,13 @@ function openVersion(id: string): void {
                                         )
                                     }}</time
                                 >
-                                <template v-else>no date</template>
-                                · {{ version.consents }} agreement{{
-                                    version.consents === 1 ? '' : 's'
+                                <template v-else>{{ $t('no date') }}</template>
+                                ·
+                                {{
+                                    $tChoice(
+                                        '{1} :count agreement|[0,*] :count agreements',
+                                        version.consents,
+                                    )
                                 }}
                             </span>
                         </button>
@@ -556,19 +610,21 @@ function openVersion(id: string): void {
                             v-if="props.versions.length === 0"
                             class="text-sm text-text-muted"
                         >
-                            No versions yet.
+                            {{ $t('No versions yet.') }}
                         </p>
 
                         <Dialog v-model:open="draftOpen">
                             <DialogTrigger as-child>
                                 <Button variant="outline">
                                     <Plus class="size-4" />
-                                    New draft version
+                                    {{ $t('New draft version') }}
                                 </Button>
                             </DialogTrigger>
                             <DialogContent>
                                 <DialogHeader>
-                                    <DialogTitle>New version</DialogTitle>
+                                    <DialogTitle>{{
+                                        $t('New version')
+                                    }}</DialogTitle>
                                 </DialogHeader>
                                 <form
                                     class="flex flex-col gap-4"
@@ -576,7 +632,7 @@ function openVersion(id: string): void {
                                 >
                                     <div class="grid gap-2">
                                         <Label for="draft-version">
-                                            Version label
+                                            {{ $t('Version label') }}
                                         </Label>
                                         <Input
                                             id="draft-version"
@@ -589,7 +645,7 @@ function openVersion(id: string): void {
                                     </div>
                                     <div class="grid gap-2">
                                         <Label for="draft-content">
-                                            Text (Markdown)
+                                            {{ $t('Text (Markdown)') }}
                                         </Label>
                                         <textarea
                                             id="draft-content"
@@ -619,12 +675,16 @@ function openVersion(id: string): void {
                                             "
                                         />
                                         <Label for="draft-consent">
-                                            Requires explicit agreement
+                                            {{
+                                                $t(
+                                                    'Requires explicit agreement',
+                                                )
+                                            }}
                                         </Label>
                                     </div>
                                     <div class="grid gap-2">
                                         <Label for="draft-lawful-basis">
-                                            Lawful basis
+                                            {{ $t('Lawful basis') }}
                                         </Label>
                                         <Select v-model="draftForm.lawfulBasis">
                                             <SelectTrigger
@@ -635,18 +695,27 @@ function openVersion(id: string): void {
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="consent">
-                                                    Consent — the person may
-                                                    withdraw at any time
+                                                    {{
+                                                        $t(
+                                                            'Consent — the person may withdraw at any time',
+                                                        )
+                                                    }}
                                                 </SelectItem>
                                                 <SelectItem value="contract">
-                                                    Contract — withdrawal is a
-                                                    request
+                                                    {{
+                                                        $t(
+                                                            'Contract — withdrawal is a request',
+                                                        )
+                                                    }}
                                                 </SelectItem>
                                                 <SelectItem
                                                     value="legitimate_interest"
                                                 >
-                                                    Legitimate interest —
-                                                    withdrawal is a request
+                                                    {{
+                                                        $t(
+                                                            'Legitimate interest — withdrawal is a request',
+                                                        )
+                                                    }}
                                                 </SelectItem>
                                             </SelectContent>
                                         </Select>
@@ -660,7 +729,7 @@ function openVersion(id: string): void {
                                         type="submit"
                                         :disabled="draftForm.processing"
                                     >
-                                        Create draft
+                                        {{ $t('Create draft') }}
                                     </Button>
                                 </form>
                             </DialogContent>
@@ -670,20 +739,25 @@ function openVersion(id: string): void {
 
                 <Card v-if="canPublish">
                     <CardHeader>
-                        <CardTitle>Publish</CardTitle>
+                        <CardTitle>{{ $t('Publish') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-3">
                         <p class="text-sm text-text-muted">
-                            Publishing supersedes the current published version
-                            and, for a required policy, asks everyone to agree
-                            again. Save the draft first — publishing takes the
-                            stored text and the stored date.
+                            {{
+                                $t(
+                                    'Publishing supersedes the current published version and, for a required policy, asks everyone to agree again. Save the draft first — publishing takes the stored text and the stored date.',
+                                )
+                            }}
                         </p>
                         <p
                             v-if="props.selected?.effectiveAt"
                             class="text-sm text-text-muted"
                         >
-                            Effective from
+                            {{
+                                $t(
+                                    'The text takes effect and is served under its public URL from',
+                                )
+                            }}
                             <time
                                 class="font-medium text-text"
                                 :datetime="props.selected.effectiveAt ?? ''"
@@ -694,23 +768,23 @@ function openVersion(id: string): void {
                                     )
                                 }}</time
                             >
-                            — until then the text is not served under its public
-                            URL.
                         </p>
                         <p
                             v-else
                             class="rounded-md bg-warning/10 p-3 text-sm text-warning"
                             role="status"
                         >
-                            This draft has no effective date. Set
-                            <strong>Effective from</strong> and save the draft —
-                            a published text has to say from when it binds.
+                            {{
+                                $t(
+                                    'This draft has no effective date. Set “Effective from” and save the draft — a published text has to say from when it binds.',
+                                )
+                            }}
                         </p>
                         <Button
                             :disabled="!props.selected?.effectiveAt"
                             @click="publish"
                         >
-                            Publish this version
+                            {{ $t('Publish this version') }}
                         </Button>
                     </CardContent>
                 </Card>

@@ -1,40 +1,48 @@
+import { trans } from 'laravel-vue-i18n';
+
 type SupportCategory = Konventix.Support.Enums.SupportCategory;
 type SupportRequestState = Konventix.Support.Enums.SupportRequestState;
 
 /**
  * The words and colours the console uses for Support's two enums, in one
- * place and with no imports at all — so the inbox table, the detail page
- * and vitest can each read them without pulling in Wayfinder, Inertia or a
- * component (`.ai/rules/js.md`: never import `@/routes/*` from a module
- * under test).
+ * place and with no import but the catalog's `trans` — so the inbox table,
+ * the detail page and vitest can each read them without pulling in
+ * Wayfinder, Inertia or a component (`.ai/rules/js.md`: never import
+ * `@/routes/*` from a module under test).
  *
  * The labels are deliberately a **copy** of the PHP enums' `label()`
  * methods rather than a prop fetched per page: five categories and five
  * states are a closed set that only grows through a code change (see
  * `SupportCategory`'s own docblock — they are metric labels), and shipping
  * ten strings per row to say what the enum already says would be worse.
- * `supportCategoryLabels`/`supportStateLabels` being exhaustive `Record`s
- * is what makes the copy safe: adding a case to either enum regenerates
- * `generated.d.ts` and `npm run types:check` then fails here until the word
- * is added.
+ * `supportCategoryLabels`/`supportStateLabels` returning exhaustive
+ * `Record`s is what makes the copy safe: adding a case to either enum
+ * regenerates `generated.d.ts` and `npm run types:check` then fails here
+ * until the word is added.
  *
- * English copy, like the rest of the application (D-SUP-09).
+ * English source, looked up in the catalog (ADR-0068). Functions rather
+ * than constants, because the catalog is loaded after the modules are
+ * imported.
  */
-export const supportCategoryLabels: Record<SupportCategory, string> = {
-    purchase_affected: 'Purchase affected',
-    visibility: 'Something is not visible',
-    function: 'Something does not work',
-    display: 'Something looks wrong',
-    suggestion: 'Suggestion',
-};
+export function supportCategoryLabels(): Record<SupportCategory, string> {
+    return {
+        purchase_affected: trans('Purchase affected'),
+        visibility: trans('Something is not visible'),
+        function: trans('Something does not work'),
+        display: trans('Something looks wrong'),
+        suggestion: trans('Suggestion'),
+    };
+}
 
-export const supportStateLabels: Record<SupportRequestState, string> = {
-    received: 'Received',
-    seen: 'Seen',
-    in_progress: 'In progress',
-    resolved: 'Resolved',
-    wont_fix: "Won't fix",
-};
+export function supportStateLabels(): Record<SupportRequestState, string> {
+    return {
+        received: trans('Received'),
+        seen: trans('Seen'),
+        in_progress: trans('In progress'),
+        resolved: trans('Resolved'),
+        wont_fix: trans("Won't fix"),
+    };
+}
 
 /**
  * Semantic tokens only (ADR-0008). The scale says how much somebody still
@@ -51,11 +59,11 @@ export const supportStateClasses: Record<SupportRequestState, string> = {
 };
 
 export function supportCategoryLabel(category: SupportCategory): string {
-    return supportCategoryLabels[category] ?? category;
+    return supportCategoryLabels()[category] ?? category;
 }
 
 export function supportStateLabel(state: SupportRequestState): string {
-    return supportStateLabels[state] ?? state;
+    return supportStateLabels()[state] ?? state;
 }
 
 export function supportStateClass(state: SupportRequestState): string {

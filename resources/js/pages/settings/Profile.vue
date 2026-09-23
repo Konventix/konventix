@@ -134,15 +134,15 @@ function submitBanner(event: Event): void {
 </script>
 
 <template>
-    <Head title="Profile settings" />
+    <Head :title="$t('Profile settings')" />
 
-    <h1 class="sr-only">Profile settings</h1>
+    <h1 class="sr-only">{{ $t('Profile settings') }}</h1>
 
     <div class="flex flex-col space-y-6">
         <Heading
             variant="small"
-            title="Profile"
-            description="Update your name and email address"
+            :title="$t('Profile')"
+            :description="$t('Update your name and email address')"
         />
 
         <Form
@@ -151,7 +151,7 @@ function submitBanner(event: Event): void {
             v-slot="{ errors, processing }"
         >
             <div class="grid gap-2">
-                <Label for="name">Name</Label>
+                <Label for="name">{{ $t('Name') }}</Label>
                 <Input
                     id="name"
                     class="mt-1 block w-full"
@@ -159,13 +159,13 @@ function submitBanner(event: Event): void {
                     :default-value="profile.name"
                     required
                     autocomplete="name"
-                    placeholder="Full name"
+                    :placeholder="$t('Full name')"
                 />
                 <InputError class="mt-2" :message="errors.name" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="email">Email address</Label>
+                <Label for="email">{{ $t('Email address') }}</Label>
                 <Input
                     id="email"
                     type="email"
@@ -174,13 +174,13 @@ function submitBanner(event: Event): void {
                     :default-value="profile.email"
                     required
                     autocomplete="username"
-                    placeholder="Email address"
+                    :placeholder="$t('Email address')"
                 />
                 <InputError class="mt-2" :message="errors.email" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="username">Username</Label>
+                <Label for="username">{{ $t('Username') }}</Label>
                 <Input
                     id="username"
                     class="mt-1 block w-full"
@@ -191,27 +191,30 @@ function submitBanner(event: Event): void {
                     placeholder="ada-lovelace"
                 />
                 <p class="text-sm text-text-muted">
-                    Lowercase letters, numbers and hyphens only — starts and
-                    ends with a letter or number.
+                    {{
+                        $t(
+                            'Lowercase letters, numbers and hyphens only — starts and ends with a letter or number.',
+                        )
+                    }}
                 </p>
                 <InputError class="mt-2" :message="errors.username" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="tagline">Tagline</Label>
+                <Label for="tagline">{{ $t('Tagline') }}</Label>
                 <Input
                     id="tagline"
                     class="mt-1 block w-full"
                     name="tagline"
                     :default-value="profile.tagline ?? ''"
                     maxlength="140"
-                    placeholder="A short line about you"
+                    :placeholder="$t('A short line about you')"
                 />
                 <InputError class="mt-2" :message="errors.tagline" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="statusEmoji">Status emoji</Label>
+                <Label for="statusEmoji">{{ $t('Status emoji') }}</Label>
                 <Input
                     id="statusEmoji"
                     class="mt-1 block w-32"
@@ -219,13 +222,15 @@ function submitBanner(event: Event): void {
                     :default-value="profile.statusEmoji ?? ''"
                     placeholder="🚀"
                 />
-                <p class="text-sm text-text-muted">A single emoji.</p>
+                <p class="text-sm text-text-muted">
+                    {{ $t('A single emoji.') }}
+                </p>
                 <InputError class="mt-2" :message="errors.statusEmoji" />
             </div>
 
             <fieldset class="grid gap-2">
                 <legend class="text-sm leading-none font-medium">
-                    Who can see your profile page
+                    {{ $t('Who can see your profile page') }}
                 </legend>
                 <label class="flex items-start gap-2 text-sm">
                     <input
@@ -236,10 +241,10 @@ function submitBanner(event: Event): void {
                         :checked="profile.visibility === 'public'"
                     />
                     <span>
-                        <span class="block">Public</span>
-                        <span class="block text-text-muted"
-                            >Anyone, even without an account</span
-                        >
+                        <span class="block">{{ $t('Public') }}</span>
+                        <span class="block text-text-muted">{{
+                            $t('Anyone, even without an account')
+                        }}</span>
                     </span>
                 </label>
                 <label class="flex items-start gap-2 text-sm">
@@ -251,10 +256,10 @@ function submitBanner(event: Event): void {
                         :checked="profile.visibility === 'internal'"
                     />
                     <span>
-                        <span class="block">Internal</span>
-                        <span class="block text-text-muted"
-                            >Signed-in members of this brand</span
-                        >
+                        <span class="block">{{ $t('Internal') }}</span>
+                        <span class="block text-text-muted">{{
+                            $t('Signed-in members of this brand')
+                        }}</span>
                     </span>
                 </label>
                 <label class="flex items-start gap-2 text-sm">
@@ -266,10 +271,10 @@ function submitBanner(event: Event): void {
                         :checked="profile.visibility === 'event'"
                     />
                     <span>
-                        <span class="block">Event only</span>
-                        <span class="block text-text-muted"
-                            >People confirmed for the same event</span
-                        >
+                        <span class="block">{{ $t('Event only') }}</span>
+                        <span class="block text-text-muted">{{
+                            $t('People confirmed for the same event')
+                        }}</span>
                     </span>
                 </label>
                 <InputError class="mt-2" :message="errors.visibility" />
@@ -290,16 +295,19 @@ function submitBanner(event: Event): void {
                         aria-describedby="listed-in-attendees-hint"
                     />
                     <span>
-                        <span class="block"
-                            >List me as an attendee on event pages I am
-                            registered for</span
-                        >
+                        <span class="block">{{
+                            $t(
+                                'List me as an attendee on event pages I am registered for',
+                            )
+                        }}</span>
                         <span
                             id="listed-in-attendees-hint"
                             class="block text-text-muted"
-                            >Only your username, only where the organizer shows
-                            the list, and only once your registration is
-                            confirmed.</span
+                            >{{
+                                $t(
+                                    'Only your username, only where the organizer shows the list, and only once your registration is confirmed.',
+                                )
+                            }}</span
                         >
                     </span>
                 </label>
@@ -307,7 +315,7 @@ function submitBanner(event: Event): void {
             </div>
 
             <div class="grid gap-2">
-                <Label for="timezone">Timezone</Label>
+                <Label for="timezone">{{ $t('Timezone') }}</Label>
                 <select
                     id="timezone"
                     v-model="timezone"
@@ -316,16 +324,19 @@ function submitBanner(event: Event): void {
                     :aria-invalid="errors.timezone ? true : undefined"
                     aria-describedby="timezone-hint timezone-error"
                 >
-                    <option value="">Browser ({{ browserZone }})</option>
+                    <option value="">
+                        {{ $t('Browser (:zone)', { zone: browserZone }) }}
+                    </option>
                     <option v-for="zone in timezones" :key="zone" :value="zone">
                         {{ zone }}
                     </option>
                 </select>
                 <p id="timezone-hint" class="text-sm text-text-muted">
-                    Every date and time on this site is shown in this zone.
-                    Leave it on
-                    <span class="font-medium">Browser</span> to follow whichever
-                    device you are reading on.
+                    {{
+                        $t(
+                            'Every date and time on this site is shown in this zone. Leave it on “Browser” to follow whichever device you are reading on.',
+                        )
+                    }}
                 </p>
                 <InputError
                     id="timezone-error"
@@ -335,7 +346,9 @@ function submitBanner(event: Event): void {
             </div>
 
             <div class="grid gap-4">
-                <p class="text-sm leading-none font-medium">Social links</p>
+                <p class="text-sm leading-none font-medium">
+                    {{ $t('Social links') }}
+                </p>
 
                 <div class="grid gap-2">
                     <Label for="socialLinks.steam">Steam</Label>
@@ -344,11 +357,14 @@ function submitBanner(event: Event): void {
                         class="mt-1 block w-full"
                         name="socialLinks[steam]"
                         :default-value="profile.socialLinks.steam ?? ''"
-                        placeholder="Steam handle"
+                        :placeholder="$t('Steam handle')"
                     />
                     <p class="text-sm text-text-muted">
-                        Your custom URL name, not the full link: 2-32 letters,
-                        digits, - or _.
+                        {{
+                            $t(
+                                'Your custom URL name, not the full link: 2-32 letters, digits, - or _.',
+                            )
+                        }}
                     </p>
                     <InputError
                         class="mt-2"
@@ -363,10 +379,14 @@ function submitBanner(event: Event): void {
                         class="mt-1 block w-full"
                         name="socialLinks[discord]"
                         :default-value="profile.socialLinks.discord ?? ''"
-                        placeholder="Discord username"
+                        :placeholder="$t('Discord username')"
                     />
                     <p class="text-sm text-text-muted">
-                        Username only: 2-32 lowercase letters, digits, . or _.
+                        {{
+                            $t(
+                                'Username only: 2-32 lowercase letters, digits, . or _.',
+                            )
+                        }}
                     </p>
                     <InputError
                         class="mt-2"
@@ -381,10 +401,10 @@ function submitBanner(event: Event): void {
                         class="mt-1 block w-full"
                         name="socialLinks[twitch]"
                         :default-value="profile.socialLinks.twitch ?? ''"
-                        placeholder="Twitch channel"
+                        :placeholder="$t('Twitch channel')"
                     />
                     <p class="text-sm text-text-muted">
-                        Channel name: 3-25 letters, digits or _.
+                        {{ $t('Channel name: 3-25 letters, digits or _.') }}
                     </p>
                     <InputError
                         class="mt-2"
@@ -402,8 +422,11 @@ function submitBanner(event: Event): void {
                         placeholder="@channel"
                     />
                     <p class="text-sm text-text-muted">
-                        Handle: 3-30 letters, digits, . _ or -; the @ is
-                        optional.
+                        {{
+                            $t(
+                                'Handle: 3-30 letters, digits, . _ or -; the @ is optional.',
+                            )
+                        }}
                     </p>
                     <InputError
                         class="mt-2"
@@ -418,10 +441,14 @@ function submitBanner(event: Event): void {
                         class="mt-1 block w-full"
                         name="socialLinks[x]"
                         :default-value="profile.socialLinks.x ?? ''"
-                        placeholder="Handle"
+                        :placeholder="$t('Handle')"
                     />
                     <p class="text-sm text-text-muted">
-                        Handle without the @: 1-15 letters, digits or _.
+                        {{
+                            $t(
+                                'Handle without the @: 1-15 letters, digits or _.',
+                            )
+                        }}
                     </p>
                     <InputError
                         class="mt-2"
@@ -436,10 +463,10 @@ function submitBanner(event: Event): void {
                         class="mt-1 block w-full"
                         name="socialLinks[instagram]"
                         :default-value="profile.socialLinks.instagram ?? ''"
-                        placeholder="Instagram handle"
+                        :placeholder="$t('Instagram handle')"
                     />
                     <p class="text-sm text-text-muted">
-                        Username: 1-30 letters, digits, . or _.
+                        {{ $t('Username: 1-30 letters, digits, . or _.') }}
                     </p>
                     <InputError
                         class="mt-2"
@@ -448,7 +475,7 @@ function submitBanner(event: Event): void {
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="socialLinks.website">Website</Label>
+                    <Label for="socialLinks.website">{{ $t('Website') }}</Label>
                     <Input
                         id="socialLinks.website"
                         type="url"
@@ -458,7 +485,7 @@ function submitBanner(event: Event): void {
                         placeholder="https://example.com"
                     />
                     <p class="text-sm text-text-muted">
-                        Full address including https://.
+                        {{ $t('Full address including https://.') }}
                     </p>
                     <InputError
                         class="mt-2"
@@ -468,8 +495,10 @@ function submitBanner(event: Event): void {
             </div>
 
             <div class="flex items-center gap-4">
-                <Button :disabled="processing" data-test="update-profile-button"
-                    >Save</Button
+                <Button
+                    :disabled="processing"
+                    data-test="update-profile-button"
+                    >{{ $t('Save') }}</Button
                 >
             </div>
         </Form>
@@ -478,13 +507,17 @@ function submitBanner(event: Event): void {
     <div class="flex flex-col space-y-6">
         <Heading
             variant="small"
-            title="Profile images"
-            description="Your avatar and banner as this brand's community sees them"
+            :title="$t('Profile images')"
+            :description="
+                $t(
+                    'Your avatar and banner as this brand\'s community sees them',
+                )
+            "
         />
 
         <div class="grid gap-6 sm:grid-cols-2">
             <div class="grid gap-2">
-                <Label for="avatar">Avatar</Label>
+                <Label for="avatar">{{ $t('Avatar') }}</Label>
                 <div class="flex items-center gap-4">
                     <div
                         class="h-16 w-16 shrink-0 overflow-hidden rounded-full border border-border bg-surface-muted"
@@ -514,7 +547,7 @@ function submitBanner(event: Event): void {
                             data-test="use-steam-avatar-button"
                             @click="copySteamAvatar"
                         >
-                            Use my Steam avatar
+                            {{ $t('Use my Steam avatar') }}
                         </Button>
                         <InputError
                             :message="(page.props.errors as any)?.steam"
@@ -533,7 +566,7 @@ function submitBanner(event: Event): void {
                                 :disabled="removingAvatar"
                                 data-test="remove-avatar-button"
                             >
-                                Remove avatar
+                                {{ $t('Remove avatar') }}
                             </Button>
                         </Form>
                     </div>
@@ -541,7 +574,7 @@ function submitBanner(event: Event): void {
             </div>
 
             <div class="grid gap-2">
-                <Label for="banner">Banner</Label>
+                <Label for="banner">{{ $t('Banner') }}</Label>
                 <div class="flex flex-col gap-2">
                     <div
                         class="h-24 w-full max-w-sm overflow-hidden rounded-lg border border-border bg-surface-muted"
@@ -576,7 +609,7 @@ function submitBanner(event: Event): void {
                             :disabled="removingBanner"
                             data-test="remove-banner-button"
                         >
-                            Remove banner
+                            {{ $t('Remove banner') }}
                         </Button>
                     </Form>
                 </div>

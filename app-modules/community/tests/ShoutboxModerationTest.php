@@ -336,7 +336,7 @@ it('refuses a moderation reason longer than its column, in the Action rather tha
     expect($atTheLimit->deleted_reason)->toHaveLength(RemoveMessage::MAX_REASON_LENGTH);
 });
 
-it('refuses a report note longer than its column, in German and with a cause the page can branch on', function (): void {
+it('refuses a report note longer than its column, in words and with a cause the page can branch on', function (): void {
     $this->withBrand();
 
     $room = Room::factory()->create();
@@ -353,7 +353,7 @@ it('refuses a report note longer than its column, in German and with a cause the
         );
         $this->fail('A note longer than its column was accepted.');
     } catch (ShoutboxWriteException $refusal) {
-        expect($refusal->getMessage())->toContain('maximal 255 Zeichen')
+        expect($refusal->getMessage())->toContain('at most 255 characters')
             ->and($refusal->cause)->toBe(ShoutboxRefusal::NoteTooLong)
             // On the note field, not on the compose box.
             ->and($refusal->cause->field())->toBe('note');

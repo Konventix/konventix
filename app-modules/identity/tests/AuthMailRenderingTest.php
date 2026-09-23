@@ -47,7 +47,7 @@ it('renders identity.verify-email with the link and the validity, in both locale
     $payload = new VerifyEmailMailData(verifyUrl: 'https://brand.example.test/email/verify/01ABC/deadbeef?signature=abc123', validMinutes: 60);
 
     [$subjectDe, $bodyDe] = authMailRender('identity.verify-email', $payload, 'de');
-    expect($subjectDe)->toBe('Bitte bestätigen Sie Ihre E-Mail-Adresse');
+    expect($subjectDe)->toBe('Bitte bestätige deine E-Mail-Adresse');
     expect($bodyDe)->toContain('href="'.$payload->verifyUrl.'"')
         ->and($bodyDe)->toContain('Minuten gültig');
 
@@ -76,7 +76,7 @@ it('renders identity.welcome with the confirmation, the home link, and the shop 
 
     [$subjectDe, $bodyDe] = authMailRender('identity.welcome', $payloadWithShop, 'de');
     expect($subjectDe)->toBe('Willkommen bei Konventix Con');
-    expect($bodyDe)->toContain('Ihr Konto ist bestätigt')
+    expect($bodyDe)->toContain('Dein Konto ist bestätigt')
         ->and($bodyDe)->toContain('href="https://brand.example.test"')
         ->and($bodyDe)->toContain('href="https://brand.example.test/shop"')
         ->and($bodyDe)->toContain('Zum Shop');
@@ -93,7 +93,7 @@ it('renders identity.welcome without a shop paragraph when shopUrl is null, in b
     $payloadNoShop = new WelcomeMailData(brandName: 'Konventix Con', homeUrl: 'https://brand.example.test', shopUrl: null);
 
     [, $bodyDe] = authMailRender('identity.welcome', $payloadNoShop, 'de');
-    expect($bodyDe)->toContain('Ihr Konto ist bestätigt')
+    expect($bodyDe)->toContain('Dein Konto ist bestätigt')
         ->and($bodyDe)->not->toContain('Zum Shop')
         ->and($bodyDe)->not->toContain('/shop');
 
@@ -121,6 +121,6 @@ it('sends an actual identity.verify-email mail end to end on registration', func
     Mail::assertSent(
         TemplatedMail::class,
         fn (TemplatedMail $mail): bool => $mail->hasTo('ada-e2e@example.test')
-            && str_contains($mail->envelope()->subject, 'bestätigen'),
+            && str_contains($mail->envelope()->subject, 'bestätige'),
     );
 });

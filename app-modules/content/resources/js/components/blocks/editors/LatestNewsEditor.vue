@@ -20,7 +20,7 @@ const id = useId();
 <template>
     <div class="grid gap-4">
         <div class="grid gap-2">
-            <Label :for="`${id}-heading`">Heading (optional)</Label>
+            <Label :for="`${id}-heading`">{{ $t('Heading (optional)') }}</Label>
             <Input
                 :id="`${id}-heading`"
                 :model-value="props.modelValue.heading ?? ''"
@@ -29,7 +29,7 @@ const id = useId();
             <InputError :message="props.errors.heading" />
         </div>
         <div class="grid gap-2">
-            <Label :for="`${id}-limit`">How many entries</Label>
+            <Label :for="`${id}-limit`">{{ $t('How many entries') }}</Label>
             <Input
                 :id="`${id}-limit`"
                 type="number"

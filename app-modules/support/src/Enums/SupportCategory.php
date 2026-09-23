@@ -30,17 +30,17 @@ enum SupportCategory: string
     case Suggestion = 'suggestion';
 
     /**
-     * The English label the dialog and the console inbox print. UI copy is
-     * English like the rest of the application (D-SUP-09).
+     * The label the dialog and the console inbox print: English source,
+     * shown in the reader's language from the catalog (ADR-0068).
      */
     public function label(): string
     {
         return match ($this) {
-            self::PurchaseAffected => 'Purchase affected',
-            self::Visibility => 'Something is not visible',
-            self::Function => 'Something does not work',
-            self::Display => 'Something looks wrong',
-            self::Suggestion => 'Suggestion',
+            self::PurchaseAffected => __('Purchase affected'),
+            self::Visibility => __('Something is not visible'),
+            self::Function => __('Something does not work'),
+            self::Display => __('Something looks wrong'),
+            self::Suggestion => __('Suggestion'),
         };
     }
 

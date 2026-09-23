@@ -103,11 +103,11 @@ final class MySupportRequestsController
             // A 422 on `body`, where what they typed is still on screen —
             // never a redirect that drops it (see the exception's docblock).
             throw ValidationException::withMessages([
-                'body' => 'This report has been closed, so it takes no further replies. File a new one if it is still happening.',
+                'body' => __('This report has been closed, so it takes no further replies. File a new one if it is still happening.'),
             ]);
         }
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Your reply was added.']);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Your reply was added.')]);
 
         return back();
     }

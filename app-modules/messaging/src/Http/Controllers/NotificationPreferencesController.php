@@ -47,7 +47,7 @@ class NotificationPreferencesController
             'topics' => collect($topics->for($recipientId))
                 ->map(fn (Topic $topic): array => [
                     'key' => $topic->key,
-                    'label' => $topic->label,
+                    'label' => __($topic->label),
                     'suppressible' => $topic->suppressible,
                     'channels' => array_map(
                         fn (Channel $channel): array => [
@@ -92,6 +92,6 @@ class NotificationPreferencesController
             );
         }
 
-        return back()->with('success', 'Notification preferences saved.');
+        return back()->with('success', __('Notification preferences saved.'));
     }
 }

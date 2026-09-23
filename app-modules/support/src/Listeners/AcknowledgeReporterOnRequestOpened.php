@@ -76,12 +76,8 @@ final class AcknowledgeReporterOnRequestOpened
                     reference: $request->reference(),
                     categories: $this->categoryLabels($request),
                     requestUrl: $url,
-                    accessNoteDe: $isGuest
-                        ? 'Über den Link unten können Sie Ihre Meldung 30 Tage lang ansehen und beantworten. Bitte bewahren Sie diese E-Mail auf — sie ist Ihr Zugang zu der Meldung.'
-                        : 'Sie finden diese Meldung jederzeit in Ihrem Konto unter „Meine Meldungen“.',
-                    accessNoteEn: $isGuest
-                        ? 'The link below lets you read and answer your report for the next 30 days. Please keep this e-mail — it is your access to the report.'
-                        : 'You can find this report in your account under “My support requests” at any time.',
+                    accessNoteDe: $this->accessNote($isGuest, 'de'),
+                    accessNoteEn: $this->accessNote($isGuest, 'en'),
                 ),
                 // A guest has no account behind the address, so the address
                 // is given explicitly — Messaging's documented shape for
@@ -107,6 +103,18 @@ final class AcknowledgeReporterOnRequestOpened
             $request->categoryCases(),
         );
 
-        return $labels === [] ? 'No category' : implode(', ', $labels);
+        return $labels === [] ? __('No category') : implode(', ', $labels);
+    }
+
+    /**
+     * How the reporter gets back to the report, for one of the mail's two
+     * bodies. Looked up for that body's locale explicitly (ADR-0068): the
+     * template is a `de`/`en` map with a prepared field per locale.
+     */
+    private function accessNote(bool $isGuest, string $locale): string
+    {
+        return $isGuest
+            ? __('The link below lets you read and answer your report for the next 30 days. Please keep this e-mail — it is your access to the report.', [], $locale)
+            : __('You can find this report in your account under “My support requests” at any time.', [], $locale);
     }
 }

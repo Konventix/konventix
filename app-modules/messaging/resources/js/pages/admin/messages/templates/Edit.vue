@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { watchDebounced } from '@vueuse/core';
+import { trans } from 'laravel-vue-i18n';
 import { computed, reactive, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
@@ -23,9 +24,11 @@ const props = defineProps<{ template: TemplateEdit }>();
 // Mirrors `TemplateOverrideGuard`'s allow-list (backend): built as one
 // string here rather than inline in the template, since a literal
 // "{{ $name }}" inside a Vue mustache would be parsed as the start of a
-// second interpolation, not as text.
-const overrideHelp =
-    'Simple echoes ({{ $name }}) and if/unless/foreach on payload fields only — no @php, no {!! !!}, no other directives.';
+// second interpolation, not as text. Looked up in `setup`, after the
+// catalog is loaded (ADR-0068).
+const overrideHelp = trans(
+    'Simple echoes ({{ $name }}) and if/unless/foreach on payload fields only — no @php, no {!! !!}, no other directives.',
+);
 
 const locales = props.template.locales;
 const activeLocale = ref<string>(
@@ -92,7 +95,9 @@ function resetOverride(): void {
 
     if (
         !confirm(
-            'Reset this locale to the default text? Your override is deleted.',
+            trans(
+                'Reset this locale to the default text? Your override is deleted.',
+            ),
         )
     ) {
         return;
@@ -155,7 +160,7 @@ async function refreshPreview(): Promise<void> {
         };
 
         if (!response.ok) {
-            previewError.value = data.message ?? 'Preview failed.';
+            previewError.value = data.message ?? trans('Preview failed.');
             previewHtml.value = '';
 
             return;
@@ -164,7 +169,7 @@ async function refreshPreview(): Promise<void> {
         previewError.value = null;
         previewHtml.value = data.html ?? '';
     } catch {
-        previewError.value = 'Preview failed.';
+        previewError.value = trans('Preview failed.');
     } finally {
         previewLoading.value = false;
     }
@@ -184,17 +189,22 @@ watchDebounced(
 </script>
 
 <template>
-    <Head :title="`Template · ${template.key}`" />
+    <Head :title="$t('Template · :key', { key: template.key })" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
             :title="template.key"
-            :description="`${template.module} — overriding for ${template.brandName}`"
+            :description="
+                $t(':module — overriding for :brand', {
+                    module: template.module,
+                    brand: template.brandName,
+                })
+            "
         />
 
         <div
             role="tablist"
-            aria-label="Locale"
+            :aria-label="$t('Locale')"
             class="inline-flex rounded-lg border border-border p-1"
         >
             <button
@@ -224,13 +234,13 @@ watchDebounced(
         <div class="grid gap-6 xl:grid-cols-2">
             <Card>
                 <CardHeader>
-                    <CardTitle>Default</CardTitle>
+                    <CardTitle>{{ $t('Default') }}</CardTitle>
                 </CardHeader>
                 <CardContent class="flex flex-col gap-4">
                     <div class="grid gap-2">
-                        <Label :for="`default-subject-${activeLocale}`"
-                            >Subject</Label
-                        >
+                        <Label :for="`default-subject-${activeLocale}`">{{
+                            $t('Subject')
+                        }}</Label>
                         <Input
                             :id="`default-subject-${activeLocale}`"
                             :model-value="
@@ -240,9 +250,9 @@ watchDebounced(
                         />
                     </div>
                     <div class="grid gap-2">
-                        <Label :for="`default-body-${activeLocale}`"
-                            >Body</Label
-                        >
+                        <Label :for="`default-body-${activeLocale}`">{{
+                            $t('Body')
+                        }}</Label>
                         <textarea
                             :id="`default-body-${activeLocale}`"
                             :value="template.defaults[activeLocale].body"
@@ -256,13 +266,13 @@ watchDebounced(
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Your override</CardTitle>
+                    <CardTitle>{{ $t('Your override') }}</CardTitle>
                 </CardHeader>
                 <CardContent class="flex flex-col gap-4">
                     <div class="grid gap-2">
-                        <Label :for="`override-subject-${activeLocale}`"
-                            >Subject</Label
-                        >
+                        <Label :for="`override-subject-${activeLocale}`">{{
+                            $t('Subject')
+                        }}</Label>
                         <Input
                             :id="`override-subject-${activeLocale}`"
                             v-model="activeDraft.subject"
@@ -270,9 +280,9 @@ watchDebounced(
                         <InputError :message="form.errors.subject" />
                     </div>
                     <div class="grid gap-2">
-                        <Label :for="`override-body-${activeLocale}`"
-                            >Body</Label
-                        >
+                        <Label :for="`override-body-${activeLocale}`">{{
+                            $t('Body')
+                        }}</Label>
                         <p class="text-xs text-text-muted">
                             {{ overrideHelp }}
                         </p>
@@ -291,7 +301,7 @@ watchDebounced(
                             :disabled="form.processing"
                             @click="save"
                         >
-                            Save override
+                            {{ $t('Save override') }}
                         </Button>
                         <Button
                             v-if="hasOverride"
@@ -299,14 +309,14 @@ watchDebounced(
                             variant="outline"
                             @click="resetOverride"
                         >
-                            Reset to default
+                            {{ $t('Reset to default') }}
                         </Button>
                         <span
                             v-if="isDirty"
                             role="status"
                             class="text-sm text-warning"
                         >
-                            Unsaved changes
+                            {{ $t('Unsaved changes') }}
                         </span>
                     </div>
                 </CardContent>
@@ -315,12 +325,15 @@ watchDebounced(
 
         <Card>
             <CardHeader>
-                <CardTitle>Preview</CardTitle>
+                <CardTitle>{{ $t('Preview') }}</CardTitle>
             </CardHeader>
             <CardContent class="flex flex-col gap-3">
                 <p class="text-xs text-text-muted">
-                    Rendered against a sample payload — real mail carries real
-                    recipient data.
+                    {{
+                        $t(
+                            'Rendered against a sample payload — real mail carries real recipient data.',
+                        )
+                    }}
                 </p>
                 <p
                     v-if="previewError"
@@ -337,7 +350,7 @@ watchDebounced(
                 <iframe
                     :srcdoc="previewHtml"
                     sandbox=""
-                    title="Template preview"
+                    :title="$t('Template preview')"
                     class="h-[32rem] w-full rounded-md border border-border bg-surface"
                 />
             </CardContent>

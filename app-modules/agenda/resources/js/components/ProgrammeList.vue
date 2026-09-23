@@ -106,7 +106,7 @@ const entries = computed<Entry[]>(() => {
         </li>
 
         <li v-if="entries.length === 0" class="text-sm text-text-muted">
-            Für diesen Tag ist noch nichts angekündigt.
+            {{ $t('Nothing has been announced for this day yet.') }}
         </li>
     </ol>
 </template>

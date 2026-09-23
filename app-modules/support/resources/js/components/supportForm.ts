@@ -1,3 +1,5 @@
+import { trans } from 'laravel-vue-i18n';
+
 /**
  * The report dialog's rules, as pure functions (design §6.2).
  *
@@ -33,14 +35,19 @@ export interface SupportCategoryOption {
  *
  * `purchase_affected` is first because it is the one with an operational
  * meaning: it raises an alert on the on-call channel (D-SUP-06).
+ *
+ * A function, not a constant: the labels come from the catalog, which is
+ * loaded after the modules are imported (ADR-0068).
  */
-export const SUPPORT_CATEGORIES: SupportCategoryOption[] = [
-    { value: 'purchase_affected', label: 'Purchase affected' },
-    { value: 'visibility', label: 'Something is not visible' },
-    { value: 'function', label: 'Something does not work' },
-    { value: 'display', label: 'Something looks wrong' },
-    { value: 'suggestion', label: 'Suggestion' },
-];
+export function supportCategories(): SupportCategoryOption[] {
+    return [
+        { value: 'purchase_affected', label: trans('Purchase affected') },
+        { value: 'visibility', label: trans('Something is not visible') },
+        { value: 'function', label: trans('Something does not work') },
+        { value: 'display', label: trans('Something looks wrong') },
+        { value: 'suggestion', label: trans('Suggestion') },
+    ];
+}
 
 /** Multi-select: clicking a chip that is on turns it off. */
 export function toggleCategory(selected: string[], value: string): string[] {
@@ -57,10 +64,16 @@ export function toggleCategory(selected: string[], value: string): string[] {
  */
 export function counterText(length: number): string {
     if (length < MESSAGE_MIN) {
-        return `${length} of ${MESSAGE_MIN} characters minimum`;
+        return trans(':length of :min characters minimum', {
+            length: String(length),
+            min: String(MESSAGE_MIN),
+        });
     }
 
-    return `${length} of ${MESSAGE_MAX} characters`;
+    return trans(':length of :max characters', {
+        length: String(length),
+        max: String(MESSAGE_MAX),
+    });
 }
 
 export interface SupportFormValues {
@@ -82,19 +95,24 @@ export function localErrors(
     const errors: Record<string, string> = {};
 
     if (values.categories.length === 0) {
-        errors.categories = 'Pick at least one thing this is about.';
+        errors.categories = trans('Pick at least one thing this is about.');
     }
 
     const length = values.message.trim().length;
 
     if (length < MESSAGE_MIN) {
-        errors.message = `Please write at least ${MESSAGE_MIN} characters so we can act on it.`;
+        errors.message = trans(
+            'Please write at least :min characters so we can act on it.',
+            { min: String(MESSAGE_MIN) },
+        );
     } else if (values.message.length > MESSAGE_MAX) {
-        errors.message = `Please keep it under ${MESSAGE_MAX} characters.`;
+        errors.message = trans('Please keep it under :max characters.', {
+            max: String(MESSAGE_MAX),
+        });
     }
 
     if (requiresEmail && values.email.trim() === '') {
-        errors.email = 'Tell us an e-mail address so we can answer you.';
+        errors.email = trans('Tell us an e-mail address so we can answer you.');
     }
 
     return errors;
@@ -110,17 +128,24 @@ export function successMessage(
     isGuest: boolean,
     email: string,
 ): string {
-    const thanks = `Thanks — your reference is ${reference}.`;
-
     if (isGuest) {
         const address = email.trim();
 
         return address === ''
-            ? `${thanks} We sent you a confirmation.`
-            : `${thanks} We sent a confirmation to ${address}.`;
+            ? trans(
+                  'Thanks — your reference is :reference. We sent you a confirmation.',
+                  { reference },
+              )
+            : trans(
+                  'Thanks — your reference is :reference. We sent a confirmation to :address.',
+                  { reference, address },
+              );
     }
 
-    return `${thanks} You can follow it under My support requests.`;
+    return trans(
+        'Thanks — your reference is :reference. You can follow it under My support requests.',
+        { reference },
+    );
 }
 
 /**
@@ -130,12 +155,14 @@ export function successMessage(
  */
 export function transportErrorMessage(status: number | null): string {
     if (status === 429) {
-        return 'Too many reports, please try again in a few minutes.';
+        return trans('Too many reports, please try again in a few minutes.');
     }
 
     if (status === null) {
-        return 'Your report did not reach us. Please check your connection and try again.';
+        return trans(
+            'Your report did not reach us. Please check your connection and try again.',
+        );
     }
 
-    return 'Something went wrong on our side. Please try again.';
+    return trans('Something went wrong on our side. Please try again.');
 }

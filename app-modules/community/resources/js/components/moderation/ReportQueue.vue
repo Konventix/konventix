@@ -21,10 +21,12 @@ const emit = defineEmits<{
 
 <template>
     <Card class="border-border bg-surface">
-        <CardHeader><CardTitle>Open reports</CardTitle></CardHeader>
+        <CardHeader
+            ><CardTitle>{{ $t('Open reports') }}</CardTitle></CardHeader
+        >
         <CardContent class="flex flex-col gap-4">
             <p v-if="reports.length === 0" class="text-sm text-text-muted">
-                Nothing reported.
+                {{ $t('Nothing reported.') }}
             </p>
             <div
                 v-for="report in reports"
@@ -33,7 +35,10 @@ const emit = defineEmits<{
             >
                 <p class="text-sm text-text">
                     <span class="font-medium">
-                        {{ report.authorDisplayName ?? 'Unknown participant' }}:
+                        {{
+                            report.authorDisplayName ??
+                            $t('Unknown participant')
+                        }}:
                     </span>
                     <span
                         :class="
@@ -46,13 +51,20 @@ const emit = defineEmits<{
                     </span>
                 </p>
                 <p class="text-xs text-text-muted">
-                    Reported by
-                    {{ report.reporterDisplayName ?? 'an unknown participant' }}
+                    {{
+                        $t('Reported by :name', {
+                            name:
+                                report.reporterDisplayName ??
+                                $t('an unknown participant'),
+                        })
+                    }}
                     · {{ formatDateTime(report.reportedAt) }}
                     <template v-if="report.note">
                         · “{{ report.note }}”</template
                     >
-                    <template v-if="report.removedAt"> · removed</template>
+                    <template v-if="report.removedAt">
+                        · {{ $t('removed') }}</template
+                    >
                 </p>
                 <div class="flex flex-wrap gap-2">
                     <Button
@@ -61,7 +73,7 @@ const emit = defineEmits<{
                         variant="destructive"
                         @click="emit('remove', report.messageId)"
                     >
-                        Remove line
+                        {{ $t('Remove line') }}
                     </Button>
                     <Button
                         size="sm"
@@ -74,21 +86,21 @@ const emit = defineEmits<{
                             )
                         "
                     >
-                        Mute author
+                        {{ $t('Mute author') }}
                     </Button>
                     <Button
                         size="sm"
                         variant="secondary"
                         @click="emit('resolve', report.id, 'resolved')"
                     >
-                        Resolve
+                        {{ $t('Resolve report') }}
                     </Button>
                     <Button
                         size="sm"
                         variant="ghost"
                         @click="emit('resolve', report.id, 'dismissed')"
                     >
-                        Dismiss
+                        {{ $t('Dismiss report') }}
                     </Button>
                 </div>
             </div>

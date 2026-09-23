@@ -96,12 +96,16 @@ function saveReference(): void {
 <template>
     <Card>
         <CardHeader>
-            <CardTitle>Triage</CardTitle>
+            <CardTitle>{{ $t('Triage') }}</CardTitle>
         </CardHeader>
         <CardContent class="flex flex-col gap-6 text-sm">
             <div class="flex flex-col gap-2">
                 <h3 class="font-medium">
-                    State — currently {{ supportStateLabel(props.state) }}
+                    {{
+                        $t('State — currently :state', {
+                            state: supportStateLabel(props.state),
+                        })
+                    }}
                 </h3>
                 <div class="flex flex-wrap gap-2">
                     <Button
@@ -121,12 +125,12 @@ function saveReference(): void {
                     v-if="props.allowedNext.length === 0"
                     class="text-xs text-text-muted"
                 >
-                    Nowhere to go from here.
+                    {{ $t('Nowhere to go from here.') }}
                 </p>
             </div>
 
             <div class="flex flex-col gap-2">
-                <Label for="support-assignee">Assignee</Label>
+                <Label for="support-assignee">{{ $t('Assignee') }}</Label>
                 <select
                     id="support-assignee"
                     class="h-9 rounded-md border border-border bg-surface px-3 font-mono text-xs"
@@ -141,7 +145,7 @@ function saveReference(): void {
                         )
                     "
                 >
-                    <option value="">Unassigned</option>
+                    <option value="">{{ $t('Unassigned') }}</option>
                     <option
                         v-for="candidate in props.assignees"
                         :key="candidate"
@@ -149,14 +153,18 @@ function saveReference(): void {
                     >
                         {{ candidate
                         }}{{
-                            candidate === props.currentUserId ? ' (you)' : ''
+                            candidate === props.currentUserId
+                                ? ` ${$t('(you)')}`
+                                : ''
                         }}
                     </option>
                 </select>
                 <p id="support-assignee-hint" class="text-xs text-text-muted">
-                    Everyone who may triage reports filed here. Accounts are
-                    named by their id: the display name belongs to Identity,
-                    which this module does not read.
+                    {{
+                        $t(
+                            'Everyone who may triage reports filed here. Accounts are named by their id: the display name belongs to Identity, which this module does not read.',
+                        )
+                    }}
                 </p>
                 <InputError :message="assignment.errors.assignedToUserId" />
                 <Button
@@ -171,12 +179,12 @@ function saveReference(): void {
                     class="self-start"
                     @click="assign(props.currentUserId)"
                 >
-                    Assign to me
+                    {{ $t('Assign to me') }}
                 </Button>
             </div>
 
             <form class="flex flex-col gap-2" @submit.prevent="saveKnownIssue">
-                <h3 class="font-medium">Known issue</h3>
+                <h3 class="font-medium">{{ $t('Known issue') }}</h3>
                 <div class="flex items-center gap-2">
                     <Checkbox
                         id="support-known-issue"
@@ -187,11 +195,11 @@ function saveReference(): void {
                         "
                     />
                     <Label for="support-known-issue" class="font-normal">
-                        Everybody about to report this sees a banner
+                        {{ $t('Everybody about to report this sees a banner') }}
                     </Label>
                 </div>
                 <Label for="support-known-issue-notice" class="text-xs">
-                    What the banner says
+                    {{ $t('What the banner says') }}
                 </Label>
                 <Textarea
                     id="support-known-issue-notice"
@@ -206,8 +214,11 @@ function saveReference(): void {
                     id="support-known-issue-hint"
                     class="text-xs text-text-muted"
                 >
-                    Strangers read this. Leave it empty and the banner names the
-                    category instead — never the reporter's own words.
+                    {{
+                        $t(
+                            "Strangers read this. Leave it empty and the banner names the category instead — never the reporter's own words.",
+                        )
+                    }}
                 </p>
                 <InputError :message="knownIssue.errors.knownIssueNotice" />
                 <div class="flex items-center gap-3">
@@ -217,26 +228,26 @@ function saveReference(): void {
                         size="sm"
                         :disabled="knownIssue.processing"
                     >
-                        Save
+                        {{ $t('Save') }}
                     </Button>
                     <span
                         v-if="knownIssue.isDirty"
                         role="status"
                         class="text-xs text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
             </form>
 
             <form class="flex flex-col gap-2" @submit.prevent="saveReference">
                 <Label for="support-external-reference">
-                    External reference
+                    {{ $t('External reference') }}
                 </Label>
                 <Input
                     id="support-external-reference"
                     v-model="reference.externalReference"
-                    placeholder="#306, ticket number, anything"
+                    :placeholder="$t('#306, ticket number, anything')"
                     aria-describedby="support-external-reference-hint"
                     :aria-invalid="
                         reference.errors.externalReference ? 'true' : undefined
@@ -246,8 +257,11 @@ function saveReference(): void {
                     id="support-external-reference-hint"
                     class="text-xs text-text-muted"
                 >
-                    Free text by design: this module deep-links whatever tracker
-                    you really work in, it does not integrate with one.
+                    {{
+                        $t(
+                            'Free text by design: this module deep-links whatever tracker you really work in, it does not integrate with one.',
+                        )
+                    }}
                 </p>
                 <InputError :message="reference.errors.externalReference" />
                 <div class="flex items-center gap-3">
@@ -257,14 +271,14 @@ function saveReference(): void {
                         size="sm"
                         :disabled="reference.processing"
                     >
-                        Save
+                        {{ $t('Save') }}
                     </Button>
                     <span
                         v-if="reference.isDirty"
                         role="status"
                         class="text-xs text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
             </form>

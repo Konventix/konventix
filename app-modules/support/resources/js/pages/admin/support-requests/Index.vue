@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import type { SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -61,10 +62,13 @@ const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
 const filterDefs = computed<DataTableFilterDef[]>(() => [
     {
         name: 'state',
-        label: 'States',
+        label: trans('States'),
         value: props.filters.state,
         options: [
-            { value: 'open', label: 'Open (received, seen, in progress)' },
+            {
+                value: 'open',
+                label: trans('Open (received, seen, in progress)'),
+            },
             ...props.states.map((state) => ({
                 value: state,
                 label: supportStateLabel(state),
@@ -76,7 +80,7 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
     },
     {
         name: 'category',
-        label: 'Categories',
+        label: trans('Categories'),
         value: props.filters.category,
         options: props.categories.map((category) => ({
             value: category,
@@ -85,10 +89,10 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
     },
     {
         name: 'brand',
-        label: 'Brands',
+        label: trans('Brands'),
         value: props.filters.brand,
         options: [
-            { value: 'console', label: 'Console (no brand)' },
+            { value: 'console', label: trans('Console (no brand)') },
             ...props.brands.map((brand) => ({
                 value: brand.id,
                 label: brand.name,
@@ -97,11 +101,11 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
     },
     {
         name: 'known_issue',
-        label: 'Known issue',
+        label: trans('Known issue'),
         value: props.filters.known_issue,
         options: [
-            { value: 'yes', label: 'Marked' },
-            { value: 'no', label: 'Not marked' },
+            { value: 'yes', label: trans('Marked') },
+            { value: 'no', label: trans('Not marked') },
         ],
     },
 ]);
@@ -128,15 +132,19 @@ const columns = computed(() => supportRequestColumns());
 </script>
 
 <template>
-    <Head title="Support requests" />
+    <Head :title="$t('Support requests')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Support requests"
+            :title="$t('Support requests')"
             :description="
                 props.canTriage
-                    ? 'What visitors and operators report, across every brand'
-                    : 'What visitors and operators report, across every brand — read only'
+                    ? $t(
+                          'What visitors and operators report, across every brand',
+                      )
+                    : $t(
+                          'What visitors and operators report, across every brand — read only',
+                      )
             "
         />
 
@@ -144,7 +152,9 @@ const columns = computed(() => supportRequestColumns());
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
             :filters="filterDefs"
-            search-placeholder="Search reference, message, external reference…"
+            :search-placeholder="
+                $t('Search reference, message, external reference…')
+            "
             @update:search="setSearch"
             @update:per-page="setPerPage"
             @update:filter="setFilter"
@@ -156,8 +166,8 @@ const columns = computed(() => supportRequestColumns());
             :data="props.requests.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="support requests"
-            empty-message="No reports match."
+            :items-label="$t('support requests')"
+            :empty-message="$t('No reports match.')"
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />

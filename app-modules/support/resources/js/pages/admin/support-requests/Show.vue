@@ -44,17 +44,21 @@ const request = computed(() => props.detail.request);
 </script>
 
 <template>
-    <Head :title="`Support request ${request.reference}`" />
+    <Head
+        :title="
+            $t('Support request :reference', { reference: request.reference })
+        "
+    />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            :title="`Report ${request.reference}`"
+            :title="$t('Report :reference', { reference: request.reference })"
             :description="`${supportCategorySummary(request.categories)} · ${props.detail.brandLabel}`"
         >
             <Button variant="outline" as-child>
                 <Link :href="supportRequestsIndex().url">
                     <ArrowLeft class="size-4" aria-hidden="true" />
-                    All reports
+                    {{ $t('All reports') }}
                 </Link>
             </Button>
         </AdminPageHeader>
@@ -81,33 +85,46 @@ const request = computed(() => props.detail.request);
             <div class="flex flex-col gap-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Reporter</CardTitle>
+                        <CardTitle>{{ $t('Reporter') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-2 text-sm">
                         <p>
-                            <span class="text-text-muted">Shown as:</span>
+                            <span class="text-text-muted">{{
+                                $t('Shown as:')
+                            }}</span>
                             {{ request.reporterLabel }}
                         </p>
                         <p v-if="props.detail.reporterContact">
-                            <span class="text-text-muted">Contact:</span>
+                            <span class="text-text-muted">{{
+                                $t('Contact:')
+                            }}</span>
                             <span class="font-mono text-xs break-all">
                                 {{ props.detail.reporterContact }}
                             </span>
                         </p>
                         <p v-else class="text-xs text-text-muted">
-                            The unmasked address needs
-                            <code>support.view-reporter-contact</code>, and
-                            every look at it is recorded.
+                            {{
+                                $t(
+                                    'Every look at the unmasked address is recorded. Seeing it needs the permission',
+                                )
+                            }}
+                            <code>support.view-reporter-contact</code>.
                         </p>
                         <p class="text-xs text-text-muted">
                             {{
                                 request.contactConsent
-                                    ? 'Agreed to be contacted about this report.'
-                                    : 'Did not agree to be contacted; a reply mail is not sent.'
+                                    ? $t(
+                                          'Agreed to be contacted about this report.',
+                                      )
+                                    : $t(
+                                          'Did not agree to be contacted; a reply mail is not sent.',
+                                      )
                             }}
                         </p>
                         <p>
-                            <span class="text-text-muted">State:</span>
+                            <span class="text-text-muted">{{
+                                $t('State:')
+                            }}</span>
                             <span
                                 class="ml-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
                                 :class="supportStateClass(request.state)"
@@ -116,7 +133,9 @@ const request = computed(() => props.detail.request);
                             </span>
                         </p>
                         <p v-if="request.externalReference" class="text-xs">
-                            <span class="text-text-muted">External:</span>
+                            <span class="text-text-muted">{{
+                                $t('External:')
+                            }}</span>
                             {{ request.externalReference }}
                         </p>
                     </CardContent>

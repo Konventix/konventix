@@ -131,7 +131,7 @@ class ContentServiceProvider extends ModuleServiceProvider
         $this->app->make(HubRegistry::class)->add(new HubCard(
             module: 'content',
             key: 'content.announcements',
-            label: 'Ankündigungen',
+            label: 'Announcements',
             component: 'content/hub/AnnouncementsCard',
             payload: static fn (ActiveEventData $event, Authenticatable $user): AnnouncementsCardData => app(AnnouncementsCard::class)($event, $user),
             order: 20,

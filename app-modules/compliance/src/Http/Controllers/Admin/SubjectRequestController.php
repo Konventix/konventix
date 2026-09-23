@@ -220,8 +220,9 @@ class SubjectRequestController
         } catch (InvalidArgumentException $exception) {
             // Wrong type or wrong state (a refused or non-ConsentWithdrawal
             // request) is a validation problem the operator can see and act
-            // on, not a server error.
-            throw ValidationException::withMessages(['request' => $exception->getMessage()]);
+            // on, not a server error. The two messages the Action throws are
+            // catalog keys, so the operator reads them in their own language.
+            throw ValidationException::withMessages(['request' => __($exception->getMessage())]);
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Withdrawal accepted.')]);

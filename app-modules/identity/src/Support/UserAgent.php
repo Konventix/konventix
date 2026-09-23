@@ -60,10 +60,10 @@ final class UserAgent
         $system = self::system($userAgent);
 
         return match (true) {
-            $browser !== null && $system !== null => "{$browser} on {$system}",
+            $browser !== null && $system !== null => __(':browser on :system', ['browser' => $browser, 'system' => $system]),
             $browser !== null => $browser,
             $system !== null => $system,
-            default => self::UNKNOWN,
+            default => __(self::UNKNOWN),
         };
     }
 

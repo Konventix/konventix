@@ -20,7 +20,6 @@ use Konventix\Support\Actions\PostSupportMessage;
 use Konventix\Support\Actions\SetExternalReference;
 use Konventix\Support\Actions\TransitionSupportRequest;
 use Konventix\Support\Data\SupportAssigneeInputData;
-use Konventix\Support\Data\SupportContextData;
 use Konventix\Support\Data\SupportExternalReferenceInputData;
 use Konventix\Support\Data\SupportInboxRowData;
 use Konventix\Support\Data\SupportKnownIssueInputData;
@@ -215,7 +214,7 @@ final class SupportRequestAdminController
             throw ValidationException::withMessages(['state' => $exception->getMessage()]);
         }
 
-        return $this->done("Moved to {$data->state->label()}.");
+        return $this->done(__('Moved to :state.', ['state' => $data->state->label()]));
     }
 
     /**
@@ -240,7 +239,7 @@ final class SupportRequestAdminController
 
         if ($assignee !== null && ! in_array($assignee, $triageHolders->forBrand($model->filed_on_brand_id), true)) {
             throw ValidationException::withMessages([
-                'assignedToUserId' => 'That account cannot triage reports here.',
+                'assignedToUserId' => __('That account cannot triage reports here.'),
             ]);
         }
 
@@ -255,7 +254,7 @@ final class SupportRequestAdminController
             context: ['from' => $previous, 'to' => $assignee],
         );
 
-        return $this->done($assignee === null ? 'Assignment cleared.' : 'Assigned.');
+        return $this->done($assignee === null ? __('Assignment cleared.') : __('Assigned.'));
     }
 
     /**
@@ -281,8 +280,8 @@ final class SupportRequestAdminController
         );
 
         return $this->done($data->isKnownIssue
-            ? 'Marked as a known issue; the report dialog will say so.'
-            : 'No longer a known issue.');
+            ? __('Marked as a known issue; the report dialog will say so.')
+            : __('No longer a known issue.'));
     }
 
     /**
@@ -310,7 +309,7 @@ final class SupportRequestAdminController
             context: ['from' => $previous, 'to' => $model->external_reference],
         );
 
-        return $this->done('External reference saved.');
+        return $this->done(__('External reference saved.'));
     }
 
     /**
@@ -336,8 +335,8 @@ final class SupportRequestAdminController
         );
 
         return $this->done($data->visibility->isVisibleToReporter()
-            ? 'Reply added to the thread.'
-            : 'Internal note added.');
+            ? __('Reply added to the thread.')
+            : __('Internal note added.'));
     }
 
     /**
@@ -413,15 +412,16 @@ final class SupportRequestAdminController
 
     /**
      * The brand host a report arrived on, or `Console` for one filed on the
-     * operator host — the same word the metric label and the context
-     * snapshot use, so nothing has to be translated between them.
+     * operator host — the word the metric label and the context snapshot
+     * use (`SupportContextData::CONSOLE_BRAND`), shown in the reader's
+     * language (ADR-0068).
      *
      * @param  array<string, string>|null  $names  pre-fetched names, for the list; null fetches the one
      */
     private function brandLabel(?string $brandId, ?array $names = null): string
     {
         if ($brandId === null) {
-            return ucfirst(SupportContextData::CONSOLE_BRAND);
+            return __('Console');
         }
 
         if ($names !== null) {

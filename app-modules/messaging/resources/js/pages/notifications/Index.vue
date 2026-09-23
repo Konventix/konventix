@@ -61,17 +61,24 @@ function plainBody(body: string): string {
 </script>
 
 <template>
-    <Head title="Notifications" />
+    <Head :title="$t('Notifications')" />
 
     <div class="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
         <header class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex flex-col gap-1">
-                <h1 class="text-2xl font-semibold text-text">Notifications</h1>
+                <h1 class="text-2xl font-semibold text-text">
+                    {{ $t('Notifications') }}
+                </h1>
                 <p class="text-sm text-text-muted">
                     <template v-if="props.unread > 0">
-                        {{ props.unread }} unread
+                        {{
+                            $tChoice(
+                                '{1} :count unread|[2,*] :count unread',
+                                props.unread,
+                            )
+                        }}
                     </template>
-                    <template v-else>Everything is read.</template>
+                    <template v-else>{{ $t('Everything is read.') }}</template>
                 </p>
             </div>
             <div class="flex items-center gap-2">
@@ -82,12 +89,12 @@ function plainBody(body: string): string {
                     @click="markAllRead"
                 >
                     <Check class="size-4" />
-                    Mark all read
+                    {{ $t('Mark all read') }}
                 </Button>
                 <Button variant="outline" size="sm" as-child>
                     <Link :href="notificationSettings()">
                         <Settings class="size-4" />
-                        Settings
+                        {{ $t('Settings') }}
                     </Link>
                 </Button>
             </div>
@@ -97,7 +104,7 @@ function plainBody(body: string): string {
             v-if="props.notifications.data.length === 0"
             class="rounded-lg border border-border bg-surface px-4 py-12 text-center text-sm text-text-muted"
         >
-            Nothing here yet.
+            {{ $t('Nothing here yet.') }}
         </p>
 
         <ul v-else class="flex flex-col gap-2">
@@ -127,7 +134,11 @@ function plainBody(body: string): string {
                     v-if="!notification.readAt"
                     variant="ghost"
                     size="icon"
-                    :aria-label="`Mark &quot;${notification.title}&quot; as read`"
+                    :aria-label="
+                        $t('Mark “:title” as read', {
+                            title: notification.title,
+                        })
+                    "
                     @click="markRead(notification)"
                 >
                     <Check class="size-4" />
@@ -138,7 +149,7 @@ function plainBody(body: string): string {
         <nav
             v-if="props.notifications.last_page > 1"
             class="flex items-center justify-between"
-            aria-label="Notification pages"
+            :aria-label="$t('Notification pages')"
         >
             <Button
                 variant="outline"
@@ -146,13 +157,16 @@ function plainBody(body: string): string {
                 :disabled="props.notifications.current_page <= 1"
                 @click="goToPage(props.notifications.current_page - 1)"
             >
-                Previous
+                {{ $t('Previous') }}
             </Button>
             <span class="text-sm text-text-muted">
-                Showing {{ props.notifications.from ?? 0 }}–{{
-                    props.notifications.to ?? 0
+                {{
+                    $t('Showing :from–:to of :total', {
+                        from: String(props.notifications.from ?? 0),
+                        to: String(props.notifications.to ?? 0),
+                        total: String(props.notifications.total),
+                    })
                 }}
-                of {{ props.notifications.total }}
             </span>
             <Button
                 variant="outline"
@@ -163,7 +177,7 @@ function plainBody(body: string): string {
                 "
                 @click="goToPage(props.notifications.current_page + 1)"
             >
-                Next
+                {{ $t('Next') }}
             </Button>
         </nav>
     </div>

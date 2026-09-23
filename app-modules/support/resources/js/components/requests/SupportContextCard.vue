@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ExternalLink } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,17 +40,17 @@ const props = defineProps<{
 const correlationIds = computed(() => [
     {
         key: 'page',
-        label: 'Page correlation id',
+        label: trans('Page correlation id'),
         value: props.context.pageCorrelationId,
         logs: props.pageLogsUrl,
-        hint: 'The page that misbehaved.',
+        hint: trans('The page that misbehaved.'),
     },
     {
         key: 'submit',
-        label: 'Submit correlation id',
+        label: trans('Submit correlation id'),
         value: props.context.submitCorrelationId,
         logs: props.submitLogsUrl,
-        hint: 'The request that filed this report.',
+        hint: trans('The request that filed this report.'),
     },
 ]);
 
@@ -66,7 +67,7 @@ function copy(value: string | null): void {
 <template>
     <Card>
         <CardHeader>
-            <CardTitle>What the browser sent</CardTitle>
+            <CardTitle>{{ $t('What the browser sent') }}</CardTitle>
         </CardHeader>
         <CardContent class="flex flex-col gap-4 text-sm">
             <div
@@ -86,40 +87,40 @@ function copy(value: string | null): void {
                         size="sm"
                         @click="copy(id.value)"
                     >
-                        Copy
+                        {{ $t('Copy') }}
                     </Button>
                     <Button v-if="id.logs" variant="outline" size="sm" as-child>
                         <a :href="id.logs" target="_blank" rel="noopener">
                             <ExternalLink class="size-4" aria-hidden="true" />
-                            Find in logs
+                            {{ $t('Find in logs') }}
                         </a>
                     </Button>
                 </div>
             </div>
 
             <dl class="grid grid-cols-[10rem_1fr] gap-x-3 gap-y-2">
-                <dt class="text-text-muted">Brand</dt>
+                <dt class="text-text-muted">{{ $t('Brand') }}</dt>
                 <dd>{{ props.brandLabel }}</dd>
 
-                <dt class="text-text-muted">Route</dt>
+                <dt class="text-text-muted">{{ $t('Route') }}</dt>
                 <dd class="font-mono text-xs break-all">
                     {{ props.context.route ?? '—' }}
                 </dd>
 
-                <dt class="text-text-muted">URL</dt>
+                <dt class="text-text-muted">{{ $t('URL') }}</dt>
                 <dd class="text-xs break-all">
                     {{ props.context.url ?? '—' }}
                 </dd>
 
-                <dt class="text-text-muted">Release</dt>
+                <dt class="text-text-muted">{{ $t('Release') }}</dt>
                 <dd class="tabular-nums">{{ props.context.release ?? '—' }}</dd>
 
-                <dt class="text-text-muted">Previous page</dt>
+                <dt class="text-text-muted">{{ $t('Previous page') }}</dt>
                 <dd class="text-xs break-all">
                     {{ props.context.previousUrl ?? '—' }}
                 </dd>
 
-                <dt class="text-text-muted">Viewport</dt>
+                <dt class="text-text-muted">{{ $t('Viewport') }}</dt>
                 <dd class="tabular-nums">
                     {{
                         props.context.viewport
@@ -128,22 +129,22 @@ function copy(value: string | null): void {
                     }}
                 </dd>
 
-                <dt class="text-text-muted">Sent</dt>
+                <dt class="text-text-muted">{{ $t('Sent') }}</dt>
                 <dd>
                     <time :datetime="props.context.receivedAt ?? undefined">
                         {{ formatDateTime(props.context.receivedAt) || '—' }}
                     </time>
                 </dd>
 
-                <dt class="text-text-muted">Last script error</dt>
+                <dt class="text-text-muted">{{ $t('Last script error') }}</dt>
                 <dd class="text-xs break-all">
-                    {{ props.context.lastClientError ?? 'None' }}
+                    {{ props.context.lastClientError ?? $t('None') }}
                 </dd>
             </dl>
 
             <div class="flex flex-col gap-1">
                 <h3 class="text-xs font-medium text-text-muted">
-                    The last five pages before the report
+                    {{ $t('The last five pages before the report') }}
                 </h3>
                 <ol
                     v-if="props.context.recentVisits.length > 0"
@@ -158,8 +159,11 @@ function copy(value: string | null): void {
                     </li>
                 </ol>
                 <p v-else class="text-xs text-text-muted">
-                    Nothing recorded — the report came from the first page of
-                    the visit.
+                    {{
+                        $t(
+                            'Nothing recorded — the report came from the first page of the visit.',
+                        )
+                    }}
                 </p>
             </div>
         </CardContent>

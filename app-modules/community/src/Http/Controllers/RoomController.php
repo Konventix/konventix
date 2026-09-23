@@ -43,7 +43,7 @@ use Konventix\Platform\Hub\ActiveEventContext;
  * the reads are `WallReader`'s. A refusal from either Action becomes a
  * validation error on the field it names, through
  * `ShoutboxWriteException::toValidationException()` — this class never
- * branches on a cause and never reads the German sentence.
+ * branches on a cause and never reads the sentence.
  *
  * The JSON endpoints answer the room page's and the card's `fetch()`
  * calls; the page itself is an Inertia visit.

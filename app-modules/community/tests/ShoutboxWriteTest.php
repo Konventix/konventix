@@ -44,7 +44,7 @@ it('refuses the sixth message in ten seconds', function (): void {
     }
 
     expect(fn () => $post->handle($room, $userId, new PostMessageData('Nachricht 6')))
-        ->toThrow(ShoutboxWriteException::class, 'Du schreibst zu schnell')
+        ->toThrow(ShoutboxWriteException::class, 'You are posting too fast')
         // The sixth must not have landed either: a refusal that still wrote
         // the row would be a limit in the message only.
         ->and(Message::query()->where('room_id', $room->id)->count())->toBe(5);
@@ -87,7 +87,7 @@ it('refuses a muted participant and names the reason and the remaining time', fu
     // D-COM-08: the muted person is shown the reason and how long it runs —
     // a silent mute reads as a broken app.
     expect(fn () => app(PostMessage::class)->handle($room, $userId, new PostMessageData('Hallo')))
-        ->toThrow(ShoutboxWriteException::class, 'Du kannst 10 Minuten nicht schreiben: Spam')
+        ->toThrow(ShoutboxWriteException::class, 'You cannot post for 10 minutes: Spam')
         ->and(Message::query()->where('room_id', $room->id)->count())->toBe(0);
 });
 
@@ -105,7 +105,7 @@ it('refuses a participant muted for the rest of the event, with no expiry to nam
 
     expect($mute->expires_at)->toBeNull()
         ->and(fn () => app(PostMessage::class)->handle($room, $userId, new PostMessageData('Hallo')))
-        ->toThrow(ShoutboxWriteException::class, 'Du kannst bis zum Ende des Events nicht schreiben: Dauerhaft');
+        ->toThrow(ShoutboxWriteException::class, 'You cannot post for the rest of the event: Dauerhaft');
 });
 
 it('lets a participant post again once the mute has expired', function (): void {
@@ -139,7 +139,7 @@ it('refuses every post in a locked room and still reads the room', function (): 
     app(LockRoom::class)->handle($room, (string) Str::ulid(), 'Eskaliert');
 
     expect(fn () => app(PostMessage::class)->handle($room, $userId, new PostMessageData('Nach dem Lock')))
-        ->toThrow(ShoutboxWriteException::class, 'Die Wall ist gerade gesperrt')
+        ->toThrow(ShoutboxWriteException::class, 'The wall is locked right now')
         // Readable, not writable (design §6): the line posted before the
         // lock is still there.
         ->and(Message::query()->where('room_id', $room->id)->pluck('body')->all())->toBe(['Vor dem Lock']);
@@ -181,7 +181,7 @@ it('refuses every post in a closed room, which unlocking cannot reopen', functio
 
     expect($room->refresh()->locked_at)->not->toBeNull()
         ->and(fn () => app(PostMessage::class)->handle($room, $userId, new PostMessageData('Hallo')))
-        ->toThrow(ShoutboxWriteException::class, 'beendet');
+        ->toThrow(ShoutboxWriteException::class, 'has closed');
 });
 
 it('refuses a body over the 500-character cap in the Action, not at the column', function (): void {
@@ -193,7 +193,7 @@ it('refuses a body over the 500-character cap in the Action, not at the column',
     // QueryException and a 500 rather than an answer. The Action has to be
     // the thing that says no (design §6).
     expect(fn () => app(PostMessage::class)->handle($room, (string) Str::ulid(), new PostMessageData(str_repeat('a', 501))))
-        ->toThrow(ShoutboxWriteException::class, 'maximal 500 Zeichen')
+        ->toThrow(ShoutboxWriteException::class, 'at most 500 characters')
         ->and(Message::query()->where('room_id', $room->id)->count())->toBe(0);
 });
 
@@ -203,7 +203,7 @@ it('refuses a body that is only whitespace', function (): void {
     $room = Room::factory()->create();
 
     expect(fn () => app(PostMessage::class)->handle($room, (string) Str::ulid(), new PostMessageData("   \n  ")))
-        ->toThrow(ShoutboxWriteException::class, 'leer');
+        ->toThrow(ShoutboxWriteException::class, 'is empty');
 });
 
 it('publishes ShoutboxMessagePosted once, carrying no body', function (): void {
@@ -315,7 +315,7 @@ it('refuses a room whose subject is not an event, rather than publishing a match
         ->and(Message::query()->where('room_id', $room->id)->count())->toBe(0);
 });
 
-it('names a machine-readable cause and a countdown for the sixth message, so no surface reads the German', function (): void {
+it('names a machine-readable cause and a countdown for the sixth message, so no surface reads the sentence', function (): void {
     $this->withBrand();
     $this->freezeTime();
 

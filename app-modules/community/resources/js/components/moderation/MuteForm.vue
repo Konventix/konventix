@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
+import { trans, transChoice } from 'laravel-vue-i18n';
+import { computed } from 'vue';
 import ModerationController from '@/actions/Konventix/Community/Http/Controllers/ModerationController';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -9,8 +11,8 @@ import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 
 /**
  * The desk's mute form (D-COM-08): a duration and a reason the muted person
- * is shown — "Du kannst 10 Minuten nicht schreiben: Spam". Console copy, so
- * English; the reason is the one sentence here a participant reads.
+ * is shown — "You cannot post for 10 minutes: Spam". Console copy; the
+ * reason is the one sentence here a participant reads, as typed.
  *
  * The server validates through `MuteData`, so a reason past its cap comes
  * back as a field error; `maxLength` is that same cap, handed over by the
@@ -30,13 +32,22 @@ const form = useForm({
     minutes: 10 as number | null,
 });
 
-const durations: Array<{ label: string; minutes: number | null }> = [
-    { label: '5 minutes', minutes: 5 },
-    { label: '10 minutes', minutes: 10 },
-    { label: '30 minutes', minutes: 30 },
-    { label: '1 hour', minutes: 60 },
-    { label: 'Rest of the event', minutes: null },
-];
+const durations = computed<Array<{ label: string; minutes: number | null }>>(
+    () => [
+        ...[5, 10, 30].map((minutes) => ({
+            label: transChoice(
+                '{1} :count minute|[2,*] :count minutes',
+                minutes,
+            ),
+            minutes,
+        })),
+        {
+            label: transChoice('{1} :count hour|[2,*] :count hours', 1),
+            minutes: 60,
+        },
+        { label: trans('Rest of the event'), minutes: null },
+    ],
+);
 
 useUnsavedChanges(() => form.isDirty);
 
@@ -51,12 +62,12 @@ function submit(): void {
 <template>
     <Card class="border-border bg-surface">
         <CardHeader>
-            <CardTitle>Mute {{ target.name }}</CardTitle>
+            <CardTitle>{{ $t('Mute :name', { name: target.name }) }}</CardTitle>
         </CardHeader>
         <CardContent>
             <form class="flex flex-col gap-4" @submit.prevent="submit">
                 <div class="grid gap-2">
-                    <Label for="mute-minutes">Duration</Label>
+                    <Label for="mute-minutes">{{ $t('Duration') }}</Label>
                     <select
                         id="mute-minutes"
                         v-model="form.minutes"
@@ -64,7 +75,7 @@ function submit(): void {
                     >
                         <option
                             v-for="duration in durations"
-                            :key="duration.label"
+                            :key="String(duration.minutes)"
                             :value="duration.minutes"
                         >
                             {{ duration.label }}
@@ -74,7 +85,7 @@ function submit(): void {
                 </div>
                 <div class="grid gap-2">
                     <Label for="mute-reason">
-                        Reason — shown to the participant
+                        {{ $t('Reason — shown to the participant') }}
                     </Label>
                     <input
                         id="mute-reason"
@@ -88,21 +99,21 @@ function submit(): void {
                 </div>
                 <div class="flex items-center gap-3">
                     <Button type="submit" :disabled="form.processing">
-                        Mute
+                        {{ $t('Mute') }}
                     </Button>
                     <Button
                         type="button"
                         variant="ghost"
                         @click="emit('close')"
                     >
-                        Cancel
+                        {{ $t('Cancel') }}
                     </Button>
                     <span
                         v-if="form.isDirty"
                         role="status"
                         class="text-sm text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
             </form>

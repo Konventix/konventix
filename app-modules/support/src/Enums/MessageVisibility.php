@@ -22,8 +22,8 @@ enum MessageVisibility: string
     public function label(): string
     {
         return match ($this) {
-            self::External => 'Reply to the reporter',
-            self::Internal => 'Internal note',
+            self::External => __('Reply to the reporter'),
+            self::Internal => __('Internal note'),
         };
     }
 

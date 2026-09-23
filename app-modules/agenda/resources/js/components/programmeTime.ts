@@ -1,3 +1,4 @@
+import { trans } from 'laravel-vue-i18n';
 import { formatTime } from '@/lib/datetime';
 
 /**
@@ -29,11 +30,11 @@ export function timeLabel(span: TimeSpan): string {
     }
 
     if (span.startsAt !== null) {
-        return `ab ${formatTime(span.startsAt)}`;
+        return trans('from :time', { time: formatTime(span.startsAt) });
     }
 
     if (span.endsAt !== null) {
-        return `bis ${formatTime(span.endsAt)}`;
+        return trans('until :time', { time: formatTime(span.endsAt) });
     }
 
     return '';

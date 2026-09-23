@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { Flag } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed, h } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -19,6 +20,7 @@ import {
     index as commentsIndex,
     moderate as moderateComment,
 } from '@/routes/admin/content/comments';
+import { commentStateLabel } from '../../../../lib/labels';
 
 /**
  * The moderation queue. It opens on "needs attention" — pending plus anything
@@ -91,20 +93,20 @@ const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
 const filterDefs = computed<DataTableFilterDef[]>(() => [
     {
         name: 'state',
-        label: 'Comments',
+        label: trans('Comments'),
         value: props.filters.state,
         options: [
-            { value: 'attention', label: 'Needs attention' },
+            { value: 'attention', label: trans('Needs attention') },
             ...props.states.map((state) => ({
                 value: state,
-                label: state[0].toUpperCase() + state.slice(1),
+                label: commentStateLabel(state),
             })),
         ],
         clearValue: 'all',
     },
     {
         name: 'brand',
-        label: 'Brands',
+        label: trans('Brands'),
         value: props.filters.brand,
         options: props.brands.map((brand) => ({
             value: brand.id,
@@ -153,7 +155,7 @@ function moderate(
 const columns: ColumnDef<CommentRow>[] = [
     {
         id: 'comment',
-        header: 'Comment',
+        header: trans('Comment'),
         cell: ({ row }) =>
             h('div', { class: 'flex max-w-xl flex-col gap-1' }, [
                 h(
@@ -190,7 +192,7 @@ const columns: ColumnDef<CommentRow>[] = [
     },
     {
         accessorKey: 'state',
-        header: 'State',
+        header: trans('State'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -198,12 +200,12 @@ const columns: ColumnDef<CommentRow>[] = [
                 {
                     class: `inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${stateClasses[row.original.state] ?? 'bg-subtle text-text-muted'}`,
                 },
-                row.original.state,
+                commentStateLabel(row.original.state),
             ),
     },
     {
         accessorKey: 'report_count',
-        header: 'Reports',
+        header: trans('Reports'),
         enableSorting: true,
         cell: ({ row }) =>
             row.original.reportCount > 0
@@ -219,7 +221,7 @@ const columns: ColumnDef<CommentRow>[] = [
     },
     {
         accessorKey: 'reaction_count',
-        header: 'Likes',
+        header: trans('Likes'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -230,7 +232,7 @@ const columns: ColumnDef<CommentRow>[] = [
     },
     {
         accessorKey: 'created_at',
-        header: 'Posted',
+        header: trans('Posted'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -254,7 +256,7 @@ const columns: ColumnDef<CommentRow>[] = [
                               variant: 'outline',
                               onClick: () => moderate(row.original, 'approved'),
                           },
-                          () => 'Approve',
+                          () => trans('Approve'),
                       )
                     : null,
                 row.original.state === 'pending'
@@ -265,7 +267,7 @@ const columns: ColumnDef<CommentRow>[] = [
                               variant: 'outline',
                               onClick: () => moderate(row.original, 'rejected'),
                           },
-                          () => 'Reject',
+                          () => trans('Reject'),
                       )
                     : null,
                 row.original.state !== 'hidden' &&
@@ -277,7 +279,7 @@ const columns: ColumnDef<CommentRow>[] = [
                               variant: 'outline',
                               onClick: () => moderate(row.original, 'hidden'),
                           },
-                          () => 'Hide',
+                          () => trans('Hide'),
                       )
                     : null,
             ]),
@@ -286,19 +288,19 @@ const columns: ColumnDef<CommentRow>[] = [
 </script>
 
 <template>
-    <Head title="Comments" />
+    <Head :title="$t('Comments')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Comments"
-            description="Moderation queue across every brand"
+            :title="$t('Comments')"
+            :description="$t('Moderation queue across every brand')"
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
             :filters="filterDefs"
-            search-placeholder="Search comment text…"
+            :search-placeholder="$t('Search comment text…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
             @update:filter="setFilter"
@@ -310,8 +312,8 @@ const columns: ColumnDef<CommentRow>[] = [
             :data="props.comments.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="comments"
-            empty-message="Nothing to moderate."
+            :items-label="$t('comments')"
+            :empty-message="$t('Nothing to moderate.')"
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />

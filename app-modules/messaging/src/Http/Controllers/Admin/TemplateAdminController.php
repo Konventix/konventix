@@ -254,7 +254,7 @@ class TemplateAdminController
         try {
             $rendered = $this->renderer->renderString($data->subject, $data->body, $data->locale, $template->sample);
         } catch (Throwable $exception) {
-            return response()->json(['message' => "The template does not compile: {$exception->getMessage()}"], 422);
+            return response()->json(['message' => __('The template does not compile: :error', ['error' => $exception->getMessage()])], 422);
         }
 
         $wrapped = MailLayout::wrap($rendered, $this->identity->for($brandId), preferencesUrl: null);

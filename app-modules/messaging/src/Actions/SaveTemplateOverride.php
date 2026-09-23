@@ -44,7 +44,7 @@ final class SaveTemplateOverride
             $this->renderer->renderString($subject, $body, $locale, $template->sample);
         } catch (Throwable $exception) {
             throw ValidationException::withMessages([
-                'body' => "The template does not compile: {$exception->getMessage()}",
+                'body' => __('The template does not compile: :error', ['error' => $exception->getMessage()]),
             ]);
         }
 

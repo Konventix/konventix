@@ -8,9 +8,9 @@ namespace Konventix\Community\Enums;
  * Why a shoutbox write was refused, in a form a surface can branch on
  * (spec §6, D-COM-08, D-COM-09).
  *
- * **`ShoutboxWriteException`'s sentence is German prose for a participant
+ * **`ShoutboxWriteException`'s sentence is translated prose for a participant
  * to read; this is the machine-readable half, and no surface should ever
- * parse the former to work out the latter.** ADR-0001 keeps the German in
+ * parse the former to work out the latter.** The sentence lives in
  * exactly one place — the exception — which only works if the code that
  * renders it has another way to ask what happened.
  *

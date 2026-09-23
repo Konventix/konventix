@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { nextTick, ref, useId } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -64,10 +65,10 @@ function submit(): void {
         preserveState: true,
         onSuccess: () => {
             form.reset();
-            announce('Your reply was added to this report.');
+            announce(trans('Your reply was added to this report.'));
         },
         onError: (errors) => {
-            announce(errors.body ?? 'Your reply could not be added.');
+            announce(errors.body ?? trans('Your reply could not be added.'));
         },
     });
 }
@@ -90,14 +91,14 @@ function announce(sentence: string): void {
         aria-labelledby="support-thread-heading"
     >
         <h2 id="support-thread-heading" class="text-base font-medium">
-            The conversation
+            {{ $t('The conversation') }}
         </h2>
 
         <article
             class="flex flex-col gap-1 rounded-xl border border-border bg-surface-raised p-4"
         >
             <p class="text-xs text-text-muted">
-                You ·
+                {{ $t('You') }} ·
                 <time :datetime="props.createdAt ?? undefined">
                     {{ formatDateTime(props.createdAt) }}
                 </time>
@@ -115,7 +116,9 @@ function announce(sentence: string): void {
                 >
                     <p class="text-xs text-text-muted">
                         <span class="font-medium text-text">
-                            {{ entry.isFromReporter ? 'You' : 'Support' }}
+                            {{
+                                entry.isFromReporter ? $t('You') : $t('Support')
+                            }}
                         </span>
                         ·
                         <time :datetime="entry.createdAt ?? undefined">
@@ -143,7 +146,9 @@ function announce(sentence: string): void {
             @submit.prevent="submit"
         >
             <div class="grid gap-2">
-                <Label :for="bodyId">Add something to this report</Label>
+                <Label :for="bodyId">{{
+                    $t('Add something to this report')
+                }}</Label>
                 <Textarea
                     :id="bodyId"
                     v-model="form.body"
@@ -164,21 +169,24 @@ function announce(sentence: string): void {
                     type="submit"
                     :disabled="form.processing || form.body.trim() === ''"
                 >
-                    Send reply
+                    {{ $t('Send reply') }}
                 </Button>
                 <span
                     v-if="form.isDirty"
                     role="status"
                     class="text-xs text-warning"
                 >
-                    Unsaved changes
+                    {{ $t('Unsaved changes') }}
                 </span>
             </div>
         </form>
 
         <p v-else class="text-sm text-text-muted">
-            This report is closed, so it takes no further replies. If it is
-            still happening, please file a new one.
+            {{
+                $t(
+                    'This report is closed, so it takes no further replies. If it is still happening, please file a new one.',
+                )
+            }}
         </p>
     </section>
 </template>

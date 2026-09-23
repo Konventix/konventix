@@ -23,7 +23,7 @@ defineOptions({ layout: AppTopbarLayout });
 </script>
 
 <template>
-    <Head title="Settings" />
+    <Head :title="$t('Settings')" />
 
     <!-- Same container as the settings layout, so the hub and its sections
          line up at the same width and the same offset. -->
@@ -36,8 +36,8 @@ defineOptions({ layout: AppTopbarLayout });
         -->
         <Heading
             as="h1"
-            title="Settings"
-            description="Manage your profile and account settings"
+            :title="$t('Settings')"
+            :description="$t('Manage your profile and account settings')"
         />
 
         <ul class="grid gap-3 sm:grid-cols-2">

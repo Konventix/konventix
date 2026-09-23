@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import { Flag } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import {
     computed,
     nextTick,
@@ -26,7 +27,7 @@ import WallLineItem from '../../../components/shoutbox/WallLine.vue';
  * The event's room at `/live/shoutbox` (design §8): the full-height wall,
  * who is here, and scrolling upward into what was said before. Admitted
  * participants only — the controller answers everyone else with a 404
- * before this renders. German throughout (ADR-0001).
+ * before this renders. Speaks from the catalog (ADR-0068).
  *
  * The wall, the channel and the compose box are the same pieces the hub
  * card uses (`components/shoutbox/`); this page adds the older pages, the
@@ -132,34 +133,40 @@ onMounted(() => {
 
 onBeforeUnmount(() => observer?.disconnect());
 
-const statusLabel: Record<Konventix.Community.Enums.ConnectionStatus, string> =
-    {
-        online: 'online',
-        away: 'abwesend',
-        offline: 'offline',
-    };
+function statusLabel(
+    status: Konventix.Community.Enums.ConnectionStatus,
+): string {
+    switch (status) {
+        case 'online':
+            return trans('Online');
+        case 'away':
+            return trans('Away');
+        case 'offline':
+            return trans('Offline');
+    }
+}
 </script>
 
 <template>
-    <Head title="Shoutbox" />
+    <Head :title="$t('Shoutbox')" />
 
     <div class="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6">
         <div class="flex flex-wrap items-start justify-between gap-3">
             <Heading
                 as="h1"
-                title="Shoutbox"
+                :title="$t('Shoutbox')"
                 :description="props.room.eventName ?? undefined"
             />
             <Link
                 :href="hub().url"
                 class="text-sm text-accent underline-offset-4 hover:underline"
             >
-                Zurück zum Live-Hub
+                {{ $t('Back to the live hub') }}
             </Link>
         </div>
 
         <div class="grid grid-cols-1 gap-6 md:grid-cols-[1fr_16rem]">
-            <section class="flex flex-col gap-4" aria-label="Nachrichten">
+            <section class="flex flex-col gap-4" :aria-label="$t('Messages')">
                 <div
                     ref="scroller"
                     class="flex h-[60vh] flex-col gap-3 overflow-y-auto rounded-md border border-border bg-surface p-4"
@@ -174,13 +181,17 @@ const statusLabel: Record<Konventix.Community.Enums.ConnectionStatus, string> =
                         :disabled="loadingOlder"
                         @click="older"
                     >
-                        Ältere Nachrichten laden
+                        {{ $t('Load older messages') }}
                     </Button>
                     <p
                         v-if="entries.length === 0 && pending.length === 0"
                         class="text-sm text-text-muted"
                     >
-                        Noch ist es still hier. Schreib die erste Nachricht.
+                        {{
+                            $t(
+                                "It's quiet here so far. Write the first message.",
+                            )
+                        }}
                     </p>
                     <ul class="flex flex-col gap-3" aria-live="polite">
                         <WallLineItem
@@ -198,7 +209,7 @@ const statusLabel: Record<Konventix.Community.Enums.ConnectionStatus, string> =
                                 <button
                                     type="button"
                                     class="ml-auto text-text-muted hover:text-text"
-                                    aria-label="Nachricht melden"
+                                    :aria-label="$t('Report message')"
                                     @click="reporting = entry"
                                 >
                                     <Flag class="size-3.5" aria-hidden="true" />
@@ -211,7 +222,7 @@ const statusLabel: Record<Konventix.Community.Enums.ConnectionStatus, string> =
                             class="text-sm text-text-muted"
                         >
                             {{ line.body }}
-                            <span class="text-xs">(wird gesendet …)</span>
+                            <span class="text-xs">{{ $t('(sending …)') }}</span>
                         </li>
                     </ul>
                 </div>
@@ -234,10 +245,10 @@ const statusLabel: Record<Konventix.Community.Enums.ConnectionStatus, string> =
                     id="presence-heading"
                     class="text-base font-medium text-text"
                 >
-                    Wer ist da
+                    {{ $t("Who's here") }}
                 </h2>
                 <p v-if="presence.length === 0" class="text-sm text-text-muted">
-                    Gerade niemand.
+                    {{ $t('Nobody right now.') }}
                 </p>
                 <ul v-else class="flex flex-col gap-2">
                     <li
@@ -260,17 +271,17 @@ const statusLabel: Record<Konventix.Community.Enums.ConnectionStatus, string> =
                             aria-hidden="true"
                         />
                         <span class="truncate">
-                            {{ person.displayName ?? 'Unbekannt' }}
+                            {{ person.displayName ?? $t('Unknown') }}
                         </span>
                         <span class="sr-only"
-                            >({{ statusLabel[person.status] }})</span
+                            >({{ statusLabel(person.status) }})</span
                         >
                         <Badge
                             v-if="person.checkedIn"
                             variant="secondary"
                             class="ml-auto"
                         >
-                            Eingecheckt
+                            {{ $t('Checked in') }}
                         </Badge>
                     </li>
                 </ul>

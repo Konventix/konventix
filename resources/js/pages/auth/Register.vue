@@ -19,7 +19,7 @@ defineOptions({
 </script>
 
 <template>
-    <Head title="Register" />
+    <Head :title="$t('Create an account')" />
 
     <Form
         v-bind="register.store.form()"
@@ -29,7 +29,7 @@ defineOptions({
     >
         <div class="grid gap-6">
             <div class="grid gap-2">
-                <Label for="name">Name</Label>
+                <Label for="name">{{ $t('Name') }}</Label>
                 <Input
                     id="name"
                     type="text"
@@ -38,13 +38,13 @@ defineOptions({
                     autofocus
                     :tabindex="1"
                     autocomplete="name"
-                    placeholder="Full name"
+                    :placeholder="$t('Full name')"
                 />
                 <InputError :message="errors.name" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="username">Username</Label>
+                <Label for="username">{{ $t('Username') }}</Label>
                 <Input
                     id="username"
                     type="text"
@@ -55,14 +55,17 @@ defineOptions({
                     placeholder="ada-lovelace"
                 />
                 <p class="text-sm text-text-muted">
-                    Your public handle: lowercase letters, numbers and hyphens
-                    only, starting and ending with a letter or number.
+                    {{
+                        $t(
+                            'Your public handle: lowercase letters, numbers and hyphens only, starting and ending with a letter or number.',
+                        )
+                    }}
                 </p>
                 <InputError :message="errors.username" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="email">Email address</Label>
+                <Label for="email">{{ $t('Email address') }}</Label>
                 <Input
                     id="email"
                     type="email"
@@ -76,27 +79,29 @@ defineOptions({
             </div>
 
             <div class="grid gap-2">
-                <Label for="password">Password</Label>
+                <Label for="password">{{ $t('Password') }}</Label>
                 <PasswordInput
                     id="password"
                     name="password"
                     required
                     :tabindex="4"
                     autocomplete="new-password"
-                    placeholder="Password"
+                    :placeholder="$t('Password')"
                 />
                 <InputError :message="errors.password" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="password_confirmation">Confirm password</Label>
+                <Label for="password_confirmation">{{
+                    $t('Confirm password')
+                }}</Label>
                 <PasswordInput
                     id="password_confirmation"
                     name="password_confirmation"
                     required
                     :tabindex="5"
                     autocomplete="new-password"
-                    placeholder="Confirm password"
+                    :placeholder="$t('Confirm password')"
                 />
                 <InputError :message="errors.password_confirmation" />
             </div>
@@ -109,13 +114,15 @@ defineOptions({
                 data-test="register-user-button"
             >
                 <Spinner v-if="processing" />
-                Create account
+                {{ $t('Create account') }}
             </Button>
         </div>
 
         <div class="space-x-1 text-center text-sm text-muted-foreground">
-            <span>Already have an account?</span>
-            <TextLink :href="login()" :tabindex="6">Log in</TextLink>
+            <span>{{ $t('Already have an account?') }}</span>
+            <TextLink :href="login()" :tabindex="6">{{
+                $t('Log in')
+            }}</TextLink>
         </div>
     </Form>
 </template>

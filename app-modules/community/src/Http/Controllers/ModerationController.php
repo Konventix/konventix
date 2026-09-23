@@ -92,7 +92,7 @@ final class ModerationController
 
         $lockRoom->handle($room, $this->moderatorId($request), is_string($reason) ? $reason : null);
 
-        return $this->done($event, 'Wall locked.');
+        return $this->done($event, __('Wall locked.'));
     }
 
     public function unlock(string $event, UnlockRoom $unlockRoom): RedirectResponse
@@ -101,7 +101,7 @@ final class ModerationController
 
         $unlockRoom->handle($this->room($event));
 
-        return $this->done($event, 'Wall unlocked.');
+        return $this->done($event, __('Wall unlocked.'));
     }
 
     /**
@@ -125,7 +125,7 @@ final class ModerationController
 
         $removeMessage->handle($line, $this->moderatorId($request), (string) $validated['reason']);
 
-        return $this->done($event, 'Line removed.');
+        return $this->done($event, __('Line removed.'));
     }
 
     /**
@@ -143,7 +143,7 @@ final class ModerationController
 
         $muteParticipant->handle($room, $user, $this->moderatorId($request), $data->reason, $data->minutes);
 
-        return $this->done($event, 'Participant muted.');
+        return $this->done($event, __('Participant muted.'));
     }
 
     public function unmute(string $event, string $user, UnmuteParticipant $unmuteParticipant): RedirectResponse
@@ -152,7 +152,7 @@ final class ModerationController
 
         $unmuteParticipant->handle($this->room($event), $user);
 
-        return $this->done($event, 'Mute lifted.');
+        return $this->done($event, __('Mute lifted.'));
     }
 
     public function resolve(Request $request, string $event, string $report, ResolveReport $resolveReport): RedirectResponse
@@ -179,7 +179,7 @@ final class ModerationController
             $state,
         );
 
-        return $this->done($event, $state === ReportState::Resolved ? 'Report resolved.' : 'Report dismissed.');
+        return $this->done($event, $state === ReportState::Resolved ? __('Report resolved.') : __('Report dismissed.'));
     }
 
     /**

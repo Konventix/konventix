@@ -34,12 +34,10 @@ final class SocialIdentityAlreadyLinked extends RuntimeException
      */
     public static function forUsername(string $provider, string $username): self
     {
-        $label = ucfirst($provider);
-
-        return new self(
-            "That {$label} account is already linked to the account “{$username}”. "
-            .'Sign in there to disconnect it first, or contact support if that account is not yours.'
-        );
+        return new self(__(
+            'That :provider account is already linked to the account “:username”. Sign in there to disconnect it first, or contact support if that account is not yours.',
+            ['provider' => ucfirst($provider), 'username' => $username],
+        ));
     }
 
     /**
@@ -50,11 +48,9 @@ final class SocialIdentityAlreadyLinked extends RuntimeException
      */
     public static function providerAlreadyConnected(string $provider): self
     {
-        $label = ucfirst($provider);
-
-        return new self(
-            "A different {$label} account is already connected to your account. "
-            ."Disconnect the connected {$label} account first, then connect this one."
-        );
+        return new self(__(
+            'A different :provider account is already connected to your account. Disconnect the connected :provider account first, then connect this one.',
+            ['provider' => ucfirst($provider)],
+        ));
     }
 }

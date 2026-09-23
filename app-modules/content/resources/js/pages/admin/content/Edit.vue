@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, ExternalLink } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DateTimeField from '@/components/datetime/DateTimeField.vue';
@@ -20,6 +21,12 @@ import {
     update as updateEntry,
 } from '@/routes/admin/content';
 import { index as commentsIndex } from '@/routes/admin/content/comments';
+import {
+    audienceLabel,
+    contentTypeLabel,
+    publicationStateLabel,
+    urgencyLabel,
+} from '../../../lib/labels';
 import { publishedAtInstant } from './publishForm';
 
 /**
@@ -81,6 +88,10 @@ const stateClasses: Record<Konventix.Content.Enums.PublicationState, string> = {
 /** Empty means "now"; a future moment schedules instead of publishing. */
 const publishAt = ref('');
 
+const publishLabel = computed<string>(() =>
+    publishAt.value === '' ? trans('Publish') : trans('Schedule publication'),
+);
+
 function submit(): void {
     form.transform((data) => ({
         ...data,
@@ -112,12 +123,12 @@ function archive(): void {
 </script>
 
 <template>
-    <Head :title="`${props.entry.title} — Content`" />
+    <Head :title="$t(':title — Content', { title: props.entry.title })" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
             :title="props.entry.title"
-            :description="`${props.entry.type} · ${props.entry.brandName}`"
+            :description="`${contentTypeLabel(props.entry.type)} · ${props.entry.brandName}`"
         >
             <span
                 class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
@@ -126,18 +137,18 @@ function archive(): void {
                     'bg-subtle text-text-muted'
                 "
             >
-                {{ props.entry.state }}
+                {{ publicationStateLabel(props.entry.state) }}
             </span>
             <Button v-if="props.entry.publicUrl" variant="outline" as-child>
                 <a :href="props.entry.publicUrl" target="_blank" rel="noopener">
                     <ExternalLink class="size-4" />
-                    View
+                    {{ $t('View public page') }}
                 </a>
             </Button>
             <Button variant="outline" as-child>
                 <Link :href="contentIndex().url">
                     <ArrowLeft class="size-4" />
-                    All content
+                    {{ $t('All content') }}
                 </Link>
             </Button>
         </AdminPageHeader>
@@ -145,13 +156,13 @@ function archive(): void {
         <div class="grid gap-6 lg:grid-cols-3">
             <Card class="lg:col-span-2">
                 <CardHeader>
-                    <CardTitle>Content</CardTitle>
+                    <CardTitle>{{ $t('Content') }}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <form class="flex flex-col gap-4" @submit.prevent="submit">
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div class="grid gap-2">
-                                <Label for="entry-type">Type</Label>
+                                <Label for="entry-type">{{ $t('Type') }}</Label>
                                 <select
                                     id="entry-type"
                                     v-model="form.type"
@@ -162,13 +173,15 @@ function archive(): void {
                                         :key="type"
                                         :value="type"
                                     >
-                                        {{ type }}
+                                        {{ contentTypeLabel(type) }}
                                     </option>
                                 </select>
                                 <InputError :message="form.errors.type" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="entry-audience">Audience</Label>
+                                <Label for="entry-audience">{{
+                                    $t('Visibility')
+                                }}</Label>
                                 <select
                                     id="entry-audience"
                                     v-model="form.audience"
@@ -179,7 +192,7 @@ function archive(): void {
                                         :key="audience"
                                         :value="audience"
                                     >
-                                        {{ audience }}
+                                        {{ audienceLabel(audience) }}
                                     </option>
                                 </select>
                                 <InputError :message="form.errors.audience" />
@@ -187,23 +200,26 @@ function archive(): void {
                         </div>
 
                         <div class="grid gap-2">
-                            <Label for="entry-title">Title</Label>
+                            <Label for="entry-title">{{ $t('Title') }}</Label>
                             <Input id="entry-title" v-model="form.title" />
                             <InputError :message="form.errors.title" />
                         </div>
 
                         <div class="grid gap-2">
-                            <Label for="entry-slug">Slug</Label>
+                            <Label for="entry-slug">{{ $t('Slug') }}</Label>
                             <Input id="entry-slug" v-model="form.slug" />
                             <p class="text-xs text-text-muted">
-                                Public URL path. Changing it on a live entry
-                                breaks existing links.
+                                {{
+                                    $t(
+                                        'Public URL path. Changing it on a live entry breaks existing links.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.slug" />
                         </div>
 
                         <div class="grid gap-2">
-                            <Label for="entry-teaser">Teaser</Label>
+                            <Label for="entry-teaser">{{ $t('Teaser') }}</Label>
                             <textarea
                                 id="entry-teaser"
                                 v-model="form.teaser"
@@ -214,7 +230,7 @@ function archive(): void {
                         </div>
 
                         <div class="grid gap-2">
-                            <Label for="entry-body">Body</Label>
+                            <Label for="entry-body">{{ $t('Body') }}</Label>
                             <textarea
                                 id="entry-body"
                                 v-model="form.body"
@@ -225,7 +241,9 @@ function archive(): void {
                         </div>
 
                         <div v-if="isAnnouncement" class="grid gap-2">
-                            <Label for="entry-urgency">Urgency</Label>
+                            <Label for="entry-urgency">{{
+                                $t('Urgency')
+                            }}</Label>
                             <select
                                 id="entry-urgency"
                                 v-model="form.urgency"
@@ -236,22 +254,31 @@ function archive(): void {
                                     :key="urgency"
                                     :value="urgency"
                                 >
-                                    {{ urgency }}
+                                    {{ urgencyLabel(urgency) }}
                                 </option>
                             </select>
                             <p class="text-xs text-text-muted">
-                                Intent only — Messaging decides which channels
-                                an urgent announcement reaches and when.
+                                {{
+                                    $t(
+                                        'Intent only — Messaging decides which channels an urgent announcement reaches and when.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.urgency" />
                         </div>
 
                         <div class="grid gap-2">
-                            <Label for="entry-event">Event ID</Label>
+                            <Label for="entry-event">{{
+                                $t('Event ID')
+                            }}</Label>
                             <Input
                                 id="entry-event"
                                 v-model="form.eventId"
-                                placeholder="Optional — scopes the entry to one event"
+                                :placeholder="
+                                    $t(
+                                        'Optional — scopes the entry to one event',
+                                    )
+                                "
                             />
                             <InputError :message="form.errors.eventId" />
                         </div>
@@ -266,19 +293,21 @@ function archive(): void {
                                     }
                                 "
                             />
-                            <Label for="entry-comments">Allow comments</Label>
+                            <Label for="entry-comments">{{
+                                $t('Allow comments')
+                            }}</Label>
                         </div>
 
                         <div class="flex items-center gap-3">
                             <Button type="submit" :disabled="form.processing">
-                                Save
+                                {{ $t('Save') }}
                             </Button>
                             <span
                                 v-if="form.isDirty"
                                 role="status"
                                 class="text-sm text-warning"
                             >
-                                Unsaved changes
+                                {{ $t('Unsaved changes') }}
                             </span>
                         </div>
                     </form>
@@ -288,20 +317,23 @@ function archive(): void {
             <div class="flex flex-col gap-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Publication</CardTitle>
+                        <CardTitle>{{ $t('Publication') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <p class="text-sm text-text-muted">
                             <template v-if="props.entry.publishedAt">
-                                Live from
                                 {{
-                                    formatDateTime(
-                                        props.entry.publishedAt,
-                                        withZoneName,
-                                    )
-                                }}.
+                                    $t('Live from :time.', {
+                                        time: formatDateTime(
+                                            props.entry.publishedAt,
+                                            withZoneName,
+                                        ),
+                                    })
+                                }}
                             </template>
-                            <template v-else> Never published. </template>
+                            <template v-else>{{
+                                $t('Never published.')
+                            }}</template>
                         </p>
 
                         <div
@@ -311,11 +343,10 @@ function archive(): void {
                             <DateTimeField
                                 id="entry-publish-at"
                                 v-model="publishAt"
-                                label="Publish at (leave empty for now)"
+                                :label="$t('Publish at (leave empty for now)')"
                             />
-                            <!-- datetime-raw: publishAt === '' ? 'Publish' : 'Schedule' — a button label, not a timestamp -->
                             <Button @click="publish">
-                                {{ publishAt === '' ? 'Publish' : 'Schedule' }}
+                                {{ publishLabel }}
                             </Button>
                         </div>
 
@@ -324,7 +355,7 @@ function archive(): void {
                             variant="outline"
                             @click="unpublish"
                         >
-                            Unpublish
+                            {{ $t('Unpublish') }}
                         </Button>
 
                         <Button
@@ -332,30 +363,37 @@ function archive(): void {
                             variant="outline"
                             @click="archive"
                         >
-                            Archive
+                            {{ $t('Archive') }}
                         </Button>
 
                         <p
                             v-if="props.transitions.length === 0"
                             class="text-sm text-text-muted"
                         >
-                            Archived entries stay as they are.
+                            {{ $t('Archived entries stay as they are.') }}
                         </p>
                     </CardContent>
                 </Card>
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Comments</CardTitle>
+                        <CardTitle>{{ $t('Comments') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-3">
                         <p class="text-sm text-text-muted">
-                            {{ props.comments.total }} total,
-                            {{ props.comments.pending }} awaiting moderation.
+                            {{
+                                $t(
+                                    ':total total, :pending awaiting moderation.',
+                                    {
+                                        total: String(props.comments.total),
+                                        pending: String(props.comments.pending),
+                                    },
+                                )
+                            }}
                         </p>
                         <Button variant="outline" as-child>
                             <Link :href="commentsIndex().url">
-                                Moderation queue
+                                {{ $t('Moderation queue') }}
                             </Link>
                         </Button>
                     </CardContent>

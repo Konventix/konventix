@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed, h } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -84,10 +85,11 @@ function summarizeContext(context: Record<string, unknown>): string {
         .join(' · ');
 }
 
-const columns: ColumnDef<AuditRow>[] = [
+// A computed, not a constant: `trans()` must run after the catalog is loaded.
+const columns = computed<ColumnDef<AuditRow>[]>(() => [
     {
         accessorKey: 'occurred_at',
-        header: 'When',
+        header: trans('When'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -98,7 +100,7 @@ const columns: ColumnDef<AuditRow>[] = [
     },
     {
         accessorKey: 'action',
-        header: 'Action',
+        header: trans('Action'),
         enableSorting: true,
         cell: ({ row }) =>
             h('div', { class: 'flex flex-col' }, [
@@ -112,17 +114,17 @@ const columns: ColumnDef<AuditRow>[] = [
     },
     {
         id: 'actor',
-        header: 'Actor',
+        header: trans('Actor'),
         cell: ({ row }) =>
             h(
                 'span',
                 { class: 'text-xs text-text-muted' },
-                row.original.actorUserId ?? 'system',
+                row.original.actorUserId ?? trans('system'),
             ),
     },
     {
         id: 'subject',
-        header: 'Subject',
+        header: trans('Data subject'),
         cell: ({ row }) =>
             h(
                 'span',
@@ -132,30 +134,34 @@ const columns: ColumnDef<AuditRow>[] = [
     },
     {
         id: 'brand',
-        header: 'Brand',
+        header: trans('Brand'),
         cell: ({ row }) =>
             h(
                 'span',
                 { class: 'text-text-muted' },
-                row.original.brandName ?? 'operator',
+                row.original.brandName ?? trans('operator'),
             ),
     },
-];
+]);
 </script>
 
 <template>
-    <Head title="Audit trail" />
+    <Head :title="$t('Audit trail')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Audit trail"
-            description="Privileged actions across every brand — appended, never edited"
+            :title="$t('Audit trail')"
+            :description="
+                $t(
+                    'Privileged actions across every brand — appended, never edited',
+                )
+            "
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
-            search-placeholder="Search action, actor or subject…"
+            :search-placeholder="$t('Search action, actor or subject…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
         >
@@ -166,11 +172,16 @@ const columns: ColumnDef<AuditRow>[] = [
                         (value) => setActionFilter(String(value))
                     "
                 >
-                    <SelectTrigger class="w-64" aria-label="Filter by action">
+                    <SelectTrigger
+                        class="w-64"
+                        :aria-label="$t('Filter by action')"
+                    >
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="all">All actions</SelectItem>
+                        <SelectItem value="all">{{
+                            $t('All actions')
+                        }}</SelectItem>
                         <SelectItem
                             v-for="action in props.actions"
                             :key="action"
@@ -189,8 +200,8 @@ const columns: ColumnDef<AuditRow>[] = [
             :data="props.entries.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="entries"
-            empty-message="Nothing recorded yet."
+            :items-label="$t('entries')"
+            :empty-message="$t('Nothing recorded yet.')"
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />

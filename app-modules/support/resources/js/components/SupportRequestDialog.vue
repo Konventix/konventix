@@ -27,8 +27,8 @@ import {
     counterText,
     localErrors,
     MESSAGE_MAX,
-    SUPPORT_CATEGORIES,
     successMessage,
+    supportCategories,
     toggleCategory,
     transportErrorMessage,
 } from './supportForm';
@@ -139,6 +139,8 @@ const messageDescribedBy = computed(() =>
 );
 
 const disclosed = computed(() => disclosedFields(props.context()));
+
+const categoryOptions = computed(() => supportCategories());
 
 /** A fresh dialog every time it opens: a report is not a draft. */
 watch(
@@ -259,10 +261,15 @@ function submit(): void {
         -->
         <DialogContent class="max-h-[85dvh] overflow-y-auto">
             <DialogHeader>
-                <DialogTitle>Report a problem or give feedback</DialogTitle>
+                <DialogTitle>{{
+                    $t('Report a problem or give feedback')
+                }}</DialogTitle>
                 <DialogDescription>
-                    Tell us what happened. We send some technical details along
-                    so we can find it — you can see exactly what below.
+                    {{
+                        $t(
+                            'Tell us what happened. We send some technical details along so we can find it — you can see exactly what below.',
+                        )
+                    }}
                 </DialogDescription>
             </DialogHeader>
 
@@ -279,27 +286,33 @@ function submit(): void {
                 role="status"
                 class="rounded-md border border-border bg-surface-muted p-3 text-sm text-text-muted"
             >
-                <p class="font-medium text-text">We know about this</p>
+                <p class="font-medium text-text">
+                    {{ $t('We know about this') }}
+                </p>
                 <p>{{ issue.notice }}</p>
                 <p>
-                    You do not need to report it again, but you can add details.
+                    {{
+                        $t(
+                            'You do not need to report it again, but you can add details.',
+                        )
+                    }}
                 </p>
             </div>
 
             <form class="flex flex-col gap-4" @submit.prevent="submit">
                 <fieldset class="grid gap-2">
                     <legend class="text-sm font-medium">
-                        What is this about?
+                        {{ $t('What is this about?') }}
                     </legend>
                     <div
                         :id="categoriesId"
                         role="group"
-                        aria-label="What is this about?"
+                        :aria-label="$t('What is this about?')"
                         class="flex flex-wrap gap-2"
                         tabindex="-1"
                     >
                         <button
-                            v-for="option in SUPPORT_CATEGORIES"
+                            v-for="option in categoryOptions"
                             :key="option.value"
                             type="button"
                             :aria-pressed="categories.includes(option.value)"
@@ -323,7 +336,7 @@ function submit(): void {
                 </fieldset>
 
                 <div class="grid gap-2">
-                    <Label :for="messageId">What happened?</Label>
+                    <Label :for="messageId">{{ $t('What happened?') }}</Label>
                     <Textarea
                         :id="messageId"
                         v-model="message"
@@ -341,7 +354,9 @@ function submit(): void {
                 </div>
 
                 <div v-if="isGuest" class="grid gap-2">
-                    <Label :for="emailId">Your e-mail address</Label>
+                    <Label :for="emailId">{{
+                        $t('Your e-mail address')
+                    }}</Label>
                     <Input
                         :id="emailId"
                         v-model="email"
@@ -357,8 +372,15 @@ function submit(): void {
                     </div>
                 </div>
                 <p v-else class="text-sm text-text-muted">
-                    We will answer at
-                    {{ accountEmail ?? 'the address on your account' }}.
+                    {{
+                        accountEmail
+                            ? $t('We will answer at :address.', {
+                                  address: accountEmail,
+                              })
+                            : $t(
+                                  'We will answer at the address on your account.',
+                              )
+                    }}
                 </p>
 
                 <div class="flex items-start gap-2">
@@ -372,10 +394,13 @@ function submit(): void {
                         "
                     />
                     <Label :for="consentId" class="text-sm font-normal">
-                        You may contact me about this report.
+                        {{ $t('You may contact me about this report.') }}
                         <span v-if="isGuest" class="block text-text-muted">
-                            We send you a confirmation with your access link
-                            either way.
+                            {{
+                                $t(
+                                    'We send you a confirmation with your access link either way.',
+                                )
+                            }}
                         </span>
                     </Label>
                 </div>
@@ -384,7 +409,7 @@ function submit(): void {
                     <CollapsibleTrigger
                         class="text-sm underline underline-offset-4"
                     >
-                        What we send with your report
+                        {{ $t('What we send with your report') }}
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                         <dl class="mt-2 grid gap-1 text-sm text-text-muted">
@@ -406,7 +431,7 @@ function submit(): void {
                     A filled one answers a convincing 201 and stores nothing.
                 -->
                 <div aria-hidden="true" class="sr-only">
-                    <label :for="honeypotId">Website</label>
+                    <label :for="honeypotId">{{ $t('Website') }}</label>
                     <input
                         :id="honeypotId"
                         v-model="honeypot"
@@ -431,10 +456,10 @@ function submit(): void {
                         variant="outline"
                         @click="emit('close')"
                     >
-                        Cancel
+                        {{ $t('Cancel') }}
                     </Button>
                     <Button type="submit" :disabled="form.processing">
-                        Send
+                        {{ $t('Send') }}
                     </Button>
                 </DialogFooter>
             </form>

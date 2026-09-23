@@ -59,7 +59,9 @@ const brandLabel = computed(() => {
 </script>
 
 <template>
-    <Head :title="`Report ${props.request.reference}`" />
+    <Head
+        :title="$t('Report :reference', { reference: props.request.reference })"
+    />
 
     <div class="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
         <div class="flex flex-col gap-3">
@@ -71,18 +73,22 @@ const brandLabel = computed(() => {
             >
                 <Link :href="myRequests().url">
                     <ArrowLeft class="size-4" aria-hidden="true" />
-                    All my reports
+                    {{ $t('All my reports') }}
                 </Link>
             </Button>
 
             <Heading
                 as="h1"
-                :title="`Report ${props.request.reference}`"
+                :title="
+                    $t('Report :reference', {
+                        reference: props.request.reference,
+                    })
+                "
                 :description="supportCategorySummary(props.request.categories)"
             />
 
             <p class="text-sm">
-                <span class="text-text-muted">Status:</span>
+                <span class="text-text-muted">{{ $t('Status:') }}</span>
                 <span
                     class="ml-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
                     :class="supportStateClass(props.request.state)"
@@ -92,9 +98,11 @@ const brandLabel = computed(() => {
             </p>
 
             <p v-if="props.isGuestLink" class="text-sm text-text-muted">
-                You are reading this through the link we mailed you. It works
-                for 30 days from the day it was sent; if it stops working, the
-                page you land on will offer you a new one.
+                {{
+                    $t(
+                        'You are reading this through the link we mailed you. It works for 30 days from the day it was sent; if it stops working, the page you land on will offer you a new one.',
+                    )
+                }}
             </p>
         </div>
 
@@ -108,7 +116,7 @@ const brandLabel = computed(() => {
 
         <section aria-labelledby="support-context-heading">
             <h2 id="support-context-heading" class="sr-only">
-                What you sent with this report
+                {{ $t('What you sent with this report') }}
             </h2>
             <SupportContextCard
                 :context="props.request.context"

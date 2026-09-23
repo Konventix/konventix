@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { trans } from 'laravel-vue-i18n';
 import { ref, useId, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { Button } from '@/components/ui/button';
@@ -60,7 +61,9 @@ async function submit(): Promise<void> {
         );
 
         if (response.ok) {
-            toast.success('Danke. Die Orga schaut sich die Nachricht an.');
+            toast.success(
+                trans('Thanks. The organisers will look at the message.'),
+            );
             emit('close');
 
             return;
@@ -74,9 +77,9 @@ async function submit(): Promise<void> {
         error.value =
             body?.errors?.note?.[0] ??
             body?.message ??
-            'Die Meldung konnte nicht gesendet werden.';
+            trans('The report could not be sent.');
     } catch {
-        error.value = 'Die Meldung konnte nicht gesendet werden.';
+        error.value = trans('The report could not be sent.');
     } finally {
         sending.value = false;
     }
@@ -90,10 +93,13 @@ async function submit(): Promise<void> {
     >
         <DialogContent>
             <DialogHeader>
-                <DialogTitle>Nachricht melden</DialogTitle>
+                <DialogTitle>{{ $t('Report message') }}</DialogTitle>
                 <DialogDescription>
-                    Die Orga sieht die Nachricht und deinen Hinweis. Wer sie
-                    geschrieben hat, erfährt nicht, dass du sie gemeldet hast.
+                    {{
+                        $t(
+                            'The organisers see the message and your note. Whoever wrote it will not learn that you reported it.',
+                        )
+                    }}
                 </DialogDescription>
             </DialogHeader>
             <form class="flex flex-col gap-2" @submit.prevent="submit">
@@ -104,7 +110,7 @@ async function submit(): Promise<void> {
                     {{ line.body }}
                 </blockquote>
                 <label :for="noteId" class="text-sm font-medium text-text">
-                    Hinweis (optional)
+                    {{ $t('Your note (optional)') }}
                 </label>
                 <textarea
                     :id="noteId"
@@ -124,9 +130,11 @@ async function submit(): Promise<void> {
                         variant="ghost"
                         @click="emit('close')"
                     >
-                        Abbrechen
+                        {{ $t('Cancel') }}
                     </Button>
-                    <Button type="submit" :disabled="sending">Melden</Button>
+                    <Button type="submit" :disabled="sending">{{
+                        $t('Report')
+                    }}</Button>
                 </DialogFooter>
             </form>
         </DialogContent>

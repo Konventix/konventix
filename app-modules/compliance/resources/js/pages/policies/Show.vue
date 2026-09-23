@@ -45,9 +45,9 @@ const props = defineProps<Props>();
         <header class="flex flex-col gap-2">
             <h1 class="text-3xl font-semibold">{{ props.policy.name }}</h1>
             <p class="text-sm text-text-muted">
-                Version {{ props.policy.version }}
+                {{ $t('Version :version', { version: props.policy.version }) }}
                 <template v-if="props.policy.effectiveAt">
-                    · in effect since
+                    · {{ $t('in effect since') }}
                     <time :datetime="props.policy.effectiveAt">{{
                         formatDateTime(props.policy.effectiveAt, {
                             dateStyle: 'long',
@@ -56,7 +56,8 @@ const props = defineProps<Props>();
                     }}</time>
                 </template>
                 <template v-if="props.policy.scope === 'operator'">
-                    · published by the operator for all of its brands
+                    ·
+                    {{ $t('published by the operator for all of its brands') }}
                 </template>
             </p>
         </header>

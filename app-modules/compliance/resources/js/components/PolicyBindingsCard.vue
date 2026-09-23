@@ -76,14 +76,18 @@ function remove(binding: BindingRow): void {
 <template>
     <Card>
         <CardHeader>
-            <CardTitle>Where this applies</CardTitle>
+            <CardTitle>{{ $t('Where this applies') }}</CardTitle>
         </CardHeader>
         <CardContent class="flex flex-col gap-4">
             <p
                 v-if="props.bindings.length === 0"
                 class="text-sm text-text-muted"
             >
-                No bindings: this text applies everywhere this brand sells.
+                {{
+                    $t(
+                        'No bindings: this text applies everywhere this brand sells.',
+                    )
+                }}
             </p>
 
             <div v-else class="flex flex-col gap-3">
@@ -119,9 +123,11 @@ function remove(binding: BindingRow): void {
                                 @click="remove(binding)"
                             >
                                 <X class="size-3" />
-                                <span class="sr-only"
-                                    >Remove {{ binding.display }}</span
-                                >
+                                <span class="sr-only">{{
+                                    $t('Remove :name', {
+                                        name: binding.display,
+                                    })
+                                }}</span>
                             </Button>
                         </li>
                     </ul>
@@ -141,18 +147,22 @@ function remove(binding: BindingRow): void {
                     v-if="props.options.length === 0"
                     class="text-sm text-text-muted"
                 >
-                    No module offers anything to bind to yet.
+                    {{ $t('No module offers anything to bind to yet.') }}
                 </p>
 
                 <template v-else>
                     <div class="grid gap-2">
-                        <Label for="policy-binding-kind">Kind</Label>
+                        <Label for="policy-binding-kind">{{
+                            $t('Kind')
+                        }}</Label>
                         <Select
                             v-model="form.kind"
                             @update:model-value="form.target_key = ''"
                         >
                             <SelectTrigger id="policy-binding-kind">
-                                <SelectValue placeholder="Choose a kind" />
+                                <SelectValue
+                                    :placeholder="$t('Choose a kind')"
+                                />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem
@@ -168,10 +178,14 @@ function remove(binding: BindingRow): void {
                     </div>
 
                     <div v-if="form.kind !== ''" class="grid gap-2">
-                        <Label for="policy-binding-target">Target</Label>
+                        <Label for="policy-binding-target">{{
+                            $t('Target')
+                        }}</Label>
                         <Select v-model="form.target_key">
                             <SelectTrigger id="policy-binding-target">
-                                <SelectValue placeholder="Choose a target" />
+                                <SelectValue
+                                    :placeholder="$t('Choose a target')"
+                                />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem
@@ -196,7 +210,7 @@ function remove(binding: BindingRow): void {
                             "
                         >
                             <Plus class="size-4" />
-                            Add binding
+                            {{ $t('Add binding') }}
                         </Button>
                     </div>
                 </template>

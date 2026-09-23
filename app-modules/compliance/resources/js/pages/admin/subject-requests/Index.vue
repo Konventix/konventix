@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { trans, transChoice } from 'laravel-vue-i18n';
 import { computed, h } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -19,6 +20,7 @@ import {
     index as requestsIndex,
     show as showRequest,
 } from '@/routes/admin/subject-requests';
+import { requestStateLabel, requestTypeLabel } from '../../../lib/labels';
 
 /**
  * The statutory queue. Sorted by deadline by default and showing days left
@@ -90,10 +92,11 @@ const stateClasses: Record<
     refused: 'bg-subtle text-text-muted',
 };
 
-const columns: ColumnDef<RequestRow>[] = [
+// A computed, not a constant: `trans()` must run after the catalog is loaded.
+const columns = computed<ColumnDef<RequestRow>[]>(() => [
     {
         accessorKey: 'type',
-        header: 'Type',
+        header: trans('Type'),
         enableSorting: true,
         cell: ({ row }) =>
             h('div', { class: 'flex flex-col' }, [
@@ -103,7 +106,7 @@ const columns: ColumnDef<RequestRow>[] = [
                         href: showRequest(row.original.id).url,
                         class: 'font-medium hover:text-accent',
                     },
-                    () => row.original.type,
+                    () => requestTypeLabel(row.original.type),
                 ),
                 h(
                     'span',
@@ -114,7 +117,7 @@ const columns: ColumnDef<RequestRow>[] = [
     },
     {
         accessorKey: 'state',
-        header: 'State',
+        header: trans('State'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -122,18 +125,18 @@ const columns: ColumnDef<RequestRow>[] = [
                 {
                     class: `inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${stateClasses[row.original.state]}`,
                 },
-                row.original.state,
+                requestStateLabel(row.original.state),
             ),
     },
     {
         id: 'brand',
-        header: 'Brand',
+        header: trans('Brand'),
         cell: ({ row }) =>
             h('span', { class: 'text-text-muted' }, row.original.brandName),
     },
     {
         accessorKey: 'deadline_at',
-        header: 'Deadline',
+        header: trans('Deadline'),
         enableSorting: true,
         cell: ({ row }) =>
             h('div', { class: 'flex flex-col' }, [
@@ -147,14 +150,20 @@ const columns: ColumnDef<RequestRow>[] = [
                                 : 'text-xs text-text-muted',
                     },
                     row.original.daysLeft < 0
-                        ? `${Math.abs(row.original.daysLeft)} days overdue`
-                        : `${row.original.daysLeft} days left`,
+                        ? transChoice(
+                              '{1} :count day overdue|[2,*] :count days overdue',
+                              Math.abs(row.original.daysLeft),
+                          )
+                        : transChoice(
+                              '{1} :count day left|[0,*] :count days left',
+                              row.original.daysLeft,
+                          ),
                 ),
             ]),
     },
     {
         id: 'modules',
-        header: 'Modules open',
+        header: trans('Modules open'),
         cell: ({ row }) =>
             h(
                 'span',
@@ -167,22 +176,26 @@ const columns: ColumnDef<RequestRow>[] = [
                 String(row.original.openModules),
             ),
     },
-];
+]);
 </script>
 
 <template>
-    <Head title="Data requests" />
+    <Head :title="$t('Data requests')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Data requests"
-            description="Export, deletion and rectification requests, with their statutory deadlines"
+            :title="$t('Data requests')"
+            :description="
+                $t(
+                    'Export, deletion and rectification requests, with their statutory deadlines',
+                )
+            "
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
-            search-placeholder="Search subject id or email…"
+            :search-placeholder="$t('Search subject id or email…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
         >
@@ -193,17 +206,22 @@ const columns: ColumnDef<RequestRow>[] = [
                         (value) => setFilter('state', String(value))
                     "
                 >
-                    <SelectTrigger class="w-40" aria-label="Filter by state">
+                    <SelectTrigger
+                        class="w-40"
+                        :aria-label="$t('Filter by state')"
+                    >
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="all">All states</SelectItem>
+                        <SelectItem value="all">{{
+                            $t('All states')
+                        }}</SelectItem>
                         <SelectItem
                             v-for="state in props.states"
                             :key="state"
                             :value="state"
                         >
-                            {{ state }}
+                            {{ requestStateLabel(state) }}
                         </SelectItem>
                     </SelectContent>
                 </Select>
@@ -214,17 +232,22 @@ const columns: ColumnDef<RequestRow>[] = [
                         (value) => setFilter('type', String(value))
                     "
                 >
-                    <SelectTrigger class="w-36" aria-label="Filter by type">
+                    <SelectTrigger
+                        class="w-36"
+                        :aria-label="$t('Filter by request type')"
+                    >
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="all">All types</SelectItem>
+                        <SelectItem value="all">{{
+                            $t('All request types')
+                        }}</SelectItem>
                         <SelectItem
                             v-for="type in props.types"
                             :key="type"
                             :value="type"
                         >
-                            {{ type }}
+                            {{ requestTypeLabel(type) }}
                         </SelectItem>
                     </SelectContent>
                 </Select>
@@ -237,8 +260,8 @@ const columns: ColumnDef<RequestRow>[] = [
             :data="props.requests.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="requests"
-            empty-message="No data requests."
+            :items-label="$t('requests')"
+            :empty-message="$t('No data requests.')"
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />

@@ -1,11 +1,13 @@
+import { trans } from 'laravel-vue-i18n';
+
 /**
  * What the programme says under a called-off entry (D-AGD-08, which
  * applies to a competition block exactly as to an item: it stays, struck).
  *
- * An item says "Fällt aus" with the organizer's reason when there is one.
- * A block says "Abgesagt": Competition sends no reason, and the tournament
- * is called off by whoever runs it, not by the person who wrote the
- * programme.
+ * An item says "Not taking place" ("Fällt aus") with the organizer's reason
+ * when there is one. A block says "Called off" ("Abgesagt"): Competition
+ * sends no reason, and the tournament is called off by whoever runs it,
+ * not by the person who wrote the programme.
  */
 export type CancellableCell = {
     kind: Konventix.Agenda.Enums.ProgrammeEntryKind;
@@ -14,12 +16,12 @@ export type CancellableCell = {
 
 export function cancelledNote(cell: CancellableCell): string {
     if (cell.kind === 'competition') {
-        return 'Abgesagt';
+        return trans('Called off');
     }
 
     return cell.cancelledReason
-        ? `Fällt aus – ${cell.cancelledReason}`
-        : 'Fällt aus';
+        ? trans('Not taking place – :reason', { reason: cell.cancelledReason })
+        : trans('Not taking place');
 }
 
 /**

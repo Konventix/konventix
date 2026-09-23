@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import ModerationController from '@/actions/Konventix/Community/Http/Controllers/ModerationController';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -43,7 +44,7 @@ const eventId = computed(() => props.desk.eventId);
 const muteTarget = ref<{ userId: string; name: string } | null>(null);
 
 function openMute(userId: string, name: string | null): void {
-    muteTarget.value = { userId, name: name ?? 'Unknown participant' };
+    muteTarget.value = { userId, name: name ?? trans('Unknown participant') };
 }
 
 function unmute(userId: string): void {
@@ -55,7 +56,7 @@ function unmute(userId: string): void {
 /** The tombstone keeps this reason for the desk; the room never sees it. */
 function removeLine(messageId: string): void {
     const reason = window.prompt(
-        'Why is this line removed? Only the desk sees this.',
+        trans('Why is this line removed? Only the desk sees this.'),
     );
 
     if (reason === null) {
@@ -81,7 +82,9 @@ function resolveReport(
 
 function lock(): void {
     const reason = window.prompt(
-        'Lock the wall? Everything stays readable; nobody can post. Optional note for the desk:',
+        trans(
+            'Lock the wall? Everything stays readable; nobody can post. Optional note for the desk:',
+        ),
         '',
     );
 
@@ -104,56 +107,71 @@ function unlock(): void {
 </script>
 
 <template>
-    <Head title="Shoutbox" />
+    <Head :title="$t('Shoutbox')" />
 
     <div class="flex max-w-4xl flex-col gap-6">
         <AdminPageHeader
-            title="Shoutbox"
-            description="Reports, mutes and the lock switch for this event's wall"
+            :title="$t('Shoutbox')"
+            :description="
+                $t('Reports, mutes and the lock switch for this event\'s wall')
+            "
         >
             <Link
                 :href="showEvent(eventId).url"
                 class="text-sm text-text-muted hover:text-text"
             >
-                Dashboard
+                {{ $t('Dashboard') }}
             </Link>
         </AdminPageHeader>
 
         <p v-if="room === null" class="text-sm text-text-muted" role="status">
-            Nobody has opened this event's wall yet. It appears here once the
-            first admitted participant does.
+            {{
+                $t(
+                    "Nobody has opened this event's wall yet. It appears here once the first admitted participant does.",
+                )
+            }}
         </p>
 
         <template v-else>
             <InputError :message="errors.reason" />
 
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Wall</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{ $t('Wall status') }}</CardTitle></CardHeader
+                >
                 <CardContent class="flex flex-wrap items-center gap-3">
                     <template v-if="room.closedAt">
-                        <Badge variant="secondary">Closed</Badge>
+                        <Badge variant="secondary">{{ $t('Closed') }}</Badge>
                         <span class="text-sm text-text-muted">
-                            The event has concluded ({{
-                                formatDateTime(room.closedAt)
-                            }}); the wall is read-only for good.
+                            {{
+                                $t(
+                                    'The event has concluded (:date); the wall is read-only for good.',
+                                    { date: formatDateTime(room.closedAt) },
+                                )
+                            }}
                         </span>
                     </template>
                     <template v-else-if="room.lockedAt">
-                        <Badge variant="destructive">Locked</Badge>
+                        <Badge variant="destructive">{{
+                            $t('Posting locked')
+                        }}</Badge>
                         <span class="text-sm text-text-muted">
-                            Since {{ formatDateTime(room.lockedAt)
+                            {{
+                                $t('Since :date', {
+                                    date: formatDateTime(room.lockedAt),
+                                })
                             }}<template v-if="room.lockedReason"
                                 >: {{ room.lockedReason }}</template
                             >
                         </span>
                         <Button size="sm" variant="secondary" @click="unlock">
-                            Unlock
+                            {{ $t('Unlock the wall') }}
                         </Button>
                     </template>
                     <template v-else>
-                        <Badge>Open</Badge>
+                        <Badge>{{ $t('Open') }}</Badge>
                         <Button size="sm" variant="secondary" @click="lock">
-                            Lock the wall
+                            {{ $t('Lock the wall') }}
                         </Button>
                     </template>
                 </CardContent>
@@ -176,13 +194,15 @@ function unlock(): void {
             />
 
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Muted</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{ $t('Muted') }}</CardTitle></CardHeader
+                >
                 <CardContent class="flex flex-col gap-3">
                     <p
                         v-if="desk.mutes.length === 0"
                         class="text-sm text-text-muted"
                     >
-                        Nobody is muted.
+                        {{ $t('Nobody is muted.') }}
                     </p>
                     <div
                         v-for="mute in desk.mutes"
@@ -190,17 +210,18 @@ function unlock(): void {
                         class="flex flex-wrap items-center gap-3 text-sm"
                     >
                         <span class="font-medium text-text">{{
-                            mute.displayName ?? 'Unknown participant'
+                            mute.displayName ?? $t('Unknown participant')
                         }}</span>
                         <span class="text-text-muted">
                             {{ mute.reason }} ·
-                            <template v-if="mute.expiresAt"
-                                >until
-                                {{ formatDateTime(mute.expiresAt) }}</template
-                            >
-                            <template v-else
-                                >for the rest of the event</template
-                            >
+                            <template v-if="mute.expiresAt">{{
+                                $t('until :date', {
+                                    date: formatDateTime(mute.expiresAt),
+                                })
+                            }}</template>
+                            <template v-else>{{
+                                $t('for the rest of the event')
+                            }}</template>
                         </span>
                         <Button
                             size="sm"
@@ -208,20 +229,22 @@ function unlock(): void {
                             class="ml-auto"
                             @click="unmute(mute.userId)"
                         >
-                            Lift
+                            {{ $t('Lift mute') }}
                         </Button>
                     </div>
                 </CardContent>
             </Card>
 
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Latest lines</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{ $t('Latest lines') }}</CardTitle></CardHeader
+                >
                 <CardContent class="flex flex-col gap-3">
                     <p
                         v-if="desk.lines.length === 0"
                         class="text-sm text-text-muted"
                     >
-                        Nothing said yet.
+                        {{ $t('Nothing said yet.') }}
                     </p>
                     <div
                         v-for="line in desk.lines"
@@ -232,7 +255,7 @@ function unlock(): void {
                             formatDateTime(line.postedAt)
                         }}</span>
                         <span class="font-medium text-text">{{
-                            line.authorDisplayName ?? 'Unknown participant'
+                            line.authorDisplayName ?? $t('Unknown participant')
                         }}</span>
                         <span
                             class="min-w-0 flex-1 break-words"
@@ -244,7 +267,11 @@ function unlock(): void {
                         >
                             {{ line.body }}
                             <template v-if="line.removedAt">
-                                (removed: {{ line.removedReason }})</template
+                                {{
+                                    $t('(removed: :reason)', {
+                                        reason: line.removedReason ?? '',
+                                    })
+                                }}</template
                             >
                         </span>
                         <div class="flex gap-2">
@@ -254,7 +281,7 @@ function unlock(): void {
                                 variant="ghost"
                                 @click="removeLine(line.id)"
                             >
-                                Remove
+                                {{ $t('Remove') }}
                             </Button>
                             <Button
                                 size="sm"
@@ -266,7 +293,7 @@ function unlock(): void {
                                     )
                                 "
                             >
-                                Mute
+                                {{ $t('Mute') }}
                             </Button>
                         </div>
                     </div>

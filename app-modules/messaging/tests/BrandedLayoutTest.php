@@ -75,7 +75,7 @@ it('renders the brand\'s logo, the accent colour, the seller line and the imprin
             ->toContain($brand->themeTokens()['accent'] ?? 'hsl(0 0% 9%)')
             ->toContain(e($brand->operator->legal_name))
             ->toContain('/impressum')
-            ->toContain('>Impressum<');
+            ->toContain('>Imprint<');
 
         return true;
     });

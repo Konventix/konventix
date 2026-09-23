@@ -54,7 +54,7 @@ function submit(): void {
 <template>
     <Card>
         <CardHeader>
-            <CardTitle>The report</CardTitle>
+            <CardTitle>{{ $t('The report') }}</CardTitle>
         </CardHeader>
         <CardContent class="flex flex-col gap-4">
             <div
@@ -84,10 +84,10 @@ function submit(): void {
                         v-if="entry.visibility === 'internal'"
                         class="font-medium text-warning"
                     >
-                        Internal note ·
+                        {{ $t('Internal note') }} ·
                     </span>
                     <span v-else class="font-medium text-text">
-                        Reply to the reporter ·
+                        {{ $t('Reply to the reporter') }} ·
                     </span>
                     <span class="font-mono">
                         {{
@@ -110,9 +110,9 @@ function submit(): void {
                 @submit.prevent="submit"
             >
                 <div class="grid gap-2">
-                    <Label for="support-message-visibility"
-                        >Who reads this</Label
-                    >
+                    <Label for="support-message-visibility">{{
+                        $t('Who reads this')
+                    }}</Label>
                     <select
                         id="support-message-visibility"
                         v-model="form.visibility"
@@ -122,27 +122,33 @@ function submit(): void {
                         "
                         aria-describedby="support-message-visibility-hint"
                     >
-                        <option value="">Choose…</option>
+                        <option value="">{{ $t('Choose…') }}</option>
                         <option value="internal">
-                            Internal note — staff only, forever
+                            {{ $t('Internal note — staff only, forever') }}
                         </option>
                         <option value="external">
-                            Reply to the reporter — they will read it
+                            {{
+                                $t('Reply to the reporter — they will read it')
+                            }}
                         </option>
                     </select>
                     <p
                         id="support-message-visibility-hint"
                         class="text-xs text-text-muted"
                     >
-                        There is no default on purpose: an internal note that
-                        reaches a reporter is the one mistake this thread can
-                        make.
+                        {{
+                            $t(
+                                'There is no default on purpose: an internal note that reaches a reporter is the one mistake this thread can make.',
+                            )
+                        }}
                     </p>
                     <InputError :message="form.errors.visibility" />
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="support-message-body">Message</Label>
+                    <Label for="support-message-body">{{
+                        $t('Message')
+                    }}</Label>
                     <Textarea
                         id="support-message-body"
                         v-model="form.body"
@@ -161,14 +167,14 @@ function submit(): void {
                             form.body.trim() === ''
                         "
                     >
-                        Add to thread
+                        {{ $t('Add to thread') }}
                     </Button>
                     <span
                         v-if="form.isDirty"
                         role="status"
                         class="text-xs text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
             </form>

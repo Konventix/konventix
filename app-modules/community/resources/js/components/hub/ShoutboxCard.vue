@@ -43,7 +43,7 @@ const { entries, pending, refusal, remaining, canWrite, post } =
             v-if="entries.length > 0 || pending.length > 0"
             class="flex flex-col gap-3"
             aria-live="polite"
-            aria-label="Letzte Nachrichten"
+            :aria-label="$t('Latest messages')"
         >
             <WallLine
                 v-for="entry in entries.slice(-CARD_LINES)"
@@ -55,11 +55,12 @@ const { entries, pending, refusal, remaining, canWrite, post } =
                 :key="line.key"
                 class="text-sm text-text-muted"
             >
-                {{ line.body }} <span class="text-xs">(wird gesendet …)</span>
+                {{ line.body }}
+                <span class="text-xs">{{ $t('(sending …)') }}</span>
             </li>
         </ul>
         <p v-else class="text-sm text-text-muted">
-            Noch ist es still hier. Schreib die erste Nachricht.
+            {{ $t("It's quiet here so far. Write the first message.") }}
         </p>
 
         <ShoutboxCompose
@@ -75,7 +76,7 @@ const { entries, pending, refusal, remaining, canWrite, post } =
             :href="props.roomUrl"
             class="self-start text-sm text-accent underline-offset-4 hover:underline"
         >
-            Zum ganzen Raum
+            {{ $t('Open the whole room') }}
         </Link>
     </div>
 </template>

@@ -41,7 +41,7 @@ class PushSubscriptionsController
         $endpoint = $request->input('endpoint');
 
         if (! is_string($endpoint) || $endpoint === '') {
-            throw ValidationException::withMessages(['endpoint' => 'An endpoint is required.']);
+            throw ValidationException::withMessages(['endpoint' => __('An endpoint is required.')]);
         }
 
         PushSubscription::query()

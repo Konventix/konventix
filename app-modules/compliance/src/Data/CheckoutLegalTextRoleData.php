@@ -68,16 +68,14 @@ final class CheckoutLegalTextRoleData extends Data
         return match ($slug) {
             'terms' => new self(
                 slug: 'terms',
-                name: 'Terms of participation (AGB)',
-                description: 'The checkout asks every payer to accept this text before the order button. '
-                    .'A brand reads its own where it published one, the operator-wide text otherwise.',
+                name: __('Terms of participation (AGB)'),
+                description: __('The checkout asks every payer to accept this text before the order button. A brand reads its own where it published one, the operator-wide text otherwise.'),
                 requiresConsent: true,
             ),
             'withdrawal' => new self(
                 slug: 'withdrawal',
-                name: 'Withdrawal information (Widerrufsbelehrung)',
-                description: 'The checkout shows this text beside the order button. It is an information '
-                    .'duty, so the payer is told rather than asked to agree.',
+                name: __('Withdrawal information (Widerrufsbelehrung)'),
+                description: __('The checkout shows this text beside the order button. It is an information duty, so the payer is told rather than asked to agree.'),
                 requiresConsent: false,
             ),
             default => throw new LogicException(sprintf(

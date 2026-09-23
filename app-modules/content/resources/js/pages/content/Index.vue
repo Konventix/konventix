@@ -37,18 +37,18 @@ function goToPage(page: number): void {
 </script>
 
 <template>
-    <Head title="News" />
+    <Head :title="$t('News')" />
 
     <div
         class="mx-auto flex w-full max-w-3xl flex-col gap-8 p-6 text-text lg:p-8"
     >
-        <h1 class="text-3xl font-semibold">News</h1>
+        <h1 class="text-3xl font-semibold">{{ $t('News') }}</h1>
 
         <p
             v-if="props.entries.data.length === 0"
             class="text-sm text-text-muted"
         >
-            Nothing published yet.
+            {{ $t('Nothing published yet.') }}
         </p>
 
         <article
@@ -63,7 +63,7 @@ function goToPage(page: number): void {
                     v-if="entry.type === 'announcement'"
                     class="rounded-full bg-accent/15 px-2 py-0.5 text-accent"
                 >
-                    Announcement
+                    {{ $t('Announcement') }}
                 </span>
                 <time :datetime="entry.publishedAt ?? undefined">
                     {{ formatDate(entry.publishedAt) }}
@@ -84,7 +84,7 @@ function goToPage(page: number): void {
             </p>
 
             <p v-if="entry.authorUsername" class="text-xs text-text-muted">
-                by
+                {{ $t('by') }}
                 <Link
                     v-if="entry.authorProfileUrl"
                     :href="entry.authorProfileUrl"
@@ -105,11 +105,15 @@ function goToPage(page: number): void {
                 :disabled="props.entries.current_page <= 1"
                 @click="goToPage(props.entries.current_page - 1)"
             >
-                Newer
+                {{ $t('Newer') }}
             </Button>
             <span class="text-sm text-text-muted">
-                Page {{ props.entries.current_page }} of
-                {{ props.entries.last_page }}
+                {{
+                    $t('Page :current of :last', {
+                        current: String(props.entries.current_page),
+                        last: String(props.entries.last_page),
+                    })
+                }}
             </span>
             <Button
                 variant="outline"
@@ -118,7 +122,7 @@ function goToPage(page: number): void {
                 "
                 @click="goToPage(props.entries.current_page + 1)"
             >
-                Older
+                {{ $t('Older') }}
             </Button>
         </div>
     </div>

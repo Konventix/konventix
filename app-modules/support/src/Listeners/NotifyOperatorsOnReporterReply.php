@@ -98,7 +98,7 @@ final class NotifyOperatorsOnReporterReply
 
         $payload = new SupportNoticeData(
             reference: $reference,
-            title: "New reply on support request {$reference}",
+            title: __('New reply on support request :reference', ['reference' => $reference]),
             detail: Str::limit($message->body, self::DETAIL_EXCERPT),
             url: $this->links->consoleUrl($request),
         );

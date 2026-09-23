@@ -127,5 +127,5 @@ it('renders Hilfe as a component rather than a URL', function (): void {
     expect($help)->not->toBeNull()
         ->and($help['url'])->toBeNull()
         ->and($help['component'])->toBe('support/hub/HelpLink')
-        ->and($help['label'])->toBe('Hilfe');
+        ->and($help['label'])->toBe('Help');
 });

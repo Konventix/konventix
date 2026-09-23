@@ -4,8 +4,8 @@ import {
     localErrors,
     MESSAGE_MAX,
     MESSAGE_MIN,
-    SUPPORT_CATEGORIES,
     successMessage,
+    supportCategories,
     toggleCategory,
     transportErrorMessage,
 } from './supportForm';
@@ -17,7 +17,7 @@ describe('the category chips', () => {
      * its metric with — a rename on either side has to be a rename on both.
      */
     it('offers the five categories in the order the design fixes', () => {
-        expect(SUPPORT_CATEGORIES.map((option) => option.value)).toEqual([
+        expect(supportCategories().map((option) => option.value)).toEqual([
             'purchase_affected',
             'visibility',
             'function',

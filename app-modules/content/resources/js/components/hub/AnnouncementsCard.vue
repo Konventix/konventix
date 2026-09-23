@@ -32,7 +32,7 @@ const props = defineProps<Props>();
 <template>
     <div class="flex flex-col gap-4">
         <p v-if="props.entries.length === 0" class="text-sm text-text-muted">
-            Noch keine Ankündigungen
+            {{ $t('No announcements yet') }}
         </p>
 
         <ul v-else class="flex flex-col gap-4">
@@ -63,7 +63,7 @@ const props = defineProps<Props>();
             :href="props.newsUrl"
             class="self-start text-sm text-accent underline-offset-4 hover:underline"
         >
-            Alle News
+            {{ $t('All news') }}
         </Link>
     </div>
 </template>

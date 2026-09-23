@@ -5,7 +5,7 @@ import { isTombstone } from './wall';
 
 /**
  * One entry of the wall, as participants see it. A removed line renders as
- * "Von der Orga entfernt" and carries neither body nor author (spec §4.2) —
+ * "Removed by the organisers" and carries neither body nor author (spec §4.2) —
  * the tombstone the server sends has neither, so there is nothing here to
  * leak. The `actions` slot is the room page's report button; the card has
  * none.
@@ -16,12 +16,12 @@ defineProps<{ entry: WallEntry }>();
 <template>
     <li class="flex flex-col gap-0.5">
         <p v-if="isTombstone(entry)" class="text-sm text-text-muted italic">
-            Von der Orga entfernt
+            {{ $t('Removed by the organisers') }}
         </p>
         <template v-else>
             <div class="flex items-baseline gap-2">
                 <span class="text-sm font-medium text-text">
-                    {{ entry.authorDisplayName ?? 'Unbekannt' }}
+                    {{ entry.authorDisplayName ?? $t('Unknown') }}
                 </span>
                 <time
                     :datetime="entry.postedAt"

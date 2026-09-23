@@ -32,7 +32,7 @@ final class SupportReceiptData extends Data
     public function __construct(
         /** The last eight characters of the ULID — what the toast said too. */
         public readonly string $reference,
-        /** The selected categories as their English labels, comma-joined. */
+        /** The selected categories as their labels in the sending locale, comma-joined. */
         public readonly string $categories,
         /** Absolute: the account page, or the guest's signed 30-day link. */
         public readonly string $requestUrl,

@@ -11,6 +11,8 @@
  * verbatim, so the separators live here, where they are also testable
  * (`consentLabel.test.ts`) without rendering a component.
  */
+import { trans } from 'laravel-vue-i18n';
+
 export type ConsentPolicy = {
     slug: string;
     name: string;
@@ -21,11 +23,19 @@ export type ConsentLabelSegment =
     | { kind: 'text'; text: string }
     | { kind: 'link'; text: string; url: string };
 
-const LEAD = 'I have read and accept the ';
+/**
+ * The sentence is one catalog key with the documents as a single
+ * placeholder (ADR-0068): German puts them in the middle ("Ich habe die …
+ * gelesen und akzeptiere sie."), so the lead-in cannot be a fixed prefix.
+ * The translated sentence is split at the placeholder and the links go
+ * where it stood.
+ */
+const DOCUMENTS = ':documents';
 
 /**
- * The label as an ordered run of plain text and links: the lead-in, each
- * document's name as a link, the separators between them, and the full stop.
+ * The label as an ordered run of plain text and links: the words before
+ * the documents, each document's name as a link, the separators between
+ * them, and the words after.
  *
  * Empty for an empty list — a checkout with nothing published renders no
  * control at all, so there is no label to write.
@@ -37,20 +47,32 @@ export function consentLabelSegments(
         return [];
     }
 
-    const segments: ConsentLabelSegment[] = [{ kind: 'text', text: LEAD }];
+    const sentence = trans('I have read and accept the :documents.');
+    const at = sentence.indexOf(DOCUMENTS);
+    const before = at === -1 ? sentence : sentence.slice(0, at);
+    const after = at === -1 ? '' : sentence.slice(at + DOCUMENTS.length);
+    const and = ` ${trans('and')} `;
+
+    const segments: ConsentLabelSegment[] = [];
+
+    if (before !== '') {
+        segments.push({ kind: 'text', text: before });
+    }
 
     policies.forEach((policy, index) => {
         if (index > 0) {
             segments.push({
                 kind: 'text',
-                text: index === policies.length - 1 ? ' and ' : ', ',
+                text: index === policies.length - 1 ? and : ', ',
             });
         }
 
         segments.push({ kind: 'link', text: policy.name, url: policy.url });
     });
 
-    segments.push({ kind: 'text', text: '.' });
+    if (after !== '') {
+        segments.push({ kind: 'text', text: after });
+    }
 
     return segments;
 }

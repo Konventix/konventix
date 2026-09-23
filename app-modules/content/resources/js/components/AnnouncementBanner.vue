@@ -98,7 +98,7 @@ onMounted(async () => {
             <button
                 type="button"
                 class="shrink-0 rounded-full p-1 text-text-muted hover:text-text"
-                aria-label="Dismiss announcement"
+                :aria-label="$t('Dismiss announcement')"
                 @click="dismiss(announcement.slug)"
             >
                 <X class="size-4" />

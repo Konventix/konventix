@@ -127,14 +127,14 @@ final class NotifyOperatorsOnRequestOpened
         $reference = $request->reference();
         $categories = $this->categoryLabels($request);
 
-        $title = "New support request {$reference} · {$categories}";
+        $title = __('New support request :reference · :categories', ['reference' => $reference, 'categories' => $categories]);
 
         $detail = implode(' ', array_filter([
             Str::limit($request->message, self::DETAIL_EXCERPT),
             '—',
-            'Brand: '.($request->context->brand ?? 'unknown').'.',
-            $request->context->route === null ? null : 'Route: '.$request->context->route.'.',
-            $event->release === null ? null : 'Release: '.$event->release.'.',
+            __('Brand: :brand.', ['brand' => $request->context->brand ?? __('unknown')]),
+            $request->context->route === null ? null : __('Route: :route.', ['route' => $request->context->route]),
+            $event->release === null ? null : __('Release: :release.', ['release' => $event->release]),
         ]));
 
         return new SupportNoticeData(
@@ -152,6 +152,6 @@ final class NotifyOperatorsOnRequestOpened
             $request->categoryCases(),
         );
 
-        return $labels === [] ? 'No category' : implode(', ', $labels);
+        return $labels === [] ? __('No category') : implode(', ', $labels);
     }
 }

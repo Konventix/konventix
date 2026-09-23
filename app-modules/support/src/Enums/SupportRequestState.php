@@ -29,11 +29,11 @@ enum SupportRequestState: string
     public function label(): string
     {
         return match ($this) {
-            self::Received => 'Received',
-            self::Seen => 'Seen',
-            self::InProgress => 'In progress',
-            self::Resolved => 'Resolved',
-            self::WontFix => "Won't fix",
+            self::Received => __('Received'),
+            self::Seen => __('Seen'),
+            self::InProgress => __('In progress'),
+            self::Resolved => __('Resolved'),
+            self::WontFix => __("Won't fix"),
         };
     }
 

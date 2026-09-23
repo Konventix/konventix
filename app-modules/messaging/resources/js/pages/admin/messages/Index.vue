@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
 import type { SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -15,7 +16,8 @@ import {
     index as messagesIndex,
     show as showMessage,
 } from '@/routes/admin/messages';
-import { columns } from './columns';
+import { channelLabel, messageStatusLabel } from '../../../lib/labels';
+import { messageColumns } from './columns';
 import type { MessageRow } from './columns';
 
 interface PaginatedMessages {
@@ -58,7 +60,7 @@ const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
 const filterDefs = computed<DataTableFilterDef[]>(() => [
     {
         name: 'brand',
-        label: 'Brand',
+        label: trans('Brand'),
         value: props.filters.brand,
         options: props.brands.map((brand) => ({
             value: brand.id,
@@ -68,25 +70,25 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
     },
     {
         name: 'status',
-        label: 'Status',
+        label: trans('Status'),
         value: props.filters.status,
         options: props.statuses.map((status) => ({
             value: status,
-            label: status[0].toUpperCase() + status.slice(1),
+            label: messageStatusLabel(status),
         })),
     },
     {
         name: 'channel',
-        label: 'Channel',
+        label: trans('Channel'),
         value: props.filters.channel,
         options: props.channels.map((channel) => ({
             value: channel,
-            label: channel,
+            label: channelLabel(channel),
         })),
     },
     {
         name: 'template',
-        label: 'Template',
+        label: trans('Template'),
         value: props.filters.template,
         options: props.templates.map((template) => ({
             value: template,
@@ -94,6 +96,8 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
         })),
     },
 ]);
+
+const columns = messageColumns();
 
 const sorting = computed<SortingState>(() =>
     filters.sort ? [{ id: filters.sort, desc: filters.dir === 'desc' }] : [],
@@ -115,19 +119,23 @@ const pagination = computed(() => ({
 </script>
 
 <template>
-    <Head title="Messages" />
+    <Head :title="$t('Messages')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Messages"
-            description="The delivery log — what Messaging sent, and what happened to it"
+            :title="$t('Messages')"
+            :description="
+                $t(
+                    'The delivery log — what Messaging sent, and what happened to it',
+                )
+            "
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
             :filters="filterDefs"
-            search-placeholder="Search recipient email…"
+            :search-placeholder="$t('Search recipient email…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
             @update:filter="setFilter"
@@ -141,8 +149,8 @@ const pagination = computed(() => ({
             :row-count="messages.total"
             :pagination="pagination"
             :get-row-id="(row: MessageRow) => row.id"
-            items-label="messages"
-            empty-message="No messages found."
+            :items-label="$t('messages')"
+            :empty-message="$t('No messages found.')"
             row-clickable
             @row-click="(row: MessageRow) => router.visit(showMessage(row.id))"
             @update:sorting="onSortingChange"

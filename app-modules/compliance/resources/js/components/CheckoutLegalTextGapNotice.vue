@@ -28,8 +28,8 @@ import { TriangleAlert } from '@lucide/vue';
  * tokens `ui/alert` uses, written out rather than imported, because the
  * role is the only thing that had to change.
  *
- * The wording keeps `AGB` and `Widerrufsbelehrung` in German inside an
- * otherwise English console, the way `CheckoutLegalTextRoleData` and
+ * The wording keeps `AGB` and `Widerrufsbelehrung` in German inside the
+ * English source text (ADR-0068), the way `CheckoutLegalTextRoleData` and
  * `CheckoutLegalTexts::EXEMPTION_NOTICE` already do: those are the names of
  * the documents the statute means, and translating them makes them
  * unfindable.
@@ -74,23 +74,23 @@ function createUrl(gap: Gap, slug: string): string {
                 class="size-4 shrink-0 translate-y-0.5"
                 aria-hidden="true"
             />
-            Selling without a Widerrufsbelehrung and AGB
+            {{ $t('Selling without a Widerrufsbelehrung and AGB') }}
         </h2>
 
         <div class="mt-1 pl-7 text-destructive/90">
             <p>
-                The checkout resolves no legal text for
-                {{ props.gaps.length }} brand<span
-                    v-if="props.gaps.length !== 1"
-                    >s</span
-                >. Orders for
-                {{ props.gaps.length === 1 ? 'it' : 'them' }} complete right now
-                with no consent line written and without the information a
-                distance contract has to carry: no confirmed agreement to the
-                AGB before the order button (§ 312j BGB) and no
-                Widerrufsbelehrung. Publish the missing text under exactly the
-                slug named below — a policy under any other slug, such as
-                <code>agb</code>, is never found.
+                {{
+                    $tChoice(
+                        '{1} The checkout resolves no legal text for :count brand. Orders for it complete right now with no consent line written and without the information a distance contract has to carry: no confirmed agreement to the AGB before the order button (§ 312j BGB) and no Widerrufsbelehrung.|[2,*] The checkout resolves no legal text for :count brands. Orders for them complete right now with no consent line written and without the information a distance contract has to carry: no confirmed agreement to the AGB before the order button (§ 312j BGB) and no Widerrufsbelehrung.',
+                        props.gaps.length,
+                    )
+                }}
+                {{
+                    $t(
+                        'Publish the missing text under exactly the slug named below. A policy under any other slug is never found, for example',
+                    )
+                }}
+                <code>agb</code>.
             </p>
 
             <ul class="mt-3 flex flex-col gap-2">
@@ -100,7 +100,7 @@ function createUrl(gap: Gap, slug: string): string {
                     class="text-sm"
                 >
                     <span class="font-medium">{{ gap.brandName }}</span>
-                    — missing
+                    — {{ $t('missing') }}
                     <span v-for="(slug, index) in gap.missingSlugs" :key="slug">
                         <span v-if="index > 0">, </span>
                         {{ roleName(slug) }}
@@ -120,8 +120,12 @@ function createUrl(gap: Gap, slug: string): string {
                             :href="createUrl(gap, slug)"
                             class="font-medium underline underline-offset-4"
                         >
-                            Create {{ roleName(slug) }} for
-                            {{ gap.brandName }}
+                            {{
+                                $t('Create :role for :brand', {
+                                    role: roleName(slug),
+                                    brand: gap.brandName,
+                                })
+                            }}
                         </Link>
                     </span>
 

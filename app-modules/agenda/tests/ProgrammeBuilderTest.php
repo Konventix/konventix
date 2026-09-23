@@ -218,7 +218,7 @@ it('names a day without a label after its place in the event, omitted days inclu
     ], 'Europe/Berlin');
 
     expect($days)->toHaveCount(1)
-        ->and($days[0]->label)->toBe('Tag 2');
+        ->and($days[0]->label)->toBe('Day 2');
 });
 
 it('puts an item on the day it falls on in the event timezone', function (): void {

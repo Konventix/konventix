@@ -15,7 +15,7 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * show.
  *
  * `notice` is the room's own state (locked, closed) and `mute` the viewer's
- * — both are the German sentences `ShoutboxWriteException` writes, so the
+ * — both are the translated sentences `ShoutboxWriteException` writes, so the
  * compose box says exactly what a refused post would say, and there is one
  * copy of each. `retryAfterSeconds` is the timed mute's remaining time for
  * the countdown; null for an indefinite mute and for no mute at all.

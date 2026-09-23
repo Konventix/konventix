@@ -230,7 +230,8 @@ class MessagingServiceProvider extends ModuleServiceProvider
      * The templates Messaging itself owns: the digest that carries several
      * coalesced held messages (ADR-0041 point 5), and the wording behind
      * the two intent events (point 8) — announcement and dunning notice.
-     * German defaults, matching the release's DACH framing (ADR-0030).
+     * English is the default locale (ADR-0068); the German maps address
+     * the reader as du.
      */
     protected function registerMessageTemplates(): void
     {
@@ -256,7 +257,7 @@ class MessagingServiceProvider extends ModuleServiceProvider
                     @endif
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'title' => 'Neue Programmpunkte veröffentlicht',
                 'url' => 'https://sxlan.example/news/neue-programmpunkte',
@@ -271,14 +272,14 @@ class MessagingServiceProvider extends ModuleServiceProvider
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Guten Tag {{ $recipientName }},</p>
+                    <p>Hallo {{ $recipientName }},</p>
                     <p>die Rechnung <strong>{{ $invoiceNumber }}</strong> über
                     <strong>{{ $totalGross }} {{ $currency }}</strong> war am
                     <strong>{{ $dueOn }}</strong> fällig und ist seit
                     {{ $daysOverdue }} Tagen offen.</p>
-                    <p>Bitte begleichen Sie den Betrag unter Angabe der
-                    Rechnungsnummer. Sollte die Zahlung bereits unterwegs sein,
-                    betrachten Sie diese Erinnerung als gegenstandslos.</p>
+                    <p>Bitte begleiche den Betrag unter Angabe der
+                    Rechnungsnummer. Sollte deine Zahlung bereits unterwegs sein,
+                    betrachte diese Erinnerung als gegenstandslos.</p>
                     BLADE,
                 'en' => <<<'BLADE'
                     <p>Dear {{ $recipientName }},</p>
@@ -291,7 +292,7 @@ class MessagingServiceProvider extends ModuleServiceProvider
                     reminder.</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'recipientName' => 'Erika Musterfrau',
                 'invoiceNumber' => 'RE-2026-0142',
@@ -316,8 +317,8 @@ class MessagingServiceProvider extends ModuleServiceProvider
                 // field with index access), which is what lets an operator
                 // round-trip this default through the template editor.
                 'de' => <<<'BLADE'
-                    <p>Guten Tag,</p>
-                    <p>während Sie nicht online waren, gab es {{ $count }} neue Benachrichtigungen:</p>
+                    <p>Hallo,</p>
+                    <p>während du nicht online warst, gab es {{ $count }} neue Benachrichtigungen:</p>
                     <ul>
                     @foreach ($items as $item)
                         <li>
@@ -346,7 +347,7 @@ class MessagingServiceProvider extends ModuleServiceProvider
                     </ul>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'count' => 3,
                 'items' => [
@@ -370,7 +371,7 @@ class MessagingServiceProvider extends ModuleServiceProvider
                 'de' => '<p>Dies ist eine Testnachricht von {{ $brandName }}, gesendet am {{ $date }}.</p>',
                 'en' => '<p>This is a test message from {{ $brandName }}, sent on {{ $date }}.</p>',
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: ['brandName' => 'SXLan', 'date' => '28.08.2026'],
         ));
     }

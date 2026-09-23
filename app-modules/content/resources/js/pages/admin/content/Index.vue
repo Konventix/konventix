@@ -2,6 +2,7 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ExternalLink, MessageSquare, Plus } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed, h, ref, watch } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -37,6 +38,7 @@ import {
     store as storeEntry,
 } from '@/routes/admin/content';
 import { index as commentsIndex } from '@/routes/admin/content/comments';
+import { contentTypeLabel, publicationStateLabel } from '../../../lib/labels';
 
 /**
  * Editorial entries across every brand. Brand, type and state are
@@ -104,7 +106,7 @@ const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
 const filterDefs = computed<DataTableFilterDef[]>(() => [
     {
         name: 'brand',
-        label: 'Brands',
+        label: trans('Brands'),
         value: props.filters.brand,
         options: props.brands.map((brand) => ({
             value: brand.id,
@@ -114,20 +116,20 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
     },
     {
         name: 'type',
-        label: 'Types',
+        label: trans('Types'),
         value: props.filters.type,
         options: props.types.map((type) => ({
             value: type,
-            label: type[0].toUpperCase() + type.slice(1),
+            label: contentTypeLabel(type),
         })),
     },
     {
         name: 'state',
-        label: 'States',
+        label: trans('States'),
         value: props.filters.state,
         options: props.states.map((state) => ({
             value: state,
-            label: state[0].toUpperCase() + state.slice(1),
+            label: publicationStateLabel(state),
         })),
     },
 ]);
@@ -161,7 +163,7 @@ const stateClasses: Record<Konventix.Content.Enums.PublicationState, string> = {
 const columns: ColumnDef<EntryRow>[] = [
     {
         accessorKey: 'title',
-        header: 'Title',
+        header: trans('Title'),
         enableSorting: true,
         cell: ({ row }) =>
             h('div', { class: 'flex flex-col' }, [
@@ -200,14 +202,18 @@ const columns: ColumnDef<EntryRow>[] = [
     },
     {
         accessorKey: 'type',
-        header: 'Type',
+        header: trans('Type'),
         enableSorting: true,
         cell: ({ row }) =>
-            h('span', { class: 'text-text-muted' }, row.original.type),
+            h(
+                'span',
+                { class: 'text-text-muted' },
+                contentTypeLabel(row.original.type),
+            ),
     },
     {
         accessorKey: 'state',
-        header: 'State',
+        header: trans('State'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -215,18 +221,18 @@ const columns: ColumnDef<EntryRow>[] = [
                 {
                     class: `inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${stateClasses[row.original.state] ?? 'bg-subtle text-text-muted'}`,
                 },
-                row.original.state,
+                publicationStateLabel(row.original.state),
             ),
     },
     {
         id: 'brand',
-        header: 'Brand',
+        header: trans('Brand'),
         cell: ({ row }) =>
             h('span', { class: 'text-text-muted' }, row.original.brandName),
     },
     {
         id: 'author',
-        header: 'Author',
+        header: trans('Author'),
         cell: ({ row }) =>
             h(
                 'span',
@@ -236,7 +242,7 @@ const columns: ColumnDef<EntryRow>[] = [
     },
     {
         accessorKey: 'published_at',
-        header: 'Published',
+        header: trans('Published'),
         enableSorting: true,
         cell: ({ row }) =>
             h(
@@ -296,17 +302,19 @@ function submit(): void {
 </script>
 
 <template>
-    <Head title="Content" />
+    <Head :title="$t('Content')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Content"
-            description="News, announcements and editorial pages across every brand"
+            :title="$t('Content')"
+            :description="
+                $t('News, announcements and editorial pages across every brand')
+            "
         >
             <Button variant="outline" as-child>
                 <Link :href="commentsIndex().url">
                     <MessageSquare class="size-4" />
-                    Comments
+                    {{ $t('Comments') }}
                     <span
                         v-if="props.pendingComments > 0"
                         class="ml-1 inline-flex min-w-5 justify-center rounded-full bg-warning/15 px-1.5 text-xs font-medium text-warning"
@@ -321,7 +329,7 @@ function submit(): void {
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
             :filters="filterDefs"
-            search-placeholder="Search title or slug…"
+            :search-placeholder="$t('Search title or slug…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
             @update:filter="setFilter"
@@ -331,19 +339,21 @@ function submit(): void {
                     <DialogTrigger as-child>
                         <Button>
                             <Plus class="size-4" />
-                            New entry
+                            {{ $t('New entry') }}
                         </Button>
                     </DialogTrigger>
                     <DialogContent class="max-h-[85vh] overflow-y-auto">
                         <DialogHeader>
-                            <DialogTitle>Create entry</DialogTitle>
+                            <DialogTitle>{{ $t('Create entry') }}</DialogTitle>
                         </DialogHeader>
                         <form
                             class="flex flex-col gap-4"
                             @submit.prevent="submit"
                         >
                             <div class="grid gap-2">
-                                <Label for="entry-brand">Brand</Label>
+                                <Label for="entry-brand">{{
+                                    $t('Brand')
+                                }}</Label>
                                 <Select v-model="form.brand_id">
                                     <SelectTrigger id="entry-brand">
                                         <SelectValue />
@@ -361,7 +371,7 @@ function submit(): void {
                                 <InputError :message="form.errors.brand_id" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="entry-type">Type</Label>
+                                <Label for="entry-type">{{ $t('Type') }}</Label>
                                 <Select v-model="form.type">
                                     <SelectTrigger id="entry-type">
                                         <SelectValue />
@@ -372,19 +382,21 @@ function submit(): void {
                                             :key="type"
                                             :value="type"
                                         >
-                                            {{ type }}
+                                            {{ contentTypeLabel(type) }}
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <InputError :message="form.errors.type" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="entry-title">Title</Label>
+                                <Label for="entry-title">{{
+                                    $t('Title')
+                                }}</Label>
                                 <Input id="entry-title" v-model="form.title" />
                                 <InputError :message="form.errors.title" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="entry-slug">Slug</Label>
+                                <Label for="entry-slug">{{ $t('Slug') }}</Label>
                                 <Input
                                     id="entry-slug"
                                     v-model="form.slug"
@@ -393,11 +405,14 @@ function submit(): void {
                                 <InputError :message="form.errors.slug" />
                             </div>
                             <p class="text-sm text-text-muted">
-                                New entries start as drafts — write the body on
-                                the next screen, then publish from there.
+                                {{
+                                    $t(
+                                        'New entries start as drafts — write the body on the next screen, then publish from there.',
+                                    )
+                                }}
                             </p>
                             <Button type="submit" :disabled="form.processing">
-                                Create
+                                {{ $t('Create') }}
                             </Button>
                         </form>
                     </DialogContent>
@@ -411,8 +426,8 @@ function submit(): void {
             :data="props.entries.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="entries"
-            empty-message="No entries yet."
+            :items-label="$t('entries')"
+            :empty-message="$t('No entries yet.')"
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />

@@ -34,7 +34,7 @@ const props = defineProps<Props>();
             as="span"
             variant="outline"
         >
-            Turnier
+            {{ $t('Tournament') }}
         </Badge>
         <Link
             v-if="props.cell.url"

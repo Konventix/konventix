@@ -28,12 +28,16 @@ defineProps<{
 </script>
 
 <template>
-    <Head title="Mail settings" />
+    <Head :title="$t('Mail settings')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Mail settings"
-            description="Sender identity, transport, sending quota and quiet-hours timezone per brand"
+            :title="$t('Mail settings')"
+            :description="
+                $t(
+                    'Sender identity, transport, sending quota and quiet-hours timezone per brand',
+                )
+            "
         />
 
         <div class="rounded-xl border border-border">
@@ -43,15 +47,21 @@ defineProps<{
                         <tr
                             class="border-b border-border text-left text-text-muted"
                         >
-                            <th scope="col" class="p-3 font-medium">Brand</th>
-                            <th scope="col" class="p-3 font-medium">Sender</th>
                             <th scope="col" class="p-3 font-medium">
-                                Transport
+                                {{ $t('Brand') }}
                             </th>
                             <th scope="col" class="p-3 font-medium">
-                                Timezone
+                                {{ $t('Sender') }}
                             </th>
-                            <th scope="col" class="p-3 font-medium">Quota</th>
+                            <th scope="col" class="p-3 font-medium">
+                                {{ $t('Transport') }}
+                            </th>
+                            <th scope="col" class="p-3 font-medium">
+                                {{ $t('Timezone') }}
+                            </th>
+                            <th scope="col" class="p-3 font-medium">
+                                {{ $t('Quota') }}
+                            </th>
                             <th scope="col" class="p-3"></th>
                         </tr>
                     </thead>
@@ -71,7 +81,7 @@ defineProps<{
                                     </span>
                                 </template>
                                 <span v-else class="text-text-muted">
-                                    Application default
+                                    {{ $t('Application default') }}
                                 </span>
                             </td>
                             <td class="p-3">
@@ -84,8 +94,8 @@ defineProps<{
                                 >
                                     {{
                                         brand.customTransport
-                                            ? 'Own SMTP'
-                                            : 'Default mailer'
+                                            ? $t('Own SMTP')
+                                            : $t('Default mailer')
                                     }}
                                 </Badge>
                             </td>
@@ -94,27 +104,31 @@ defineProps<{
                             </td>
                             <td class="p-3">
                                 {{
-                                    brand.mailQuotaPerHour ??
-                                    quotaDefaults.perHour
-                                }}/h ·
-                                {{
-                                    brand.mailQuotaPerDay ??
-                                    quotaDefaults.perDay
-                                }}/d
+                                    $t(':perHour/h · :perDay/d', {
+                                        perHour: String(
+                                            brand.mailQuotaPerHour ??
+                                                quotaDefaults.perHour,
+                                        ),
+                                        perDay: String(
+                                            brand.mailQuotaPerDay ??
+                                                quotaDefaults.perDay,
+                                        ),
+                                    })
+                                }}
                                 <span
                                     v-if="
                                         brand.mailQuotaPerHour === null &&
                                         brand.mailQuotaPerDay === null
                                     "
                                     class="text-text-muted"
-                                    >(default)</span
+                                    >{{ $t('(default)') }}</span
                                 >
                             </td>
                             <td class="p-3 text-right" @click.stop>
                                 <Button as-child variant="outline" size="sm">
-                                    <Link :href="editMailSettings(brand.id)"
-                                        >Edit</Link
-                                    >
+                                    <Link :href="editMailSettings(brand.id)">{{
+                                        $t('Edit')
+                                    }}</Link>
                                 </Button>
                             </td>
                         </tr>
@@ -123,7 +137,7 @@ defineProps<{
                                 colspan="6"
                                 class="p-6 text-center text-text-muted"
                             >
-                                No brands yet.
+                                {{ $t('No brands yet.') }}
                             </td>
                         </tr>
                     </tbody>

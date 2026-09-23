@@ -74,21 +74,26 @@ function submit(): void {
 </script>
 
 <template>
-    <Head title="Before you continue" />
+    <Head :title="$t('Before you continue')" />
 
     <div
         class="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6 text-text lg:p-8"
     >
         <header class="flex flex-col gap-2">
             <h1 class="text-2xl font-semibold">
-                <template v-if="props.actLabel"
-                    >Before you continue with {{ props.actLabel }}</template
-                >
-                <template v-else>Before you continue</template>
+                <template v-if="props.actLabel">{{
+                    $t('Before you continue with :act', {
+                        act: props.actLabel,
+                    })
+                }}</template>
+                <template v-else>{{ $t('Before you continue') }}</template>
             </h1>
             <p class="text-sm text-text-muted">
-                These documents changed, or you have not agreed to them yet.
-                Please read and confirm each one.
+                {{
+                    $t(
+                        'These documents changed, or you have not agreed to them yet. Please read and confirm each one.',
+                    )
+                }}
             </p>
         </header>
 
@@ -105,7 +110,7 @@ function submit(): void {
                         class="text-xs text-text-muted underline hover:text-text"
                         target="_blank"
                     >
-                        Open in a new tab
+                        {{ $t('Open in a new tab') }}
                     </Link>
                 </div>
 
@@ -118,14 +123,21 @@ function submit(): void {
                 <label class="flex items-center gap-2 text-sm">
                     <Checkbox
                         :model-value="accepted[version.id]"
-                        :aria-label="`I agree to ${version.name}`"
+                        :aria-label="
+                            $t('I agree to :name', { name: version.name })
+                        "
                         @update:model-value="
                             (value: boolean | 'indeterminate') => {
                                 accepted[version.id] = value === true;
                             }
                         "
                     />
-                    I agree to {{ version.name }} ({{ version.version }})
+                    {{
+                        $t('I agree to :name (:version)', {
+                            name: version.name,
+                            version: version.version,
+                        })
+                    }}
                 </label>
             </section>
 
@@ -134,14 +146,14 @@ function submit(): void {
                     type="submit"
                     :disabled="!allAccepted() || form.processing"
                 >
-                    Agree and continue
+                    {{ $t('Agree and continue') }}
                 </Button>
                 <span
                     v-if="!allAccepted()"
                     role="status"
                     class="text-sm text-text-muted"
                 >
-                    Confirm every document to continue.
+                    {{ $t('Confirm every document to continue.') }}
                 </span>
             </div>
         </form>
@@ -152,21 +164,25 @@ function submit(): void {
                 class="text-sm underline underline-offset-4"
                 data-test="consent-not-now"
             >
-                Not now
+                {{ $t('Not now') }}
             </Link>
             <p class="text-sm text-text-muted">
-                <template v-if="props.actLabel"
-                    >You can leave this here — but {{ props.actLabel }} cannot
-                    go ahead until you have agreed to the documents
-                    above.</template
-                >
-                <template v-else
-                    >You can leave this here — but nothing that needs your
-                    agreement can go ahead until you have agreed to the
-                    documents above.</template
-                >
-                Your account, your tickets and your order history stay reachable
-                either way.
+                <template v-if="props.actLabel">{{
+                    $t(
+                        'You can leave this here — but :act cannot go ahead until you have agreed to the documents above.',
+                        { act: props.actLabel },
+                    )
+                }}</template>
+                <template v-else>{{
+                    $t(
+                        'You can leave this here — but nothing that needs your agreement can go ahead until you have agreed to the documents above.',
+                    )
+                }}</template>
+                {{
+                    $t(
+                        'Your account, your tickets and your order history stay reachable either way.',
+                    )
+                }}
             </p>
         </section>
     </div>

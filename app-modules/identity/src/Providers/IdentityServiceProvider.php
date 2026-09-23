@@ -723,15 +723,15 @@ class IdentityServiceProvider extends ModuleServiceProvider
         $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
             key: 'identity.verify-email',
             subjects: [
-                'de' => 'Bitte bestätigen Sie Ihre E-Mail-Adresse',
+                'de' => 'Bitte bestätige deine E-Mail-Adresse',
                 'en' => 'Please confirm your email address',
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Bitte bestätigen Sie Ihre E-Mail-Adresse, um Ihr Konto zu
+                    <p>Bitte bestätige deine E-Mail-Adresse, um dein Konto zu
                     aktivieren: <a href="{{ $verifyUrl }}">E-Mail-Adresse bestätigen</a>.</p>
                     <p>Der Link ist {{ $validMinutes }} Minuten gültig.</p>
-                    <p>Falls Sie kein Konto angelegt haben, ignorieren Sie diese
+                    <p>Falls du kein Konto angelegt hast, ignoriere diese
                     Nachricht.</p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -742,7 +742,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
                     message.</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: ['verifyUrl' => 'https://example.test/verify/abc123', 'validMinutes' => 60],
         ));
 
@@ -754,10 +754,10 @@ class IdentityServiceProvider extends ModuleServiceProvider
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Sie haben angefordert, Ihr Passwort zurückzusetzen:
+                    <p>Du hast angefordert, dein Passwort zurückzusetzen:
                     <a href="{{ $resetUrl }}">Passwort zurücksetzen</a>.</p>
                     <p>Der Link ist {{ $validMinutes }} Minuten gültig.</p>
-                    <p>Falls Sie diese Anfrage nicht gestellt haben, ignorieren Sie
+                    <p>Falls du diese Anfrage nicht gestellt hast, ignoriere
                     diese Nachricht.</p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -767,7 +767,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
                     <p>If you did not request this, please ignore this message.</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: ['resetUrl' => 'https://example.test/reset/abc123', 'validMinutes' => 60],
         ));
 
@@ -780,17 +780,17 @@ class IdentityServiceProvider extends ModuleServiceProvider
         $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
             key: 'identity.registration-attempt',
             subjects: [
-                'de' => 'Registrierungsversuch mit Ihrer E-Mail-Adresse',
+                'de' => 'Registrierungsversuch mit deiner E-Mail-Adresse',
                 'en' => 'Someone tried to register with your email address',
             ],
             bodies: [
                 'de' => <<<'BLADE'
                     <p>Jemand hat soeben versucht, mit dieser E-Mail-Adresse ein
-                    neues Konto anzulegen — Sie haben bei uns aber bereits eines.</p>
-                    <p>Waren Sie das und haben Ihr Passwort vergessen, können Sie
+                    neues Konto anzulegen — du hast bei uns aber bereits eines.</p>
+                    <p>Warst du das und hast dein Passwort vergessen, kannst du
                     es hier zurücksetzen: <a href="{{ $resetUrl }}">Passwort
                     zurücksetzen</a>.</p>
-                    <p>Waren Sie es nicht, müssen Sie nichts tun: Ihr Konto ist
+                    <p>Warst du es nicht, musst du nichts tun: Dein Konto ist
                     unverändert, und es wurde kein neues Konto angelegt.</p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -803,7 +803,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
                     is unaffected, and no new account was created.</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: ['resetUrl' => 'https://example.test/forgot-password'],
         ));
 
@@ -815,18 +815,18 @@ class IdentityServiceProvider extends ModuleServiceProvider
         $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
             key: 'identity.account-merged-survivor',
             subjects: [
-                'de' => 'Ihre Konten wurden zusammengeführt',
+                'de' => 'Deine Konten wurden zusammengeführt',
                 'en' => 'Your accounts have been merged',
             ],
             bodies: [
                 'de' => <<<'BLADE'
                     <p>Ein Administrator hat das Konto mit der E-Mail-Adresse
                     {{ $otherEmail }} mit diesem Konto zusammengeführt, weil
-                    beide Ihnen gehören.</p>
-                    <p>Sie können sich weiterhin genau wie bisher bei diesem
-                    Konto anmelden — mit Passwort oder über Steam, je nachdem,
+                    beide dir gehören.</p>
+                    <p>Du kannst dich weiterhin genau wie bisher bei diesem
+                    Konto einloggen — mit Passwort oder über Steam, je nachdem,
                     was vorher mit welchem Konto verbunden war.</p>
-                    <p>War das nicht auf Ihre Anfrage hin, wenden Sie sich
+                    <p>War das nicht auf deine Anfrage hin, wende dich
                     bitte umgehend an den Support.</p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -840,7 +840,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
                     right away.</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: ['otherEmail' => 'old-account@example.test'],
         ));
 
@@ -853,11 +853,11 @@ class IdentityServiceProvider extends ModuleServiceProvider
             bodies: [
                 'de' => <<<'BLADE'
                     <p>Ein Administrator hat dieses Konto mit dem Konto
-                    {{ $survivorEmail }} zusammengeführt, weil beide Ihnen
-                    gehören. Eine Anmeldung mit diesem Konto ist ab sofort
-                    nicht mehr möglich — melden Sie sich stattdessen bei
-                    {{ $survivorEmail }} an.</p>
-                    <p>War das nicht auf Ihre Anfrage hin, wenden Sie sich
+                    {{ $survivorEmail }} zusammengeführt, weil beide dir
+                    gehören. Einloggen mit diesem Konto ist ab sofort
+                    nicht mehr möglich — logge dich stattdessen bei
+                    {{ $survivorEmail }} ein.</p>
+                    <p>War das nicht auf deine Anfrage hin, wende dich
                     bitte umgehend an den Support.</p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -869,7 +869,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
                     right away.</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: ['survivorEmail' => 'kept-account@example.test'],
         ));
 
@@ -882,10 +882,10 @@ class IdentityServiceProvider extends ModuleServiceProvider
             bodies: [
                 'de' => <<<'BLADE'
                     <p>Willkommen bei {{ $brandName }}!</p>
-                    <p>Ihr Konto ist bestätigt.</p>
+                    <p>Dein Konto ist bestätigt.</p>
                     <p>Hier geht es zur Startseite: <a href="{{ $homeUrl }}">{{ $brandName }}</a>.</p>
                     @if ($shopUrl)
-                    <p>Im Shop finden Sie unser aktuelles Angebot:
+                    <p>Im Shop findest du unser aktuelles Angebot:
                     <a href="{{ $shopUrl }}">Zum Shop</a>.</p>
                     @endif
                     BLADE,
@@ -899,7 +899,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
                     @endif
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'brandName' => 'SXLan',
                 'homeUrl' => 'https://example.test/',
@@ -920,10 +920,10 @@ class IdentityServiceProvider extends ModuleServiceProvider
             // The inbox shows the body as plain text and makes the whole
             // row the link (`notifications/Index.vue`), so no anchor here.
             bodies: [
-                'de' => '<p>Ihr Konto wurde ohne E-Mail-Adresse übernommen. Bitte legen Sie eine fest, damit wir Sie erreichen können und Sie Ihr Konto bei Bedarf wiederherstellen können. Bis dahin bleiben Bestellungen und Einstellungen gesperrt.</p>',
+                'de' => '<p>Dein Konto wurde ohne E-Mail-Adresse übernommen. Bitte lege eine fest, damit wir dich erreichen können und du dein Konto bei Bedarf wiederherstellen kannst. Bis dahin bleiben Bestellungen und Einstellungen gesperrt.</p>',
                 'en' => '<p>Your account was carried over without an email address. Please set one so we can reach you and you can recover your account if you ever need to. Until then, orders and settings stay locked.</p>',
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: ['url' => 'https://example.test/email/verify'],
         ));
     }

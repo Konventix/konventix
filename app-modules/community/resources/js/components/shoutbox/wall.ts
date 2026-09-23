@@ -23,7 +23,7 @@ export type PendingLine = {
     body: string;
 };
 
-/** A removed line: "Von der Orga entfernt", with neither body nor author (spec §4.2). */
+/** A removed line: "Removed by the organisers", with neither body nor author (spec §4.2). */
 export function isTombstone(entry: WallEntry): entry is WallTombstone {
     return 'removedAt' in entry;
 }

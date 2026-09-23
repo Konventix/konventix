@@ -17,7 +17,7 @@ defineOptions({
 </script>
 
 <template>
-    <Head title="Confirm password" />
+    <Head :title="$t('Confirm password')" />
 
     <Form
         v-bind="password.confirm.store.form()"
@@ -26,21 +26,21 @@ defineOptions({
         class="flex flex-col gap-6"
     >
         <div class="grid gap-2">
-            <Label for="password">Password</Label>
+            <Label for="password">{{ $t('Password') }}</Label>
             <PasswordInput
                 id="password"
                 name="password"
                 required
                 autofocus
                 autocomplete="current-password"
-                placeholder="Password"
+                :placeholder="$t('Password')"
             />
             <InputError :message="errors.password" />
         </div>
 
         <Button type="submit" class="w-full" :disabled="processing">
             <Spinner v-if="processing" />
-            Confirm
+            {{ $t('Confirm') }}
         </Button>
     </Form>
 </template>

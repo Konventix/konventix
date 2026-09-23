@@ -40,15 +40,19 @@ const providerError = computed(() => page.props.errors.provider);
 </script>
 
 <template>
-    <Head title="Linked accounts" />
+    <Head :title="$t('Linked accounts')" />
 
-    <h1 class="sr-only">Linked accounts</h1>
+    <h1 class="sr-only">{{ $t('Linked accounts') }}</h1>
 
     <div class="space-y-6">
         <Heading
             variant="small"
-            title="Linked accounts"
-            description="Connect an account you already have, and use it to sign in."
+            :title="$t('Linked accounts')"
+            :description="
+                $t(
+                    'Connect an account you already have, and use it to sign in.',
+                )
+            "
         />
 
         <div
@@ -79,13 +83,18 @@ const providerError = computed(() => page.props.errors.provider);
                             v-if="account.linked"
                             class="text-xs text-text-muted"
                         >
-                            {{ account.nickname ?? 'Connected' }}
+                            {{ account.nickname ?? $t('Connected') }}
                             <span v-if="account.linkedAt">
-                                · since {{ formatDateTime(account.linkedAt) }}
+                                ·
+                                {{
+                                    $t('since :date', {
+                                        date: formatDateTime(account.linkedAt),
+                                    })
+                                }}
                             </span>
                         </p>
                         <p v-else class="text-xs text-text-muted">
-                            Not connected
+                            {{ $t('Not connected') }}
                         </p>
                     </div>
                 </div>
@@ -101,8 +110,11 @@ const providerError = computed(() => page.props.errors.provider);
                         v-if="account.linked && !account.canUnlink"
                         class="max-w-xs text-xs text-text-muted"
                     >
-                        Set a password first — this is currently the only way
-                        into your account.
+                        {{
+                            $t(
+                                'Set a password first — this is currently the only way into your account.',
+                            )
+                        }}
                     </p>
 
                     <Form
@@ -115,13 +127,13 @@ const providerError = computed(() => page.props.errors.provider);
                             variant="outline"
                             :disabled="processing"
                         >
-                            Disconnect
+                            {{ $t('Disconnect') }}
                         </Button>
                     </Form>
 
                     <Button v-if="!account.linked" as-child variant="outline">
                         <a :href="socialRedirect(account.provider).url">
-                            Connect
+                            {{ $t('Connect') }}
                         </a>
                     </Button>
                 </div>
@@ -129,8 +141,11 @@ const providerError = computed(() => page.props.errors.provider);
         </ul>
 
         <p v-if="!props.hasPassword" class="text-sm text-text-muted">
-            This account has no password yet. You can set one from the security
-            settings to add a second way to sign in.
+            {{
+                $t(
+                    'This account has no password yet. You can set one from the security settings to add a second way to sign in.',
+                )
+            }}
         </p>
     </div>
 </template>

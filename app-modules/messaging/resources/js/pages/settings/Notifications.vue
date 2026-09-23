@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, setLayoutProps, useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { onMounted, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import {
     destroy as pushDestroy,
     store as pushStore,
 } from '@/routes/push-subscriptions';
+import { channelLabel } from '../../lib/labels';
 
 /**
  * Rendered from the topic registry (ADR-0041): a new notification kind
@@ -30,22 +32,17 @@ const props = defineProps<{
     vapidPublicKey: string | null;
 }>();
 
-defineOptions({
-    layout: {
-        breadcrumbs: [
-            {
-                title: 'Notification settings',
-                href: edit(),
-            },
-        ],
-    },
+// Set from `setup` rather than `defineOptions`: `defineOptions` is hoisted
+// to module scope, and the breadcrumb is a catalog lookup — the catalog may
+// still be loading when the page chunk is evaluated (ADR-0068).
+setLayoutProps({
+    breadcrumbs: [
+        {
+            title: trans('Notification settings'),
+            href: edit(),
+        },
+    ],
 });
-
-const channelNames: Record<string, string> = {
-    mail: 'Email',
-    in_app: 'In-app',
-    push: 'Push',
-};
 
 const form = useForm({
     preferences: props.topics.flatMap((topic) =>
@@ -241,20 +238,25 @@ async function disablePush(): Promise<void> {
 </script>
 
 <template>
-    <Head title="Notification settings" />
+    <Head :title="$t('Notification settings')" />
 
-    <h1 class="sr-only">Notification settings</h1>
+    <h1 class="sr-only">{{ $t('Notification settings') }}</h1>
 
     <div class="flex flex-col space-y-6">
         <Heading
             variant="small"
-            title="Notifications"
-            description="Choose how each kind of notification reaches you"
+            :title="$t('Notifications')"
+            :description="
+                $t('Choose how each kind of notification reaches you')
+            "
         />
 
         <p v-if="props.topics.length === 0" class="text-sm text-text-muted">
-            Nothing to configure yet — notification kinds appear here as
-            features start sending them.
+            {{
+                $t(
+                    'Nothing to configure yet — notification kinds appear here as features start sending them.',
+                )
+            }}
         </p>
 
         <form v-else class="flex flex-col gap-6" @submit.prevent="submit">
@@ -268,7 +270,7 @@ async function disablePush(): Promise<void> {
                 </legend>
 
                 <p v-if="!topic.suppressible" class="text-xs text-text-muted">
-                    Security-relevant — always delivered.
+                    {{ $t('Security-relevant — always delivered.') }}
                 </p>
 
                 <div class="flex flex-wrap gap-6">
@@ -294,24 +296,22 @@ async function disablePush(): Promise<void> {
                             "
                         />
                         <Label :for="`${topic.key}-${channel.channel}`">
-                            {{
-                                channelNames[channel.channel] ?? channel.channel
-                            }}
+                            {{ channelLabel(channel.channel) }}
                         </Label>
                     </div>
                 </div>
             </fieldset>
 
             <div class="flex items-center gap-3">
-                <Button type="submit" :disabled="form.processing"
-                    >Save preferences</Button
-                >
+                <Button type="submit" :disabled="form.processing">{{
+                    $t('Save preferences')
+                }}</Button>
                 <span
                     v-if="form.isDirty"
                     role="status"
                     class="text-sm text-warning"
                 >
-                    Unsaved changes
+                    {{ $t('Unsaved changes') }}
                 </span>
             </div>
         </form>
@@ -320,17 +320,23 @@ async function disablePush(): Promise<void> {
             v-if="pushSupported"
             class="flex flex-col gap-2 rounded-md border border-border p-4"
         >
-            <h2 class="text-sm font-medium text-text">Push on this device</h2>
+            <h2 class="text-sm font-medium text-text">
+                {{ $t('Push on this device') }}
+            </h2>
             <p class="text-xs text-text-muted">
-                Browser notifications reach this device even while the site is
-                closed. Each device is enabled separately.
+                {{
+                    $t(
+                        'Browser notifications reach this device even while the site is closed. Each device is enabled separately.',
+                    )
+                }}
             </p>
             <template v-if="permission === 'denied'">
                 <p class="text-sm text-text" role="status">
-                    Notifications are blocked for this site. The browser will
-                    not ask again by itself — allow them in the site settings
-                    (the lock or tune icon next to the address bar, then
-                    "Notifications"), and check again here.
+                    {{
+                        $t(
+                            'Notifications are blocked for this site. The browser will not ask again by itself — allow them in the site settings (the lock or tune icon next to the address bar, then “Notifications”), and check again here.',
+                        )
+                    }}
                 </p>
                 <div>
                     <Button
@@ -339,7 +345,7 @@ async function disablePush(): Promise<void> {
                         :disabled="pushBusy"
                         @click="refreshPushState"
                     >
-                        Check again
+                        {{ $t('Check again') }}
                     </Button>
                 </div>
             </template>
@@ -349,8 +355,11 @@ async function disablePush(): Promise<void> {
                     class="text-sm text-text-muted"
                     role="status"
                 >
-                    The browser closed the permission prompt without an answer.
-                    Try again and choose "Allow".
+                    {{
+                        $t(
+                            'The browser closed the permission prompt without an answer. Try again and choose “Allow”.',
+                        )
+                    }}
                 </p>
                 <div>
                     <Button
@@ -362,8 +371,8 @@ async function disablePush(): Promise<void> {
                     >
                         {{
                             permission === 'granted'
-                                ? 'Enable on this device'
-                                : 'Allow notifications on this device'
+                                ? $t('Enable on this device')
+                                : $t('Allow notifications on this device')
                         }}
                     </Button>
                     <Button
@@ -373,7 +382,7 @@ async function disablePush(): Promise<void> {
                         :disabled="pushBusy"
                         @click="disablePush"
                     >
-                        Disable on this device
+                        {{ $t('Disable on this device') }}
                     </Button>
                 </div>
             </template>
@@ -384,10 +393,10 @@ async function disablePush(): Promise<void> {
             browser cannot do this" — or the other way round.
         -->
         <p v-else-if="!browserSupportsPush" class="text-xs text-text-muted">
-            This browser does not support push notifications.
+            {{ $t('This browser does not support push notifications.') }}
         </p>
         <p v-else class="text-xs text-text-muted">
-            Push notifications are not set up on this installation.
+            {{ $t('Push notifications are not set up on this installation.') }}
         </p>
     </div>
 </template>

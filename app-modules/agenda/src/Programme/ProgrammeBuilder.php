@@ -220,10 +220,10 @@ final class ProgrammeBuilder
 
         return new ProgrammeDayData(
             dayId: $day['day_id'],
-            // "Tag N" counts the days the caller passed, not the ones that
+            // "Day N" counts the days the caller passed, not the ones that
             // survived: a day without items is omitted, and the day after
             // it must not be renamed because of that.
-            label: $label === null || $label === '' ? 'Tag '.($offset + 1) : $label,
+            label: $label === null || $label === '' ? __('Day :number', ['number' => $offset + 1]) : $label,
             date: $date,
             trackNames: $trackNames,
             rows: $rows,

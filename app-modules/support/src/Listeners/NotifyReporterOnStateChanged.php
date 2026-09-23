@@ -65,10 +65,10 @@ final class NotifyReporterOnStateChanged
             templateKey: 'support.request-state-changed',
             payload: new SupportStateChangedData(
                 reference: $request->reference(),
-                stateDe: self::germanLabel($to),
-                stateEn: $to->label(),
-                noteDe: self::germanNote($to),
-                noteEn: self::englishNote($to),
+                stateDe: self::label($to, 'de'),
+                stateEn: self::label($to, 'en'),
+                noteDe: self::note($to, 'de'),
+                noteEn: self::note($to, 'en'),
                 requestUrl: $this->links->reporterUrl($request),
             ),
         );
@@ -87,38 +87,28 @@ final class NotifyReporterOnStateChanged
     }
 
     /**
-     * The state's name in the mail's German body. It lives here rather than
-     * on the enum because the enum's `label()` is UI copy, and UI copy is
-     * English until the platform decides on i18n (D-SUP-09) — while the
-     * mail templates are `de`/`en` today and this is the German half of
-     * one payload.
+     * The state's name in one of the mail's two bodies. The template is a
+     * `de`/`en` map with a prepared field per locale, so each half is looked
+     * up in the catalog for its own locale explicitly — the request that
+     * moved the state is the operator's, and its locale says nothing about
+     * the reporter's (ADR-0068).
      */
-    private static function germanLabel(SupportRequestState $state): string
+    private static function label(SupportRequestState $state, string $locale): string
     {
         return match ($state) {
-            SupportRequestState::InProgress => 'In Bearbeitung',
-            SupportRequestState::Resolved => 'Erledigt',
-            SupportRequestState::WontFix => 'Wird nicht geändert',
+            SupportRequestState::InProgress => __('In progress', [], $locale),
+            SupportRequestState::Resolved => __('Resolved', [], $locale),
+            SupportRequestState::WontFix => __("Won't fix", [], $locale),
             default => $state->label(),
         };
     }
 
-    private static function germanNote(SupportRequestState $state): string
+    private static function note(SupportRequestState $state, string $locale): string
     {
         return match ($state) {
-            SupportRequestState::InProgress => 'Jemand kümmert sich jetzt darum.',
-            SupportRequestState::Resolved => 'Wir haben das Problem behoben. Falls es weiterhin auftritt, antworten Sie einfach auf diese Meldung.',
-            SupportRequestState::WontFix => 'Wir werden das so lassen. Die Begründung steht in der Meldung.',
-            default => '',
-        };
-    }
-
-    private static function englishNote(SupportRequestState $state): string
-    {
-        return match ($state) {
-            SupportRequestState::InProgress => 'Somebody is working on it now.',
-            SupportRequestState::Resolved => 'We have fixed it. If it still happens, just answer on your report.',
-            SupportRequestState::WontFix => 'We are going to leave this as it is. The reasoning is on your report.',
+            SupportRequestState::InProgress => __('Somebody is working on it now.', [], $locale),
+            SupportRequestState::Resolved => __('We have fixed it. If it still happens, just answer on your report.', [], $locale),
+            SupportRequestState::WontFix => __('We are going to leave this as it is. The reasoning is on your report.', [], $locale),
             default => '',
         };
     }

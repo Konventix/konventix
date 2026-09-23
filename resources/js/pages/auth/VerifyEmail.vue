@@ -19,14 +19,17 @@ defineProps<{
 </script>
 
 <template>
-    <Head title="Email verification" />
+    <Head :title="$t('Email verification')" />
 
     <div
         v-if="status === 'verification-link-sent'"
         class="mb-4 text-center text-sm font-medium text-success"
     >
-        A new verification link has been sent to the email address you provided
-        during registration.
+        {{
+            $t(
+                'A new verification link has been sent to the email address you provided during registration.',
+            )
+        }}
     </div>
 
     <div class="flex flex-col gap-4">
@@ -37,7 +40,7 @@ defineProps<{
         >
             <Button type="submit" :disabled="processing" class="w-full">
                 <Spinner v-if="processing" />
-                Resend verification email
+                {{ $t('Resend verification email') }}
             </Button>
         </Form>
 
@@ -48,7 +51,7 @@ defineProps<{
                 class="w-full"
                 data-test="logout-button"
             >
-                Log out
+                {{ $t('Log out') }}
             </Button>
         </Form>
     </div>

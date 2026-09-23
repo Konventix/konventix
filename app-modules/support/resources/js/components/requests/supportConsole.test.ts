@@ -20,7 +20,7 @@ import {
  */
 describe('the five categories', () => {
     it('names exactly the cases the enum has, in its own order', () => {
-        expect(Object.keys(supportCategoryLabels)).toEqual([
+        expect(Object.keys(supportCategoryLabels())).toEqual([
             'purchase_affected',
             'visibility',
             'function',
@@ -55,7 +55,7 @@ describe('the five categories', () => {
 
 describe('the five states', () => {
     it('names exactly the cases the enum has', () => {
-        expect(Object.keys(supportStateLabels)).toEqual([
+        expect(Object.keys(supportStateLabels())).toEqual([
             'received',
             'seen',
             'in_progress',

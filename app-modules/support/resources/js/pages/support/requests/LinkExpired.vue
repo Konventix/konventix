@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, useHttp } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { nextTick, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -61,21 +62,29 @@ function submit(): void {
     form.post(reissueLink().url, {
         onSuccess: () => {
             announce(
-                'If that reference belongs to a report, we have sent a fresh link to the address it was filed with. It can take a few minutes to arrive.',
+                trans(
+                    'If that reference belongs to a report, we have sent a fresh link to the address it was filed with. It can take a few minutes to arrive.',
+                ),
             );
         },
         onHttpException: (response) => {
             announce(
                 response.status === 429
-                    ? 'That is too many requests for one reference. Please try again in an hour.'
-                    : 'Something went wrong on our side. Please try again.',
+                    ? trans(
+                          'That is too many requests for one reference. Please try again in an hour.',
+                      )
+                    : trans(
+                          'Something went wrong on our side. Please try again.',
+                      ),
             );
 
             return false;
         },
         onNetworkError: () => {
             announce(
-                'Your request did not reach us. Please check your connection and try again.',
+                trans(
+                    'Your request did not reach us. Please check your connection and try again.',
+                ),
             );
 
             return false;
@@ -91,18 +100,24 @@ function announce(sentence: string): void {
 </script>
 
 <template>
-    <Head title="That link has expired" />
+    <Head :title="$t('That link has expired')" />
 
     <div class="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-10">
         <Heading
             as="h1"
-            title="That link has expired"
-            description="A link to a report works for 30 days. We can send you a new one."
+            :title="$t('That link has expired')"
+            :description="
+                $t(
+                    'A link to a report works for 30 days. We can send you a new one.',
+                )
+            "
         />
 
         <form class="flex flex-col gap-4" @submit.prevent="submit">
             <div class="grid gap-2">
-                <Label for="support-link-reference">Report reference</Label>
+                <Label for="support-link-reference">{{
+                    $t('Report reference')
+                }}</Label>
                 <Input
                     id="support-link-reference"
                     v-model="reference"
@@ -116,8 +131,11 @@ function announce(sentence: string): void {
                     id="support-link-reference-hint"
                     class="text-xs text-text-muted"
                 >
-                    The eight characters we printed in the confirmation mail,
-                    for example A1B2C3D4.
+                    {{
+                        $t(
+                            'The eight characters we printed in the confirmation mail, for example A1B2C3D4.',
+                        )
+                    }}
                 </p>
                 <div id="support-link-reference-error">
                     <InputError :message="form.errors.reference" />
@@ -129,7 +147,7 @@ function announce(sentence: string): void {
                 class="self-start"
                 :disabled="form.processing || reference.trim() === ''"
             >
-                Send me a new link
+                {{ $t('Send me a new link') }}
             </Button>
 
             <p

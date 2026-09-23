@@ -2,6 +2,7 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { Plus } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { trans, transChoice } from 'laravel-vue-i18n';
 import { computed, h, onMounted, ref, watch } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -108,10 +109,11 @@ const pagination = computed(() => ({
     to: props.policies.to,
 }));
 
-const columns: ColumnDef<PolicyRow>[] = [
+// A computed, not a constant: `trans()` must run after the catalog is loaded.
+const columns = computed<ColumnDef<PolicyRow>[]>(() => [
     {
         accessorKey: 'name',
-        header: 'Policy',
+        header: trans('Policy'),
         enableSorting: true,
         cell: ({ row }) =>
             h('div', { class: 'flex flex-col' }, [
@@ -132,7 +134,7 @@ const columns: ColumnDef<PolicyRow>[] = [
     },
     {
         id: 'brand',
-        header: 'Scope',
+        header: trans('Scope'),
         cell: ({ row }) =>
             h('div', { class: 'flex flex-col' }, [
                 h(
@@ -152,14 +154,17 @@ const columns: ColumnDef<PolicyRow>[] = [
                     ? h(
                           'span',
                           { class: 'text-xs text-warning' },
-                          `overridden by ${row.original.shadowedByBrands} brand${row.original.shadowedByBrands === 1 ? '' : 's'}`,
+                          transChoice(
+                              '{1} overridden by :count brand|[2,*] overridden by :count brands',
+                              row.original.shadowedByBrands,
+                          ),
                       )
                     : null,
                 row.original.shadowsOperator
                     ? h(
                           'span',
                           { class: 'text-xs text-text-muted' },
-                          'overrides the operator text',
+                          trans('overrides the operator text'),
                       )
                     : null,
                 // ADR-0066 §9.2: which texts are conditional, at a glance.
@@ -167,17 +172,21 @@ const columns: ColumnDef<PolicyRow>[] = [
                     ? h(
                           'span',
                           { class: 'text-xs text-text-muted' },
-                          'bound — applies where its bindings match',
+                          trans('bound — applies where its bindings match'),
                       )
                     : null,
             ]),
     },
     {
         id: 'published',
-        header: 'Published',
+        header: trans('Published'),
         cell: ({ row }) =>
             row.original.publishedVersion === null
-                ? h('span', { class: 'text-text-muted' }, 'Not published')
+                ? h(
+                      'span',
+                      { class: 'text-text-muted' },
+                      trans('Not published'),
+                  )
                 : h('div', { class: 'flex flex-col' }, [
                       h('span', {}, row.original.publishedVersion),
                       // Rendered in the reader's own zone and naming it:
@@ -188,7 +197,7 @@ const columns: ColumnDef<PolicyRow>[] = [
                           ? h(
                                 'span',
                                 { class: 'text-xs text-text-muted' },
-                                'no date',
+                                trans('no date'),
                             )
                           : h(
                                 'time',
@@ -205,7 +214,7 @@ const columns: ColumnDef<PolicyRow>[] = [
     },
     {
         id: 'consent',
-        header: 'Consent',
+        header: trans('Consent'),
         cell: ({ row }) =>
             h(
                 'span',
@@ -214,12 +223,14 @@ const columns: ColumnDef<PolicyRow>[] = [
                         ? 'inline-flex rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent'
                         : 'text-text-muted',
                 },
-                row.original.requiresConsent ? 'required' : 'informational',
+                row.original.requiresConsent
+                    ? trans('required')
+                    : trans('informational'),
             ),
     },
     {
         id: 'versions',
-        header: 'Versions',
+        header: trans('Versions'),
         cell: ({ row }) =>
             h(
                 'span',
@@ -227,7 +238,7 @@ const columns: ColumnDef<PolicyRow>[] = [
                 String(row.original.versions),
             ),
     },
-];
+]);
 
 const open = ref(false);
 
@@ -305,12 +316,14 @@ function submit(): void {
 </script>
 
 <template>
-    <Head title="Policies" />
+    <Head :title="$t('Policies')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Policies"
-            description="Terms, privacy policies and house rules, per brand"
+            :title="$t('Policies')"
+            :description="
+                $t('Terms, privacy policies and house rules, per brand')
+            "
         />
 
         <!--
@@ -333,13 +346,15 @@ function submit(): void {
                         @click="startCreating(slug, gap.brandId)"
                     >
                         <Plus class="size-4" />
-                        Create
                         {{
-                            props.checkoutRoles.find(
-                                (role) => role.slug === slug,
-                            )?.name ?? slug
+                            $t('Create :role for :brand', {
+                                role:
+                                    props.checkoutRoles.find(
+                                        (role) => role.slug === slug,
+                                    )?.name ?? slug,
+                                brand: gap.brandName,
+                            })
                         }}
-                        for {{ gap.brandName }}
                     </Button>
                 </span>
             </template>
@@ -348,7 +363,7 @@ function submit(): void {
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
-            search-placeholder="Search name or slug…"
+            :search-placeholder="$t('Search name or slug…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
         >
@@ -357,19 +372,21 @@ function submit(): void {
                     <DialogTrigger as-child>
                         <Button>
                             <Plus class="size-4" />
-                            New policy
+                            {{ $t('New policy') }}
                         </Button>
                     </DialogTrigger>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Create policy</DialogTitle>
+                            <DialogTitle>{{ $t('Create policy') }}</DialogTitle>
                         </DialogHeader>
                         <form
                             class="flex flex-col gap-4"
                             @submit.prevent="submit"
                         >
                             <div class="grid gap-2">
-                                <Label for="policy-brand">Scope</Label>
+                                <Label for="policy-brand">{{
+                                    $t('Scope')
+                                }}</Label>
                                 <select
                                     id="policy-brand"
                                     v-model="form.brand_id"
@@ -377,7 +394,7 @@ function submit(): void {
                                     aria-describedby="policy-brand-hint"
                                 >
                                     <option value="">
-                                        Operator-wide (all brands)
+                                        {{ $t('Operator-wide (all brands)') }}
                                     </option>
                                     <option
                                         v-for="brand in props.brands"
@@ -391,15 +408,17 @@ function submit(): void {
                                     id="policy-brand-hint"
                                     class="text-xs text-text-muted"
                                 >
-                                    An operator-wide text applies to every brand
-                                    that has not published its own under the
-                                    same slug.
+                                    {{
+                                        $t(
+                                            'An operator-wide text applies to every brand that has not published its own under the same slug.',
+                                        )
+                                    }}
                                 </p>
                                 <InputError :message="form.errors.brand_id" />
                             </div>
                             <div class="grid gap-2">
                                 <Label for="policy-checkout-role">
-                                    Checkout role
+                                    {{ $t('Checkout role') }}
                                 </Label>
                                 <select
                                     id="policy-checkout-role"
@@ -408,8 +427,11 @@ function submit(): void {
                                     aria-describedby="policy-checkout-role-hint"
                                 >
                                     <option value="">
-                                        None — the checkout never asks for this
-                                        text
+                                        {{
+                                            $t(
+                                                'None — the checkout never asks for this text',
+                                            )
+                                        }}
                                     </option>
                                     <option
                                         v-for="role in props.checkoutRoles"
@@ -423,36 +445,41 @@ function submit(): void {
                                     id="policy-checkout-role-hint"
                                     class="text-xs text-text-muted"
                                 >
-                                    The purchase path looks for exactly these
-                                    two slugs. A text under any other slug is a
-                                    perfectly good policy the checkout never
-                                    mentions.
+                                    {{
+                                        $t(
+                                            'The purchase path looks for exactly these two slugs. A text under any other slug is a perfectly good policy the checkout never mentions.',
+                                        )
+                                    }}
                                 </p>
                             </div>
                             <div class="grid gap-2">
-                                <Label for="policy-name">Name</Label>
+                                <Label for="policy-name">{{
+                                    $t('Name')
+                                }}</Label>
                                 <Input id="policy-name" v-model="form.name" />
                                 <InputError :message="form.errors.name" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="policy-slug">Slug</Label>
+                                <Label for="policy-slug">{{
+                                    $t('Slug')
+                                }}</Label>
                                 <Input
                                     id="policy-slug"
                                     v-model="form.slug"
                                     @input="slugTouched = true"
                                 />
                                 <p class="text-xs text-text-muted">
-                                    Public URL path. It freezes once a version
-                                    of this policy has been published. The
-                                    checkout resolves
-                                    <code>terms</code> and
-                                    <code>withdrawal</code>; any other slug it
-                                    never asks for.
+                                    {{
+                                        $t(
+                                            'Public URL path. It freezes once a version of this policy has been published. The checkout asks only for these slugs:',
+                                        )
+                                    }}
+                                    <code>terms</code>, <code>withdrawal</code>.
                                 </p>
                                 <InputError :message="form.errors.slug" />
                             </div>
                             <Button type="submit" :disabled="form.processing">
-                                Create
+                                {{ $t('Create') }}
                             </Button>
                         </form>
                     </DialogContent>
@@ -466,8 +493,8 @@ function submit(): void {
             :data="props.policies.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="policies"
-            empty-message="No policies yet."
+            :items-label="$t('policies')"
+            :empty-message="$t('No policies yet.')"
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />

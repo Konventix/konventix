@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
 import type { SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -15,7 +16,7 @@ import {
     edit as editTemplate,
     index as templatesIndex,
 } from '@/routes/admin/messages/templates';
-import { columns } from './columns';
+import { templateColumns } from './columns';
 import type { TemplateRow } from './columns';
 
 interface PaginatedTemplates {
@@ -50,7 +51,7 @@ const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
 const filterDefs = computed<DataTableFilterDef[]>(() => [
     {
         name: 'brand',
-        label: 'Brand',
+        label: trans('Brand'),
         value: props.filters.brand,
         options: props.brands.map((brand) => ({
             value: brand.id,
@@ -59,6 +60,8 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
         clearValue: 'all',
     },
 ]);
+
+const columns = templateColumns();
 
 const sorting = computed<SortingState>(() =>
     filters.sort ? [{ id: filters.sort, desc: filters.dir === 'desc' }] : [],
@@ -80,19 +83,23 @@ const pagination = computed(() => ({
 </script>
 
 <template>
-    <Head title="Message templates" />
+    <Head :title="$t('Message templates')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Message templates"
-            description="Rewrite a mail in your own words, preview it, then save the override — per brand"
+            :title="$t('Message templates')"
+            :description="
+                $t(
+                    'Rewrite a mail in your own words, preview it, then save the override — per brand',
+                )
+            "
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
             :filters="filterDefs"
-            search-placeholder="Search key or module…"
+            :search-placeholder="$t('Search key or module…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
             @update:filter="setFilter"
@@ -106,8 +113,8 @@ const pagination = computed(() => ({
             :row-count="templates.total"
             :pagination="pagination"
             :get-row-id="(row: TemplateRow) => row.key"
-            items-label="templates"
-            empty-message="No templates registered."
+            :items-label="$t('templates')"
+            :empty-message="$t('No templates registered.')"
             row-clickable
             @row-click="
                 (row: TemplateRow) => router.visit(editTemplate(row.key))

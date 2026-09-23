@@ -12,6 +12,7 @@
  * endpoint, never the enforcement. The server re-validates all of it and
  * overwrites every field it can derive itself (D-SUP-04).
  */
+import { trans } from 'laravel-vue-i18n';
 
 /** Design §6.3: "I clicked pay and ended up here" in five hops. */
 export const VISIT_BUFFER_SIZE = 5;
@@ -181,39 +182,54 @@ export function disclosedFields(context: SupportClientContext): {
     label: string;
     value: string;
 }[] {
+    const notAvailable = trans('not available');
+
     return [
         {
-            label: 'Page reference',
-            value: context.pageCorrelationId ?? 'not available',
+            label: trans('Page reference'),
+            value: context.pageCorrelationId ?? notAvailable,
         },
-        { label: 'Page address', value: context.url ?? 'not available' },
+        { label: trans('Page address'), value: context.url ?? notAvailable },
         {
-            label: 'Previous page',
-            value: context.previousUrl ?? 'none in this visit',
-        },
-        {
-            label: 'Your last few pages',
-            value: `${context.recentVisits.length} of ${VISIT_BUFFER_SIZE}`,
+            label: trans('Previous page'),
+            value: context.previousUrl ?? trans('none in this visit'),
         },
         {
-            label: 'Window size',
+            label: trans('Your last few pages'),
+            value: trans(':count of :max', {
+                count: String(context.recentVisits.length),
+                max: String(VISIT_BUFFER_SIZE),
+            }),
+        },
+        {
+            label: trans('Window size'),
             value:
                 context.viewport === null
-                    ? 'not available'
-                    : `${context.viewport.width} × ${context.viewport.height} at ${context.viewport.dpr}×`,
+                    ? notAvailable
+                    : trans(':width × :height at :dpr×', {
+                          width: String(context.viewport.width),
+                          height: String(context.viewport.height),
+                          dpr: String(context.viewport.dpr),
+                      }),
         },
         {
-            label: 'Last error your browser saw',
+            label: trans('Last error your browser saw'),
             value:
-                context.lastClientError === null ? 'none' : 'yes, the message',
+                context.lastClientError === null
+                    ? trans('none')
+                    : trans('yes, the message'),
         },
         {
-            label: 'From the server',
-            value: 'release, brand, page route, your account, browser and time of arrival',
+            label: trans('From the server'),
+            value: trans(
+                'release, brand, page route, your account, browser and time of arrival',
+            ),
         },
         {
-            label: 'Never sent',
-            value: 'screenshots, what you typed on the page, cookies, your IP address',
+            label: trans('Never sent'),
+            value: trans(
+                'screenshots, what you typed on the page, cookies, your IP address',
+            ),
         },
     ];
 }

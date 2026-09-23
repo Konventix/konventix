@@ -15,6 +15,12 @@ import {
     redispatch as redispatchRequest,
     refuse as refuseRequest,
 } from '@/routes/admin/subject-requests';
+import {
+    deletionModeLabel,
+    moduleResponseStateLabel,
+    requestStateLabel,
+    requestTypeLabel,
+} from '../../../lib/labels';
 
 /**
  * One request and what each module said.
@@ -88,17 +94,27 @@ function acceptConsentWithdrawal(): void {
 </script>
 
 <template>
-    <Head :title="`Data request — ${props.request.type}`" />
+    <Head
+        :title="
+            $t('Data request — :type', {
+                type: requestTypeLabel(props.request.type),
+            })
+        "
+    />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            :title="`${props.request.type} request`"
+            :title="
+                $t(':type request', {
+                    type: requestTypeLabel(props.request.type),
+                })
+            "
             :description="`${props.request.subjectId} · ${props.request.brandName}`"
         >
             <Button variant="outline" as-child>
                 <Link :href="requestsIndex().url">
                     <ArrowLeft class="size-4" />
-                    All requests
+                    {{ $t('All requests') }}
                 </Link>
             </Button>
         </AdminPageHeader>
@@ -106,7 +122,7 @@ function acceptConsentWithdrawal(): void {
         <div class="grid gap-6 lg:grid-cols-3">
             <Card class="lg:col-span-2">
                 <CardHeader>
-                    <CardTitle>Module responses</CardTitle>
+                    <CardTitle>{{ $t('Module responses') }}</CardTitle>
                 </CardHeader>
                 <CardContent class="flex flex-col gap-3">
                     <div
@@ -119,14 +135,14 @@ function acceptConsentWithdrawal(): void {
                             <span class="text-xs text-text-muted">
                                 {{
                                     formatDateTime(response.respondedAt) ||
-                                    'no answer yet'
+                                    $t('no answer yet')
                                 }}
                             </span>
                             <span
                                 class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
                                 :class="responseClasses[response.state]"
                             >
-                                {{ response.state }}
+                                {{ moduleResponseStateLabel(response.state) }}
                             </span>
                         </span>
                     </div>
@@ -136,17 +152,19 @@ function acceptConsentWithdrawal(): void {
                         class="rounded-md bg-warning/10 p-3 text-sm text-warning"
                         role="status"
                     >
-                        Never addressed by this request:
-                        {{ props.missingModules.join(', ') }}. These modules
-                        registered a handler after it opened — re-dispatch to
-                        include them.
+                        {{
+                            $t(
+                                'Never addressed by this request: :modules. These modules registered a handler after it opened — re-dispatch to include them.',
+                                { modules: props.missingModules.join(', ') },
+                            )
+                        }}
                     </p>
 
                     <p
                         v-if="props.responses.length === 0"
                         class="text-sm text-text-muted"
                     >
-                        No module was addressed.
+                        {{ $t('No module was addressed.') }}
                     </p>
                 </CardContent>
             </Card>
@@ -154,31 +172,43 @@ function acceptConsentWithdrawal(): void {
             <div class="flex flex-col gap-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Request</CardTitle>
+                        <CardTitle>{{ $t('Request') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-2 text-sm">
                         <p>
-                            <span class="text-text-muted">State:</span>
-                            {{ props.request.state }}
+                            <span class="text-text-muted">{{
+                                $t('State:')
+                            }}</span>
+                            {{ requestStateLabel(props.request.state) }}
                         </p>
                         <p v-if="props.request.mode">
-                            <span class="text-text-muted">Mode:</span>
-                            {{ props.request.mode }}
+                            <span class="text-text-muted">{{
+                                $t('Mode:')
+                            }}</span>
+                            {{ deletionModeLabel(props.request.mode) }}
                         </p>
                         <p>
-                            <span class="text-text-muted">Opened:</span>
+                            <span class="text-text-muted">{{
+                                $t('Opened:')
+                            }}</span>
                             {{ formatDateTime(props.request.openedAt) }}
                         </p>
                         <p>
-                            <span class="text-text-muted">Deadline:</span>
+                            <span class="text-text-muted">{{
+                                $t('Deadline:')
+                            }}</span>
                             {{ formatCalendarDate(props.request.deadlineAt) }}
                         </p>
                         <p v-if="props.request.closedAt">
-                            <span class="text-text-muted">Closed:</span>
+                            <span class="text-text-muted">{{
+                                $t('Closed:')
+                            }}</span>
                             {{ formatDateTime(props.request.closedAt) }}
                         </p>
                         <p v-if="props.request.reasonCode">
-                            <span class="text-text-muted">Refused:</span>
+                            <span class="text-text-muted">{{
+                                $t('Refused:')
+                            }}</span>
                             {{ props.request.reasonCode }}
                         </p>
                     </CardContent>
@@ -188,20 +218,25 @@ function acceptConsentWithdrawal(): void {
                     v-if="props.request.archiveAvailable && props.canDownload"
                 >
                     <CardHeader>
-                        <CardTitle>Export archive</CardTitle>
+                        <CardTitle>{{ $t('Export archive') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-3">
                         <p class="text-sm text-text-muted">
-                            Available until
                             {{
-                                formatDateTime(props.request.archiveExpiresAt)
-                            }}. This file is every module's answer about one
-                            person — treat the download as the disclosure it is.
+                                $t(
+                                    "Available until :date. This file is every module's answer about one person — treat the download as the disclosure it is.",
+                                    {
+                                        date: formatDateTime(
+                                            props.request.archiveExpiresAt,
+                                        ),
+                                    },
+                                )
+                            }}
                         </p>
                         <Button variant="outline" as-child>
                             <a :href="downloadArchive(props.request.id).url">
                                 <Download class="size-4" />
-                                Download archive
+                                {{ $t('Download archive') }}
                             </a>
                         </Button>
                     </CardContent>
@@ -209,19 +244,20 @@ function acceptConsentWithdrawal(): void {
 
                 <Card v-if="props.canHandle">
                     <CardHeader>
-                        <CardTitle>Actions</CardTitle>
+                        <CardTitle>{{ $t('Actions') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <div class="flex flex-col gap-2">
                             <Button variant="outline" @click="redispatch">
                                 <RefreshCw class="size-4" />
-                                Re-dispatch fan-out
+                                {{ $t('Re-dispatch fan-out') }}
                             </Button>
                             <p class="text-xs text-text-muted">
-                                Re-runs every module's handler, not only the
-                                failed ones — handlers are idempotent by
-                                contract, and Compliance never learns which rows
-                                one already touched.
+                                {{
+                                    $t(
+                                        "Re-runs every module's handler, not only the failed ones — handlers are idempotent by contract, and Compliance never learns which rows one already touched.",
+                                    )
+                                }}
                             </p>
                         </div>
 
@@ -236,11 +272,14 @@ function acceptConsentWithdrawal(): void {
                                 variant="outline"
                                 @click="acceptConsentWithdrawal"
                             >
-                                Accept withdrawal
+                                {{ $t('Accept withdrawal') }}
                             </Button>
                             <p class="text-xs text-text-muted">
-                                Withdraws the named consent and closes this
-                                request as fulfilled.
+                                {{
+                                    $t(
+                                        'Withdraws the named consent and closes this request as fulfilled.',
+                                    )
+                                }}
                             </p>
                         </div>
 
@@ -250,7 +289,7 @@ function acceptConsentWithdrawal(): void {
                             @submit.prevent="refuse"
                         >
                             <Label for="refusal-reason">
-                                Refuse, with legal ground
+                                {{ $t('Refuse, with legal ground') }}
                             </Label>
                             <Input
                                 id="refusal-reason"
@@ -266,7 +305,7 @@ function acceptConsentWithdrawal(): void {
                                     refusal.reasonCode === ''
                                 "
                             >
-                                Refuse request
+                                {{ $t('Refuse request') }}
                             </Button>
                         </form>
                     </CardContent>

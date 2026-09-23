@@ -141,13 +141,13 @@ class SupportRequest extends Model
     public function maskedReporter(): string
     {
         if ($this->user_id !== null) {
-            return 'Account';
+            return __('Account');
         }
 
         $email = $this->email;
 
         if ($email === null || $email === '') {
-            return 'Guest';
+            return __('Guest');
         }
 
         $local = Str::before($email, '@');

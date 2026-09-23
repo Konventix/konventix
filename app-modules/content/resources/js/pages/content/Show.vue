@@ -80,7 +80,7 @@ function toggleReaction(
             class="inline-flex items-center gap-1 text-sm text-text-muted hover:text-text"
         >
             <ArrowLeft class="size-4" />
-            All news
+            {{ $t('All news') }}
         </Link>
 
         <article class="flex flex-col gap-4">
@@ -91,7 +91,7 @@ function toggleReaction(
                     v-if="props.entry.urgency === 'urgent'"
                     class="rounded-full bg-danger/15 px-2 py-0.5 text-danger"
                 >
-                    Urgent
+                    {{ $t('Urgent') }}
                 </span>
                 <time :datetime="props.entry.publishedAt ?? undefined">
                     {{ formatDate(props.entry.publishedAt) }}
@@ -130,14 +130,18 @@ function toggleReaction(
             class="flex flex-col gap-6 border-t border-border pt-8"
         >
             <h2 class="text-xl font-semibold">
-                Comments ({{ props.comments.length }})
+                {{
+                    $t('Comments (:count)', {
+                        count: String(props.comments.length),
+                    })
+                }}
             </h2>
 
             <p
                 v-if="props.comments.length === 0"
                 class="text-sm text-text-muted"
             >
-                Nothing here yet.
+                {{ $t('Nothing here yet.') }}
             </p>
 
             <div
@@ -160,11 +164,11 @@ function toggleReaction(
                             {{
                                 comment.authorUsername
                                     ? `@${comment.authorUsername}`
-                                    : 'Participant'
+                                    : $t('Participant')
                             }}
                         </span>
                         · {{ formatDate(comment.postedAt) }}
-                        <span v-if="comment.isMine">· you</span>
+                        <span v-if="comment.isMine">· {{ $t('you') }}</span>
                     </span>
                     <span class="flex items-center gap-3">
                         <button
@@ -173,7 +177,15 @@ function toggleReaction(
                             class="inline-flex items-center gap-1 hover:text-accent"
                             :class="comment.hasReacted && 'text-accent'"
                             :aria-pressed="comment.hasReacted"
-                            :aria-label="`${comment.hasReacted ? 'Unlike' : 'Like'} (${comment.reactionCount})`"
+                            :aria-label="
+                                comment.hasReacted
+                                    ? $t('Unlike (:count)', {
+                                          count: String(comment.reactionCount),
+                                      })
+                                    : $t('Like (:count)', {
+                                          count: String(comment.reactionCount),
+                                      })
+                            "
                             @click="toggleReaction(comment)"
                         >
                             <Heart
@@ -196,7 +208,7 @@ function toggleReaction(
                             @click="reportComment(comment.id)"
                         >
                             <Flag class="size-3.5" />
-                            Report
+                            {{ $t('Report') }}
                         </button>
                     </span>
                 </div>
@@ -211,7 +223,7 @@ function toggleReaction(
                 @submit.prevent="submit"
             >
                 <label for="comment-body" class="text-sm font-medium">
-                    Add a comment
+                    {{ $t('Add a comment') }}
                 </label>
                 <textarea
                     id="comment-body"
@@ -222,13 +234,13 @@ function toggleReaction(
                 <InputError :message="form.errors.body" />
                 <div>
                     <Button type="submit" :disabled="form.processing">
-                        Post comment
+                        {{ $t('Post comment') }}
                     </Button>
                 </div>
             </form>
 
             <p v-else class="text-sm text-text-muted">
-                Log in to join the conversation.
+                {{ $t('Log in to join the conversation.') }}
             </p>
         </section>
     </div>

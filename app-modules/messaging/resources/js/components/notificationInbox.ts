@@ -1,3 +1,5 @@
+import { transChoice } from 'laravel-vue-i18n';
+
 /**
  * The bell's state, once per browser page (#294).
  *
@@ -151,13 +153,10 @@ export function markAllRead(
  * "Notifications" at 0 and at 12 alike.
  */
 export function bellLabel(unread: number): string {
-    if (unread === 0) {
-        return 'Notifications';
-    }
-
-    return unread === 1
-        ? 'Notifications, 1 unread'
-        : `Notifications, ${unread} unread`;
+    return transChoice(
+        '{0} Notifications|{1} Notifications, :count unread|[2,*] Notifications, :count unread',
+        unread,
+    );
 }
 
 /** What the badge prints; the label above says the exact number. */

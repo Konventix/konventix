@@ -96,7 +96,9 @@ function isCovered(rowIndex: number, column: number): boolean {
             v-if="props.day.untracked.length > 0"
             class="rounded-lg border border-border bg-surface p-4"
         >
-            <h3 class="text-sm font-semibold text-text-muted">Ohne Track</h3>
+            <h3 class="text-sm font-semibold text-text-muted">
+                {{ $t('No track') }}
+            </h3>
             <ul class="mt-2 flex flex-col gap-2">
                 <li
                     v-for="cell in props.day.untracked"
@@ -126,9 +128,8 @@ function isCovered(rowIndex: number, column: number): boolean {
         <div v-if="props.columns.length > 0" class="overflow-x-auto">
             <table class="w-full border-collapse text-left text-sm">
                 <caption class="sr-only">
-                    Programm für
                     {{
-                        props.day.label
+                        $t('Programme for :day', { day: props.day.label })
                     }}
                 </caption>
                 <thead>
@@ -137,7 +138,7 @@ function isCovered(rowIndex: number, column: number): boolean {
                             scope="col"
                             class="w-20 border-b border-border p-2 font-semibold text-text-muted"
                         >
-                            Zeit
+                            {{ $t('Time') }}
                         </th>
                         <th
                             v-for="column in props.columns"

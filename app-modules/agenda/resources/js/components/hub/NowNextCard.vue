@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatTime } from '@/lib/datetime';
 
 /**
- * The live hub's "Jetzt / Gleich" card (design §6): the two questions a
+ * The live hub's "Now / Up next" card (design §6): the two questions a
  * participant standing in a hall actually has — what is running now, what
  * starts next — and the way to the whole programme.
  *
@@ -25,7 +25,7 @@ import { formatTime } from '@/lib/datetime';
  * happen here.
  *
  * Either entry may be a selected competition (§4.5): it carries a small
- * "Turnier" mark and, when the payload has a `url` for it, links to the
+ * "Tournament" mark and, when the payload has a `url` for it, links to the
  * tournament's page — which `NowNext` only sends while Competition is on
  * for the brand. The mark and link are written out here rather than taken
  * from the programme's `ProgrammeCellTitle`, because a hub component
@@ -35,7 +35,7 @@ import { formatTime } from '@/lib/datetime';
  * underlined at rest, not only on hover, because a phone has no hover.
  *
  * Both entries are independently null and the card says so rather than
- * hiding: before the first item of the day there is only a "Gleich", after
+ * hiding: before the first item of the day there is only an "Up next", after
  * the last one there is neither, and a participant looking at an empty card
  * has been told something true.
  */
@@ -58,7 +58,7 @@ const props = defineProps<Props>();
     <div class="flex flex-col gap-4">
         <div class="flex flex-col gap-1">
             <p class="text-xs font-semibold tracking-wide text-text-muted">
-                Jetzt
+                {{ $t('Now') }}
             </p>
             <template v-if="props.now">
                 <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -67,7 +67,7 @@ const props = defineProps<Props>();
                         as="span"
                         variant="outline"
                     >
-                        Turnier
+                        {{ $t('Tournament') }}
                     </Badge>
                     <Link
                         v-if="props.now.url"
@@ -90,12 +90,14 @@ const props = defineProps<Props>();
                     >
                 </p>
             </template>
-            <p v-else class="text-sm text-text-muted">Gerade läuft nichts</p>
+            <p v-else class="text-sm text-text-muted">
+                {{ $t('Nothing is running right now') }}
+            </p>
         </div>
 
         <div class="flex flex-col gap-1">
             <p class="text-xs font-semibold tracking-wide text-text-muted">
-                Gleich
+                {{ $t('Up next') }}
             </p>
             <template v-if="props.next">
                 <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -104,7 +106,7 @@ const props = defineProps<Props>();
                         as="span"
                         variant="outline"
                     >
-                        Turnier
+                        {{ $t('Tournament') }}
                     </Badge>
                     <Link
                         v-if="props.next.url"
@@ -127,7 +129,9 @@ const props = defineProps<Props>();
                     >
                 </p>
             </template>
-            <p v-else class="text-sm text-text-muted">Danach nichts mehr</p>
+            <p v-else class="text-sm text-text-muted">
+                {{ $t('Nothing after that') }}
+            </p>
         </div>
 
         <!-- No slug, no public page to point at: a wrong link on a card
@@ -137,7 +141,7 @@ const props = defineProps<Props>();
             :href="props.programmeUrl"
             class="self-start text-sm text-accent underline-offset-4 hover:underline"
         >
-            Ganzes Programm
+            {{ $t('Full programme') }}
         </Link>
     </div>
 </template>

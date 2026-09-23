@@ -148,7 +148,7 @@ class CommunityServiceProvider extends ModuleServiceProvider
         )->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown'))
             // The same refusal `PostMessage` throws, at 429: whichever half
             // of the budget refuses, the compose box reads one body — the
-            // German sentence on `body` and the countdown's seconds.
+            // participant's sentence on `body` and the countdown's seconds.
             ->response(static fn (Request $request, array $headers): JsonResponse => ShoutboxWriteException::tooManyMessages(
                 (int) ($headers['Retry-After'] ?? PostMessage::WINDOW_SECONDS),
             )->toJsonResponse(429)->withHeaders($headers)));

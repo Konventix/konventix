@@ -323,7 +323,7 @@ it('tells a muted participant the reason and the remaining time, before and when
     $this->actingAs($ada)
         ->get('/live/shoutbox')
         ->assertInertia(fn (Assert $page) => $page
-            ->where('room.wall.mute', 'Du kannst 10 Minuten nicht schreiben: Spam')
+            ->where('room.wall.mute', 'You cannot post for 10 minutes: Spam')
             ->where('room.wall.retryAfterSeconds', 600));
 
     // The Action's refusal, on the field it names — the controller never
@@ -331,7 +331,7 @@ it('tells a muted participant the reason and the remaining time, before and when
     $this->actingAs($ada)
         ->postJson('/live/shoutbox/messages', ['body' => 'Hallo'])
         ->assertUnprocessable()
-        ->assertJsonPath('errors.body.0', 'Du kannst 10 Minuten nicht schreiben: Spam')
+        ->assertJsonPath('errors.body.0', 'You cannot post for 10 minutes: Spam')
         ->assertJsonPath('cause', 'muted')
         ->assertJsonPath('retryAfterSeconds', 600);
 
@@ -352,7 +352,7 @@ it('shows a locked wall as readable and refuses a post to it', function (): void
         ->get('/live/shoutbox')
         ->assertInertia(fn (Assert $page) => $page
             ->has('room.wall.lines', 1)
-            ->where('room.wall.notice', 'Die Wall ist gerade gesperrt. Du kannst im Moment nichts schreiben.'));
+            ->where('room.wall.notice', 'The wall is locked right now. You cannot post at the moment.'));
 
     $this->actingAs($ada)
         ->postJson('/live/shoutbox/messages', ['body' => 'Nach dem Sperren'])
@@ -365,10 +365,10 @@ it('shows a locked wall as readable and refuses a post to it', function (): void
 
 /**
  * The route's coarse half of D-COM-09 refuses the sixth post in ten seconds
- * before the Action sees it — and answers with the Action's own German
+ * before the Action sees it — and answers with the Action's own
  * refusal, so the compose box reads one shape whichever half said no.
  */
-it('refuses the sixth post in ten seconds with the same German refusal and a countdown', function (): void {
+it('refuses the sixth post in ten seconds with the same refusal sentence and a countdown', function (): void {
     $this->freezeTime();
 
     $brand = $this->withBrand();
@@ -384,7 +384,7 @@ it('refuses the sixth post in ten seconds with the same German refusal and a cou
     $this->actingAs($ada)
         ->postJson('/live/shoutbox/messages', ['body' => 'Eine zu viel'])
         ->assertStatus(429)
-        ->assertJsonPath('errors.body.0', 'Du schreibst zu schnell. Versuch es in 10 Sekunden noch einmal.')
+        ->assertJsonPath('errors.body.0', 'You are posting too fast. Try again in 10 seconds.')
         ->assertJsonPath('cause', 'too_many_messages')
         ->assertJsonPath('retryAfterSeconds', PostMessage::WINDOW_SECONDS);
 

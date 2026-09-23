@@ -38,10 +38,14 @@ defineOptions({
 
 <template>
     <div class="flex flex-col gap-6">
-        <Head title="Finish setting up your account" />
+        <Head :title="$t('Finish setting up your account')" />
 
         <p class="text-sm text-text-muted">
-            {{ props.providerLabel }} verified who you are.
+            {{
+                $t(':provider verified who you are.', {
+                    provider: props.providerLabel,
+                })
+            }}
         </p>
 
         <Form
@@ -51,7 +55,7 @@ defineOptions({
         >
             <div class="grid gap-6">
                 <div class="grid gap-2">
-                    <Label for="name">Display name</Label>
+                    <Label for="name">{{ $t('Display name') }}</Label>
                     <Input
                         id="name"
                         name="name"
@@ -64,7 +68,7 @@ defineOptions({
                     <InputError :message="errors.name" />
                 </div>
                 <div class="grid gap-2">
-                    <Label for="username">Username</Label>
+                    <Label for="username">{{ $t('Username') }}</Label>
                     <Input
                         id="username"
                         name="username"
@@ -75,14 +79,16 @@ defineOptions({
                     />
                     <InputError :message="errors.username" />
                     <p class="text-xs text-text-muted">
-                        Your public handle: lowercase letters, numbers and
-                        hyphens only, starting and ending with a letter or
-                        number.
+                        {{
+                            $t(
+                                'Your public handle: lowercase letters, numbers and hyphens only, starting and ending with a letter or number.',
+                            )
+                        }}
                     </p>
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="email">Email address</Label>
+                    <Label for="email">{{ $t('Email address') }}</Label>
                     <Input
                         id="email"
                         name="email"
@@ -92,20 +98,28 @@ defineOptions({
                     />
                     <InputError :message="errors.email" />
                     <p class="text-xs text-text-muted">
-                        We will send you a link to confirm this address.
+                        {{
+                            $t(
+                                'We will send you a link to confirm this address.',
+                            )
+                        }}
                     </p>
                 </div>
 
                 <Button type="submit" class="w-full" :disabled="processing">
-                    Create account
+                    {{ $t('Create account') }}
                 </Button>
             </div>
 
             <p class="text-center text-sm text-text-muted">
-                Already have an account?
-                <TextLink :href="login()">Log in</TextLink>
-                — you can connect {{ props.providerLabel }} from your settings
-                afterwards.
+                {{ $t('Already have an account?') }}
+                <TextLink :href="login()">{{ $t('Log in') }}</TextLink>
+                {{
+                    $t(
+                        '— you can connect :provider from your settings afterwards.',
+                        { provider: props.providerLabel },
+                    )
+                }}
             </p>
         </Form>
     </div>

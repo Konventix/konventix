@@ -39,18 +39,24 @@ defineOptions({
 </script>
 
 <template>
-    <Head title="Security settings" />
+    <Head :title="$t('Security settings')" />
 
-    <h1 class="sr-only">Security settings</h1>
+    <h1 class="sr-only">{{ $t('Security settings') }}</h1>
 
     <div class="space-y-6">
         <Heading
             variant="small"
-            :title="props.hasPassword ? 'Update password' : 'Set password'"
+            :title="
+                props.hasPassword ? $t('Update password') : $t('Set password')
+            "
             :description="
                 props.hasPassword
-                    ? 'Ensure your account is using a long, random password to stay secure'
-                    : 'This account signs in through a linked account only. Set a password to also sign in with your e-mail address.'
+                    ? $t(
+                          'Ensure your account is using a long, random password to stay secure',
+                      )
+                    : $t(
+                          'This account signs in through a linked account only. Set a password to also sign in with your email address.',
+                      )
             "
         />
 
@@ -69,38 +75,42 @@ defineOptions({
             v-slot="{ errors, processing }"
         >
             <div v-if="props.hasPassword" class="grid gap-2">
-                <Label for="current_password">Current password</Label>
+                <Label for="current_password">{{
+                    $t('Current password')
+                }}</Label>
                 <PasswordInput
                     id="current_password"
                     name="current_password"
                     class="mt-1 block w-full"
                     autocomplete="current-password"
-                    placeholder="Current password"
+                    :placeholder="$t('Current password')"
                 />
                 <InputError :message="errors.current_password" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="password">New password</Label>
+                <Label for="password">{{ $t('New password') }}</Label>
                 <PasswordInput
                     id="password"
                     name="password"
                     class="mt-1 block w-full"
                     autocomplete="new-password"
-                    placeholder="New password"
+                    :placeholder="$t('New password')"
                     :passwordrules="props.passwordRules"
                 />
                 <InputError :message="errors.password" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="password_confirmation">Confirm password</Label>
+                <Label for="password_confirmation">{{
+                    $t('Confirm password')
+                }}</Label>
                 <PasswordInput
                     id="password_confirmation"
                     name="password_confirmation"
                     class="mt-1 block w-full"
                     autocomplete="new-password"
-                    placeholder="Confirm password"
+                    :placeholder="$t('Confirm password')"
                     :passwordrules="props.passwordRules"
                 />
                 <InputError :message="errors.password_confirmation" />
@@ -111,7 +121,7 @@ defineOptions({
                     :disabled="processing"
                     data-test="update-password-button"
                 >
-                    Save
+                    {{ $t('Save') }}
                 </Button>
             </div>
         </Form>
@@ -119,8 +129,10 @@ defineOptions({
         <div v-if="canManageTwoFactor" class="space-y-6 border-t pt-6">
             <Heading
                 variant="small"
-                title="Two-factor authentication"
-                description="Add an extra layer of security to your account"
+                :title="$t('Two-factor authentication')"
+                :description="
+                    $t('Add an extra layer of security to your account')
+                "
             />
 
             <TwoFactorAuthentication
@@ -132,8 +144,12 @@ defineOptions({
         <div v-if="canManagePasskeys" class="space-y-6 border-t pt-6">
             <Heading
                 variant="small"
-                title="Passkeys"
-                description="Sign in with your device's screen lock or a security key"
+                :title="$t('Passkeys')"
+                :description="
+                    $t(
+                        'Sign in with your device\'s screen lock or a security key',
+                    )
+                "
             />
 
             <PasskeyList :passkeys="passkeys ?? []" />
@@ -142,14 +158,17 @@ defineOptions({
         <div class="space-y-6 border-t pt-6">
             <Heading
                 variant="small"
-                title="Sessions"
-                description="Manage and revoke your active sessions"
+                :title="$t('Sessions')"
+                :description="$t('Manage and revoke your active sessions')"
             />
 
             <SessionList v-if="sessionsAvailable" :sessions="sessions" />
             <p v-else class="text-sm text-muted-foreground" role="status">
-                This installation does not keep a list of sessions, so there is
-                nothing to show or revoke here.
+                {{
+                    $t(
+                        'This installation does not keep a list of sessions, so there is nothing to show or revoke here.',
+                    )
+                }}
             </p>
         </div>
     </div>

@@ -256,7 +256,7 @@ class SupportServiceProvider extends ModuleServiceProvider
     }
 
     /**
-     * "Hilfe" on the live hub (D-HUB-05): the one thing a participant
+     * "Help" on the live hub (D-HUB-05): the one thing a participant
      * needs when everything else on the page is wrong.
      *
      * A `component` instead of a `url`, and the only one of the four launch
@@ -276,7 +276,7 @@ class SupportServiceProvider extends ModuleServiceProvider
         $this->app->make(HubRegistry::class)->add(new HubLink(
             module: 'support',
             key: 'support.help',
-            label: 'Hilfe',
+            label: 'Help',
             component: 'support/hub/HelpLink',
             order: 90,
         ));
@@ -374,9 +374,10 @@ class SupportServiceProvider extends ModuleServiceProvider
      * for it). `SendClaimLink`'s prepared `managerHandle` is the same
      * pattern.
      *
-     * `de` first and default: the deployment's own audience is German,
-     * while the UI copy is English until the platform decides on i18n
-     * (D-SUP-09).
+     * `en` is the default (ADR-0068); the German bodies address the reader
+     * as du, like every other catalog. The per-locale prepared fields
+     * (`accessNoteDe`/`En`, `stateDe`/`En`, `noteDe`/`En`) are looked up in
+     * the catalog for their own locale by the sending listener.
      */
     protected function registerMessageTemplates(): void
     {
@@ -385,13 +386,13 @@ class SupportServiceProvider extends ModuleServiceProvider
         $registry->register(new MessageTemplate(
             key: 'support.request-received',
             subjects: [
-                'de' => 'Ihre Meldung {{ $reference }} ist bei uns eingegangen',
+                'de' => 'Deine Meldung {{ $reference }} ist bei uns eingegangen',
                 'en' => 'We received your report {{ $reference }}',
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Guten Tag,</p>
-                    <p>vielen Dank für Ihre Rückmeldung. Wir haben Ihre Meldung unter der
+                    <p>Hallo,</p>
+                    <p>vielen Dank für deine Rückmeldung. Wir haben deine Meldung unter der
                     Nummer <strong>{{ $reference }}</strong> aufgenommen
                     ({{ $categories }}).</p>
                     <p>{{ $accessNoteDe }}</p>
@@ -405,12 +406,12 @@ class SupportServiceProvider extends ModuleServiceProvider
                     <p><a href="{{ $requestUrl }}">View your report</a></p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'reference' => 'A1B2C3D4',
                 'categories' => 'Purchase affected, Something does not work',
                 'requestUrl' => 'https://example.test/support/requests/01K5MZ6V4N8YQ2W3J7R9T1X0AB?signature=abc',
-                'accessNoteDe' => 'Über den Link unten können Sie Ihre Meldung 30 Tage lang ansehen und beantworten.',
+                'accessNoteDe' => 'Über den Link unten kannst du deine Meldung 30 Tage lang ansehen und beantworten.',
                 'accessNoteEn' => 'The link below lets you read and answer your report for the next 30 days.',
             ],
         ));
@@ -422,10 +423,10 @@ class SupportServiceProvider extends ModuleServiceProvider
                 'en' => '{{ $title }}',
             ],
             bodies: [
-                'de' => '<p>{{ $detail }}</p><p><a href="{{ $url }}">Im Konsolenbereich öffnen</a></p>',
+                'de' => '<p>{{ $detail }}</p><p><a href="{{ $url }}">In der Konsole öffnen</a></p>',
                 'en' => '<p>{{ $detail }}</p><p><a href="{{ $url }}">Open in the console</a></p>',
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'reference' => 'A1B2C3D4',
                 'title' => 'New support request A1B2C3D4 · Purchase affected',
@@ -447,13 +448,13 @@ class SupportServiceProvider extends ModuleServiceProvider
         $registry->register(new MessageTemplate(
             key: 'support.request-state-changed',
             subjects: [
-                'de' => 'Ihre Meldung {{ $reference }}: {{ $stateDe }}',
+                'de' => 'Deine Meldung {{ $reference }}: {{ $stateDe }}',
                 'en' => 'Your report {{ $reference }}: {{ $stateEn }}',
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Guten Tag,</p>
-                    <p>der Stand Ihrer Meldung <strong>{{ $reference }}</strong> hat sich
+                    <p>Hallo,</p>
+                    <p>der Stand deiner Meldung <strong>{{ $reference }}</strong> hat sich
                     geändert: <strong>{{ $stateDe }}</strong>.</p>
                     <p>{{ $noteDe }}</p>
                     <p><a href="{{ $requestUrl }}">Meldung ansehen</a></p>
@@ -466,7 +467,7 @@ class SupportServiceProvider extends ModuleServiceProvider
                     <p><a href="{{ $requestUrl }}">View your report</a></p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'reference' => 'A1B2C3D4',
                 'stateDe' => 'In Bearbeitung',
@@ -484,13 +485,13 @@ class SupportServiceProvider extends ModuleServiceProvider
         $registry->register(new MessageTemplate(
             key: 'support.request-replied',
             subjects: [
-                'de' => 'Neue Antwort zu Ihrer Meldung {{ $reference }}',
+                'de' => 'Neue Antwort zu deiner Meldung {{ $reference }}',
                 'en' => 'A reply on your report {{ $reference }}',
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Guten Tag,</p>
-                    <p>zu Ihrer Meldung <strong>{{ $reference }}</strong> gibt es eine
+                    <p>Hallo,</p>
+                    <p>zu deiner Meldung <strong>{{ $reference }}</strong> gibt es eine
                     Antwort:</p>
                     <blockquote>{{ $excerpt }}</blockquote>
                     <p><a href="{{ $requestUrl }}">Antwort lesen und antworten</a></p>
@@ -502,7 +503,7 @@ class SupportServiceProvider extends ModuleServiceProvider
                     <p><a href="{{ $requestUrl }}">Read it and write back</a></p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'reference' => 'A1B2C3D4',
                 'excerpt' => 'Thank you — we found the cause and a fix is going out this evening.',
@@ -518,13 +519,13 @@ class SupportServiceProvider extends ModuleServiceProvider
         $registry->register(new MessageTemplate(
             key: 'support.request-link',
             subjects: [
-                'de' => 'Ihr neuer Zugang zu Meldung {{ $reference }}',
+                'de' => 'Dein neuer Zugang zu Meldung {{ $reference }}',
                 'en' => 'Your new link to report {{ $reference }}',
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Guten Tag,</p>
-                    <p>hier ist ein neuer Zugang zu Ihrer Meldung
+                    <p>Hallo,</p>
+                    <p>hier ist ein neuer Zugang zu deiner Meldung
                     <strong>{{ $reference }}</strong>. Der Link gilt 30 Tage.</p>
                     <p><a href="{{ $requestUrl }}">Meldung ansehen</a></p>
                     BLADE,
@@ -535,7 +536,7 @@ class SupportServiceProvider extends ModuleServiceProvider
                     <p><a href="{{ $requestUrl }}">View your report</a></p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'reference' => 'A1B2C3D4',
                 'requestUrl' => 'https://example.test/support/requests/01K5MZ6V4N8YQ2W3J7R9T1X0AB?signature=abc',

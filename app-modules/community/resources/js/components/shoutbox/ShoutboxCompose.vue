@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 
 /**
  * The compose box (design §8), shared by the hub card and the room page.
- * German, because participants read it (ADR-0001).
+ * Participants read it, so it speaks from the catalog (ADR-0068).
  *
  * The text leaves the field the moment it is sent — the wall shows it as
  * pending — and comes back if the post did not land, so a refusal never
@@ -71,7 +71,7 @@ function onEnter(event: KeyboardEvent): void {
             {{ notice }}
         </p>
         <form v-else class="flex flex-col gap-2" @submit.prevent="submit">
-            <label :for="fieldId" class="sr-only">Nachricht</label>
+            <label :for="fieldId" class="sr-only">{{ $t('Message') }}</label>
             <textarea
                 :id="fieldId"
                 v-model="draft"
@@ -80,7 +80,7 @@ function onEnter(event: KeyboardEvent): void {
                 :disabled="!canWrite"
                 :aria-invalid="refusal !== null || tooLong ? 'true' : undefined"
                 :aria-describedby="refusal !== null ? errorId : undefined"
-                placeholder="Schreib etwas in die Runde …"
+                :placeholder="$t('Write something to everyone …')"
                 class="w-full resize-none rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:opacity-50"
                 @keydown.enter="onEnter"
             />
@@ -95,7 +95,7 @@ function onEnter(event: KeyboardEvent): void {
                         !canWrite || sending || draft.trim() === '' || tooLong
                     "
                 >
-                    Senden
+                    {{ $t('Send') }}
                 </Button>
             </div>
             <p
@@ -115,7 +115,9 @@ function onEnter(event: KeyboardEvent): void {
                 v-if="refusal && remaining !== null"
                 class="text-xs text-text-muted"
             >
-                <span role="timer">Noch {{ remaining }} s</span>
+                <span role="timer">{{
+                    $t(':seconds s left', { seconds: String(remaining) })
+                }}</span>
             </p>
         </form>
     </div>

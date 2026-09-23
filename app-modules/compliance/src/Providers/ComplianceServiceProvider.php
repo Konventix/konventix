@@ -220,7 +220,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         $registry->register(new MessageTemplate(
             key: NotifySubjectOfRequestOutcome::EXPORT_READY,
             subjects: [
-                'de' => 'Ihre Datenkopie steht bereit',
+                'de' => 'Deine Datenkopie steht bereit',
                 'en' => 'Your data export is ready',
             ],
             bodies: [
@@ -229,14 +229,14 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                 // an unset variable inside `@if` throws (Blade::render() runs
                 // this string standalone, with no view data() to default it).
                 'de' => <<<'BLADE'
-                    <p>Ihre Kopie der bei uns gespeicherten Daten ist fertig.</p>
+                    <p>Deine Kopie der bei uns gespeicherten Daten ist fertig.</p>
                     @isset($downloadUrl)
-                    <p>Sie können sie hier herunterladen: <a href="{{ $downloadUrl }}">Datenkopie herunterladen</a>.</p>
+                    <p>Du kannst sie hier herunterladen: <a href="{{ $downloadUrl }}">Datenkopie herunterladen</a>.</p>
                     <p>Der Link funktioniert nur einmal — danach ist er ungültig, auch wenn er weitergeleitet wird.</p>
                     @else
-                    <p>Sie finden sie unter „Einstellungen → Datenschutz“ zum Herunterladen.</p>
+                    <p>Du findest sie zum Herunterladen unter „Einstellungen → Datenschutz“.</p>
                     @endisset
-                    <p>Verfügbar bis: {{ $availableUntil ?? 'siehe Konto' }}.</p>
+                    <p>Verfügbar bis: {{ $availableUntil ?? 'siehe dein Konto' }}.</p>
                     <p>Aus Sicherheitsgründen verschicken wir die Datei nicht per E-Mail: der Download ist nur über den oben genannten Weg möglich.</p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -251,7 +251,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                     <p>We deliberately do not attach the file: the download is only available the way described above.</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             // Legally significant: what we told a data subject, and when.
             logBodies: true,
             sample: ['requestType' => 'export', 'deadline' => '28.08.2026', 'availableUntil' => '11.09.2026'],
@@ -260,14 +260,14 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         $registry->register(new MessageTemplate(
             key: NotifySubjectOfRequestOutcome::DELETION_ACKNOWLEDGED,
             subjects: [
-                'de' => 'Ihr Löschantrag ist eingegangen',
+                'de' => 'Dein Löschantrag ist eingegangen',
                 'en' => 'We received your deletion request',
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Wir haben Ihren Antrag auf Löschung erhalten und bearbeiten ihn bis spätestens {{ $deadline }}.</p>
-                    <p>Ihre Daten werden anonymisiert: Unterlagen, die wir gesetzlich aufbewahren müssen — Rechnungen vor allem — bleiben bestehen, aber ohne Ihre persönlichen Angaben.</p>
-                    <p>Dies ist die letzte Nachricht an diese Adresse: nach der Anonymisierung haben wir keine Kontaktdaten mehr von Ihnen.</p>
+                    <p>Wir haben deinen Antrag auf Löschung erhalten und bearbeiten ihn bis spätestens {{ $deadline }}.</p>
+                    <p>Deine Daten werden anonymisiert: Unterlagen, die wir gesetzlich aufbewahren müssen — vor allem Rechnungen — bleiben bestehen, aber ohne deine persönlichen Angaben.</p>
+                    <p>Dies ist die letzte Nachricht an diese Adresse: Nach der Anonymisierung haben wir keine Kontaktdaten mehr von dir.</p>
                     BLADE,
                 'en' => <<<'BLADE'
                     <p>We received your deletion request and will complete it by {{ $deadline }} at the latest.</p>
@@ -275,7 +275,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                     <p>This is the last message to this address: once anonymized, we no longer hold contact details for you.</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             logBodies: true,
             sample: ['requestType' => 'deletion', 'deadline' => '28.08.2026'],
         ));
@@ -283,14 +283,14 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         $registry->register(new MessageTemplate(
             key: NotifySubjectOfRequestOutcome::REQUEST_REFUSED,
             subjects: [
-                'de' => 'Zu Ihrem Antrag',
+                'de' => 'Zu deinem Antrag',
                 'en' => 'About your request',
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Wir können Ihrem Antrag ({{ $requestType }}) nicht entsprechen.</p>
+                    <p>Wir können deinem Antrag ({{ $requestType }}) nicht entsprechen.</p>
                     <p>Rechtlicher Grund: {{ $reasonCode }}.</p>
-                    <p>Sie können sich an die zuständige Datenschutzaufsichtsbehörde wenden.</p>
+                    <p>Du kannst dich bei der zuständigen Datenschutzaufsichtsbehörde beschweren.</p>
                     BLADE,
                 'en' => <<<'BLADE'
                     <p>We are unable to act on your request ({{ $requestType }}).</p>
@@ -298,7 +298,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                     <p>You may lodge a complaint with your data protection supervisory authority.</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             logBodies: true,
             sample: ['requestType' => 'export', 'deadline' => '28.08.2026', 'reasonCode' => 'identity_not_verified'],
         ));
@@ -306,14 +306,14 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         $registry->register(new MessageTemplate(
             key: NotifySubjectOfRequestOutcome::REQUEST_VERIFICATION,
             subjects: [
-                'de' => 'Bitte bestätigen Sie Ihre Anfrage',
+                'de' => 'Bitte bestätige deine Anfrage',
                 'en' => 'Please confirm your request',
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Jemand — hoffentlich Sie — hat unter dieser Adresse eine {{ $requestType }}-Anfrage zu den bei uns gespeicherten Daten gestellt.</p>
+                    <p>Jemand — hoffentlich du — hat unter dieser Adresse eine {{ $requestType }}-Anfrage zu den bei uns gespeicherten Daten gestellt.</p>
                     <p>Um fortzufahren: <a href="{{ $verifyUrl }}">Anfrage bestätigen</a>.</p>
-                    <p>Der Link ist {{ $expiresInHours }} Stunden gültig. Falls Sie diese Anfrage nicht gestellt haben, können Sie diese Nachricht ignorieren — es passiert nichts, ohne dass der Link geöffnet wird.</p>
+                    <p>Der Link ist {{ $expiresInHours }} Stunden gültig. Falls du diese Anfrage nicht gestellt hast, kannst du diese Nachricht ignorieren — es passiert nichts, solange der Link nicht geöffnet wird.</p>
                     BLADE,
                 'en' => <<<'BLADE'
                     <p>Someone — hopefully you — asked, at this address, for a {{ $requestType }} of the data we hold.</p>
@@ -321,7 +321,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                     <p>The link is valid for {{ $expiresInHours }} hours. If you did not make this request, you can ignore this message — nothing happens unless the link is opened.</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             // Legally significant: what we told a data subject, and when.
             logBodies: true,
             sample: ['requestType' => 'export', 'verifyUrl' => 'https://example.test/privacy/request/abc123', 'expiresInHours' => 24],
@@ -330,20 +330,20 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         $registry->register(new MessageTemplate(
             key: NotifySubjectOfRequestOutcome::REQUEST_ACKNOWLEDGED,
             subjects: [
-                'de' => 'Ihre Anfrage ist eingegangen',
+                'de' => 'Deine Anfrage ist eingegangen',
                 'en' => 'We received your request',
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Wir haben Ihre {{ $requestType }}-Anfrage erhalten und bearbeiten sie bis spätestens {{ $deadline }}.</p>
-                    <p>Sie erhalten eine weitere Nachricht, sobald sie abgeschlossen ist.</p>
+                    <p>Wir haben deine {{ $requestType }}-Anfrage erhalten und bearbeiten sie bis spätestens {{ $deadline }}.</p>
+                    <p>Du bekommst eine weitere Nachricht, sobald sie abgeschlossen ist.</p>
                     BLADE,
                 'en' => <<<'BLADE'
                     <p>We received your {{ $requestType }} request and will complete it by {{ $deadline }} at the latest.</p>
                     <p>You will hear from us again once it is done.</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             logBodies: true,
             sample: ['requestType' => 'export', 'deadline' => '28.08.2026'],
         ));
@@ -381,7 +381,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                     <p>{{ $openModules }} module(s) have not answered yet.</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'requestId' => '01J8Z6QZ2R3S4T5U6V7W8X9Y0Z',
                 'requestType' => 'export',
@@ -457,7 +457,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                         'required' => false,
                         'policies' => [],
                         'notices' => [],
-                        'exemptionNotice' => CheckoutLegalTexts::EXEMPTION_NOTICE,
+                        'exemptionNotice' => __(CheckoutLegalTexts::EXEMPTION_NOTICE),
                     ];
                 }
 
@@ -468,7 +468,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                         self::checkoutBindingContext($brandId, $context),
                         $subjectId === null ? null : (string) $subjectId,
                     ),
-                    'exemptionNotice' => CheckoutLegalTexts::EXEMPTION_NOTICE,
+                    'exemptionNotice' => __(CheckoutLegalTexts::EXEMPTION_NOTICE),
                 ];
             },
             order: 10,

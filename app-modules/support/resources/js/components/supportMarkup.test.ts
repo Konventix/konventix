@@ -43,7 +43,7 @@ describe('SupportLauncher.vue', () => {
 
     it('has an accessible name even when only the icon is visible', () => {
         expect(markup).toContain(
-            'aria-label="Report a problem or give feedback"',
+            ':aria-label="$t(\'Report a problem or give feedback\')"',
         );
         // The icon itself carries no name of its own, or it would be read
         // twice.
@@ -75,8 +75,8 @@ describe('SupportRequestDialog.vue', () => {
     const markup = dialogMarkup;
 
     it('takes its accessible name from the dialog title', () => {
-        expect(markup).toContain(
-            '<DialogTitle>Report a problem or give feedback</DialogTitle>',
+        expect(markup).toMatch(
+            /<DialogTitle>\{\{\s*\$t\('Report a problem or give feedback'\)\s*\}\}<\/DialogTitle>/,
         );
     });
 

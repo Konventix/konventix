@@ -3,6 +3,7 @@
  * §9.2), out of the template so they can be tested without rendering
  * anything — vitest runs in the `node` environment here.
  */
+import { trans } from 'laravel-vue-i18n';
 
 export type BindingKind = {
     value: string;
@@ -35,7 +36,13 @@ export type BindingGroup = {
  * removed — so it says exactly what it is (spec §9.2).
  */
 export function bindingDisplay(binding: BindingRow): string {
-    return binding.label ?? `Unknown (${binding.kind} · ${binding.targetKey})`;
+    return (
+        binding.label ??
+        trans('Unknown (:kind · :target)', {
+            kind: binding.kind,
+            target: binding.targetKey,
+        })
+    );
 }
 
 /**
@@ -80,7 +87,12 @@ export function bindingRuleSentence(
         return null;
     }
 
-    const clauses = bound.map((kind) => `any of the ${kind.plural} match`);
+    const clauses = bound.map((kind) =>
+        trans('any of the :kinds match', { kinds: kind.plural }),
+    );
 
-    return `Applies when ${clauses.join(' and ')}. A kind with no binding places no requirement.`;
+    return trans(
+        'Applies when :clauses. A kind with no binding places no requirement.',
+        { clauses: clauses.join(` ${trans('and')} `) },
+    );
 }

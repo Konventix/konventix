@@ -40,11 +40,9 @@ final class ResendMessage
     public function handle(MessageRecord $record, string $byUserId): MessageRecord
     {
         if (in_array($record->status, self::IN_FLIGHT, true)) {
-            throw new LogicException(sprintf(
-                'Message [%s] is still %s and cannot be resent yet.',
-                $record->id,
-                $record->status->value,
-            ));
+            // Reaches the console as a validation error, so it is a catalog
+            // line; the id stays out of it — the page already shows it.
+            throw new LogicException(__('This message is still on its way and cannot be resent yet.'));
         }
 
         $envelopes = $this->sendMessage->handle(new SendMessageRequest(

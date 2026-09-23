@@ -13,8 +13,8 @@ use RuntimeException;
 /**
  * Why a post was refused (spec §6, D-COM-09).
  *
- * **The messages are German, unlike every other exception in this
- * repository, because these are read by participants** (ADR-0001):
+ * **The messages go through the catalog, unlike most exceptions in this
+ * repository, because these are read by participants** (ADR-0068):
  * `PostMessage` is the server-side enforcement of rules the compose box
  * also shows, and spec §12 item 3 requires the refusal of the sixth message
  * to reach the person in their own language. The surface (Task 5) turns one
@@ -22,7 +22,7 @@ use RuntimeException;
  * shows is the one written here, so there is exactly one copy of it.
  *
  * **`$cause` and `$retryAfterSeconds` are the machine-readable half, and
- * they exist so that nothing ever parses the German.** A sentence a
+ * they exist so that nothing ever parses the sentence.** A sentence a
  * translator may reword is not a protocol: the surface branches on
  * `ShoutboxRefusal`, renders a countdown from `$retryAfterSeconds`, and
  * puts the sentence itself on the field `$cause->field()` names. Every
@@ -31,12 +31,12 @@ use RuntimeException;
  * and an indefinite mute, which has no end to name.
  *
  * `muted()` is the load-bearing one: D-COM-08 requires the muted person to
- * be told **the reason and the remaining time** — "Du kannst 10 Minuten
- * nicht schreiben: Spam". A silent mute reads as a broken app and produces
+ * be told **the reason and the remaining time** — "You cannot post for
+ * 10 minutes: Spam". A silent mute reads as a broken app and produces
  * a support request instead of a behaviour change.
  *
  * The constructor is private: a refusal without its cause would be exactly
- * the German-only exception this class stopped being, so the named
+ * the sentence-only exception this class stopped being, so the named
  * constructors are the only way in.
  */
 final class ShoutboxWriteException extends RuntimeException
@@ -56,7 +56,7 @@ final class ShoutboxWriteException extends RuntimeException
     {
         return new self(
             ShoutboxRefusal::RoomLocked,
-            'Die Wall ist gerade gesperrt. Du kannst im Moment nichts schreiben.',
+            __('The wall is locked right now. You cannot post at the moment.'),
         );
     }
 
@@ -70,7 +70,7 @@ final class ShoutboxWriteException extends RuntimeException
     {
         return new self(
             ShoutboxRefusal::RoomClosed,
-            'Die Wall zu diesem Event ist beendet. Du kannst hier nichts mehr schreiben.',
+            __('The wall for this event has closed. You cannot post here any more.'),
         );
     }
 
@@ -92,13 +92,11 @@ final class ShoutboxWriteException extends RuntimeException
             ? null
             : max(1, (int) ceil($now->diffInSeconds($expiresAt, absolute: true)));
 
-        $span = $remaining === null ? 'bis zum Ende des Events' : self::germanSpan($remaining);
+        $message = $remaining === null
+            ? __('You cannot post for the rest of the event: :reason', ['reason' => $reason])
+            : __('You cannot post for :span: :reason', ['span' => self::span($remaining), 'reason' => $reason]);
 
-        return new self(
-            ShoutboxRefusal::Muted,
-            sprintf('Du kannst %s nicht schreiben: %s', $span, $reason),
-            $remaining,
-        );
+        return new self(ShoutboxRefusal::Muted, $message, $remaining);
     }
 
     /**
@@ -112,7 +110,7 @@ final class ShoutboxWriteException extends RuntimeException
 
         return new self(
             ShoutboxRefusal::TooManyMessages,
-            sprintf('Du schreibst zu schnell. Versuch es in %s noch einmal.', self::germanSpan($seconds)),
+            __('You are posting too fast. Try again in :span.', ['span' => self::span($seconds)]),
             $seconds,
         );
     }
@@ -125,13 +123,13 @@ final class ShoutboxWriteException extends RuntimeException
     {
         return new self(
             ShoutboxRefusal::MessageTooLong,
-            sprintf('Deine Nachricht ist zu lang: maximal %d Zeichen.', $maximum),
+            __('Your message is too long: at most :max characters.', ['max' => $maximum]),
         );
     }
 
     public static function messageEmpty(): self
     {
-        return new self(ShoutboxRefusal::MessageEmpty, 'Deine Nachricht ist leer.');
+        return new self(ShoutboxRefusal::MessageEmpty, __('Your message is empty.'));
     }
 
     /**
@@ -144,7 +142,7 @@ final class ShoutboxWriteException extends RuntimeException
     {
         return new self(
             ShoutboxRefusal::NoteTooLong,
-            sprintf('Dein Hinweis ist zu lang: maximal %d Zeichen.', $maximum),
+            __('Your note is too long: at most :max characters.', ['max' => $maximum]),
         );
     }
 
@@ -187,17 +185,15 @@ final class ShoutboxWriteException extends RuntimeException
 
     /**
      * A duration a participant reads, in whole minutes once there is at
-     * least one, singular where German needs it. Rounded **up**, so
-     * somebody told "1 Minute" is never able to post before it has passed.
+     * least one, singular where the language needs it. Rounded **up**, so
+     * somebody told "1 minute" is never able to post before it has passed.
      */
-    private static function germanSpan(int $seconds): string
+    private static function span(int $seconds): string
     {
         if ($seconds < 60) {
-            return $seconds === 1 ? '1 Sekunde' : sprintf('%d Sekunden', $seconds);
+            return trans_choice('{1} :count second|[2,*] :count seconds', $seconds);
         }
 
-        $minutes = (int) ceil($seconds / 60);
-
-        return $minutes === 1 ? '1 Minute' : sprintf('%d Minuten', $minutes);
+        return trans_choice('{1} :count minute|[2,*] :count minutes', (int) ceil($seconds / 60));
     }
 }

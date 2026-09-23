@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { Heart, Trash2 } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -77,7 +78,7 @@ function formatCommentDate(value: string): string {
 
 function authorLabel(comment: CommentProps): string {
     return comment.authorUsername === null
-        ? 'a member'
+        ? trans('a member')
         : `@${comment.authorUsername}`;
 }
 
@@ -180,7 +181,7 @@ const memberSinceLabel = computed(() =>
                 </h1>
                 <p class="text-text-muted">@{{ profile.username }}</p>
                 <p class="text-sm text-text-muted">
-                    Member since {{ memberSinceLabel }}
+                    {{ $t('Member since :date', { date: memberSinceLabel }) }}
                 </p>
             </div>
         </div>
@@ -190,7 +191,7 @@ const memberSinceLabel = computed(() =>
         </p>
 
         <section v-if="socialEntries.length > 0" class="flex flex-col gap-2">
-            <h2 class="text-lg font-medium">Elsewhere</h2>
+            <h2 class="text-lg font-medium">{{ $t('Elsewhere') }}</h2>
             <ul class="flex flex-col gap-1">
                 <li
                     v-for="entry in socialEntries"
@@ -219,14 +220,18 @@ const memberSinceLabel = computed(() =>
             class="flex flex-col gap-6 border-t border-border pt-8"
         >
             <h2 class="text-lg font-medium">
-                Comments ({{ props.comments.length }})
+                {{
+                    $t('Comments (:count)', {
+                        count: String(props.comments.length),
+                    })
+                }}
             </h2>
 
             <p
                 v-if="props.comments.length === 0"
                 class="text-sm text-text-muted"
             >
-                Nothing here yet.
+                {{ $t('Nothing here yet.') }}
             </p>
 
             <div
@@ -246,10 +251,10 @@ const memberSinceLabel = computed(() =>
                             @{{ comment.authorUsername }}
                         </Link>
                         <span v-else class="font-medium text-text">
-                            A member
+                            {{ $t('A member') }}
                         </span>
                         · {{ formatCommentDate(comment.postedAt) }}
-                        <span v-if="comment.isMine">· you</span>
+                        <span v-if="comment.isMine">· {{ $t('you') }}</span>
                     </span>
                     <span class="flex items-center gap-3">
                         <button
@@ -258,7 +263,14 @@ const memberSinceLabel = computed(() =>
                             class="inline-flex items-center gap-1 hover:text-accent"
                             :class="comment.hasReacted && 'text-accent'"
                             :aria-pressed="comment.hasReacted"
-                            :aria-label="`${comment.hasReacted ? 'Unlike' : 'Like'} (${comment.reactionCount})`"
+                            :aria-label="
+                                $t(
+                                    comment.hasReacted
+                                        ? 'Unlike (:count)'
+                                        : 'Like (:count)',
+                                    { count: String(comment.reactionCount) },
+                                )
+                            "
                             @click="toggleReaction(comment)"
                         >
                             <Heart
@@ -278,7 +290,11 @@ const memberSinceLabel = computed(() =>
                             v-if="comment.canDelete"
                             type="button"
                             class="hover:text-danger"
-                            :aria-label="`Delete comment by ${authorLabel(comment)}`"
+                            :aria-label="
+                                $t('Delete comment by :author', {
+                                    author: authorLabel(comment),
+                                })
+                            "
                             @click="deleteComment(comment)"
                         >
                             <Trash2 class="size-3.5" />
@@ -296,7 +312,7 @@ const memberSinceLabel = computed(() =>
                 @submit.prevent="submitComment"
             >
                 <label for="comment-body" class="text-sm font-medium">
-                    Add a comment
+                    {{ $t('Add a comment') }}
                 </label>
                 <textarea
                     id="comment-body"
@@ -307,7 +323,7 @@ const memberSinceLabel = computed(() =>
                 <InputError :message="commentForm.errors.body" />
                 <div>
                     <Button type="submit" :disabled="commentForm.processing">
-                        Post comment
+                        {{ $t('Post comment') }}
                     </Button>
                 </div>
             </form>

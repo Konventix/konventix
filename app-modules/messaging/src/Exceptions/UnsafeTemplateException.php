@@ -27,7 +27,9 @@ final class UnsafeTemplateException extends RuntimeException
      */
     public function userMessage(): string
     {
-        return 'Overrides may only use simple echoes ({{ $name }}) and if/unless/foreach directives '
-            .'on payload fields — «'.$this->fragment.'» is not allowed.';
+        return __(
+            'Overrides may only use simple echoes ({{ $name }}) and if/unless/foreach directives on payload fields — «:fragment» is not allowed.',
+            ['fragment' => $this->fragment],
+        );
     }
 }

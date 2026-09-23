@@ -83,11 +83,11 @@ const { knownIssues } = useKnownIssues(
             class="fixed right-4 bottom-4 z-40 inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full border border-border bg-surface-raised px-3 text-text shadow-lg transition-colors hover:bg-subtle focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none print:hidden"
             :aria-expanded="dialog.isOpen.value"
             aria-haspopup="dialog"
-            aria-label="Report a problem or give feedback"
+            :aria-label="$t('Report a problem or give feedback')"
             @click="dialog.open()"
         >
             <LifeBuoy class="size-5" aria-hidden="true" />
-            <span class="hidden sm:inline">Feedback</span>
+            <span class="hidden sm:inline">{{ $t('Feedback') }}</span>
         </button>
 
         <SupportRequestDialog

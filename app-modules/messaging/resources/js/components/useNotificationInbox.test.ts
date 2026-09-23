@@ -71,7 +71,12 @@ async function loadComposable() {
 describe('useNotificationInbox', () => {
     beforeEach(() => {
         vi.stubGlobal('window', {});
-        vi.stubGlobal('document', { cookie: 'XSRF-TOKEN=token' });
+        // `documentElement` because laravel-vue-i18n (the bell's label,
+        // ADR-0068) reads the page language when it is first imported.
+        vi.stubGlobal('document', {
+            cookie: 'XSRF-TOKEN=token',
+            documentElement: { lang: 'en' },
+        });
         vi.stubGlobal('fetch', fetchMock);
         fetchMock.mockReset();
         echoMock.echo.mockClear();

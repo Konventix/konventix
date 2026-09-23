@@ -124,7 +124,7 @@ final class ReportMessage
      * `varchar(255)`. The cap is a participant-facing refusal rather than an
      * `InvalidArgumentException`, because a reporter reaches this field
      * directly: a client that ignores the form's `maxlength` must be told
-     * what is wrong in German (ADR-0001), not handed a 500 from
+     * what is wrong in their language (ADR-0068), not handed a 500 from
      * `SQLSTATE[22001]`.
      */
     private function guardNote(?string $note): ?string

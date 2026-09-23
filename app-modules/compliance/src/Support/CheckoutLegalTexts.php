@@ -43,9 +43,10 @@ final class CheckoutLegalTexts
     /**
      * Shown next to the consent control on every public purchase path.
      *
-     * English because the purchase pages are English today (#132); the
-     * statute keeps its German citation verbatim, because that is its name
-     * and translating it would make it unfindable.
+     * The English source and a catalog key (ADR-0068): whoever renders it
+     * passes it through `__()`, so the payer reads it in their own language.
+     * The statute keeps its German citation verbatim in every language,
+     * because that is its name and translating it would make it unfindable.
      */
     public const string EXEMPTION_NOTICE = 'Tickets for a leisure event on a fixed date carry no right of withdrawal '
         .'(§ 312g Abs. 2 Nr. 9 BGB). Your order is binding as soon as it is placed.';

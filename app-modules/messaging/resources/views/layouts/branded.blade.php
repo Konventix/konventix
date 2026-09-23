@@ -12,6 +12,10 @@
     full-width row between the header and the body. Width and height are
     left to the picture: a mail client that blocks remote images shows the
     alt text in the space it would take and nothing else moves.
+
+    The footer words are catalog lookups in the message's own `$locale`
+    (ADR-0068), not the process locale: a queued send renders in a worker
+    whose locale belongs to nobody in particular.
 --}}
 <!DOCTYPE html>
 <html lang="{{ $locale }}">
@@ -58,19 +62,19 @@
                             @if ($identity->imprintUrl !== null || $identity->privacyUrl !== null)
                                 <p style="margin:0 0 8px;">
                                     @if ($identity->imprintUrl !== null)
-                                        <a href="{{ $identity->imprintUrl }}" style="color:#71717a;">Impressum</a>
+                                        <a href="{{ $identity->imprintUrl }}" style="color:#71717a;">{{ __('Imprint', [], $locale) }}</a>
                                     @endif
                                     @if ($identity->imprintUrl !== null && $identity->privacyUrl !== null)
                                         &nbsp;·&nbsp;
                                     @endif
                                     @if ($identity->privacyUrl !== null)
-                                        <a href="{{ $identity->privacyUrl }}" style="color:#71717a;">Datenschutz</a>
+                                        <a href="{{ $identity->privacyUrl }}" style="color:#71717a;">{{ __('Privacy', [], $locale) }}</a>
                                     @endif
                                 </p>
                             @endif
                             @if ($preferencesUrl !== null)
                                 <p style="margin:0;">
-                                    <a href="{{ $preferencesUrl }}" style="color:#71717a;">Benachrichtigungseinstellungen</a>
+                                    <a href="{{ $preferencesUrl }}" style="color:#71717a;">{{ __('Notification settings', [], $locale) }}</a>
                                 </p>
                             @endif
                         </td>

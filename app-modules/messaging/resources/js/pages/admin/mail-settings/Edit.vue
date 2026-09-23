@@ -79,28 +79,34 @@ function blankToNull(value: number | string | null): number | null {
 </script>
 
 <template>
-    <Head :title="`Mail settings — ${brand.name}`" />
+    <Head :title="$t('Mail settings — :brand', { brand: brand.name })" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            :title="`Mail settings — ${brand.name}`"
-            description="Sender identity, transport, sending quota and quiet-hours timezone for this brand"
+            :title="$t('Mail settings — :brand', { brand: brand.name })"
+            :description="
+                $t(
+                    'Sender identity, transport, sending quota and quiet-hours timezone for this brand',
+                )
+            "
         />
 
         <form class="flex flex-col gap-6" @submit.prevent="submit">
             <div class="grid gap-6 xl:grid-cols-2">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Sender identity</CardTitle>
+                        <CardTitle>{{ $t('Sender identity') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <div class="grid gap-2">
-                            <Label for="from-name">From name</Label>
+                            <Label for="from-name">{{ $t('From name') }}</Label>
                             <Input id="from-name" v-model="form.fromName" />
                             <InputError :message="form.errors.fromName" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="from-address">From address</Label>
+                            <Label for="from-address">{{
+                                $t('From address')
+                            }}</Label>
                             <Input
                                 id="from-address"
                                 v-model="form.fromAddress"
@@ -110,7 +116,9 @@ function blankToNull(value: number | string | null): number | null {
                             <InputError :message="form.errors.fromAddress" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="reply-to">Reply-to (optional)</Label>
+                            <Label for="reply-to">{{
+                                $t('Reply-to (optional)')
+                            }}</Label>
                             <Input
                                 id="reply-to"
                                 v-model="form.replyTo"
@@ -119,15 +127,20 @@ function blankToNull(value: number | string | null): number | null {
                             <InputError :message="form.errors.replyTo" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="timezone">Quiet-hours timezone</Label>
+                            <Label for="timezone">{{
+                                $t('Quiet-hours timezone')
+                            }}</Label>
                             <Input
                                 id="timezone"
                                 v-model="form.timezone"
                                 placeholder="Europe/Berlin"
                             />
                             <p class="text-xs text-text-muted">
-                                Fallback for recipients without their own
-                                timezone: digests defer to 08:00 in this zone.
+                                {{
+                                    $t(
+                                        'Fallback for recipients without their own timezone: digests defer to 08:00 in this zone.',
+                                    )
+                                }}
                             </p>
                             <InputError :message="form.errors.timezone" />
                         </div>
@@ -136,7 +149,7 @@ function blankToNull(value: number | string | null): number | null {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Transport</CardTitle>
+                        <CardTitle>{{ $t('Transport') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <div class="flex items-center gap-2">
@@ -151,20 +164,27 @@ function blankToNull(value: number | string | null): number | null {
                                 "
                             />
                             <Label for="custom-transport">
-                                Send through this brand's own SMTP server
+                                {{
+                                    $t(
+                                        'Send through this brand’s own SMTP server',
+                                    )
+                                }}
                             </Label>
                         </div>
                         <p class="text-xs text-text-muted">
-                            Unchecked, the brand sends through the application's
-                            default mailer. Deliverability and reputation are
-                            per sending domain — a brand with its own domain
-                            should bring its own transport.
+                            {{
+                                $t(
+                                    'Unchecked, the brand sends through the application’s default mailer. Deliverability and reputation are per sending domain — a brand with its own domain should bring its own transport.',
+                                )
+                            }}
                         </p>
 
                         <template v-if="form.useCustomTransport">
                             <div class="grid gap-4 sm:grid-cols-2">
                                 <div class="grid gap-2">
-                                    <Label for="smtp-host">Host</Label>
+                                    <Label for="smtp-host">{{
+                                        $t('Host')
+                                    }}</Label>
                                     <Input
                                         id="smtp-host"
                                         v-model="form.smtpHost"
@@ -174,7 +194,9 @@ function blankToNull(value: number | string | null): number | null {
                                     />
                                 </div>
                                 <div class="grid gap-2">
-                                    <Label for="smtp-port">Port</Label>
+                                    <Label for="smtp-port">{{
+                                        $t('Port')
+                                    }}</Label>
                                     <Input
                                         id="smtp-port"
                                         v-model.number="form.smtpPort"
@@ -186,7 +208,9 @@ function blankToNull(value: number | string | null): number | null {
                                 </div>
                             </div>
                             <div class="grid gap-2">
-                                <Label for="smtp-username">Username</Label>
+                                <Label for="smtp-username">{{
+                                    $t('Username')
+                                }}</Label>
                                 <Input
                                     id="smtp-username"
                                     v-model="form.smtpUsername"
@@ -196,14 +220,16 @@ function blankToNull(value: number | string | null): number | null {
                                 />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="smtp-password">Password</Label>
+                                <Label for="smtp-password">{{
+                                    $t('Password')
+                                }}</Label>
                                 <Input
                                     id="smtp-password"
                                     v-model="form.smtpPassword"
                                     type="password"
                                     :placeholder="
                                         settings.hasSmtpPassword
-                                            ? 'Stored — leave blank to keep'
+                                            ? $t('Stored — leave blank to keep')
                                             : ''
                                     "
                                     autocomplete="new-password"
@@ -213,13 +239,17 @@ function blankToNull(value: number | string | null): number | null {
                                 />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="smtp-scheme">Scheme</Label>
+                                <Label for="smtp-scheme">{{
+                                    $t('Scheme')
+                                }}</Label>
                                 <select
                                     id="smtp-scheme"
                                     v-model="form.smtpScheme"
                                     class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                                 >
-                                    <option :value="null">Automatic</option>
+                                    <option :value="null">
+                                        {{ $t('Automatic') }}
+                                    </option>
                                     <option value="smtp">
                                         smtp (STARTTLS)
                                     </option>
@@ -233,14 +263,14 @@ function blankToNull(value: number | string | null): number | null {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Sending quota</CardTitle>
+                        <CardTitle>{{ $t('Sending quota') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div class="grid gap-2">
-                                <Label for="mail-quota-per-hour"
-                                    >Mail per hour</Label
-                                >
+                                <Label for="mail-quota-per-hour">{{
+                                    $t('Mail per hour')
+                                }}</Label>
                                 <Input
                                     id="mail-quota-per-hour"
                                     v-model="form.mailQuotaPerHour"
@@ -253,9 +283,9 @@ function blankToNull(value: number | string | null): number | null {
                                 />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="mail-quota-per-day"
-                                    >Mail per day</Label
-                                >
+                                <Label for="mail-quota-per-day">{{
+                                    $t('Mail per day')
+                                }}</Label>
                                 <Input
                                     id="mail-quota-per-day"
                                     v-model="form.mailQuotaPerDay"
@@ -269,15 +299,15 @@ function blankToNull(value: number | string | null): number | null {
                             </div>
                         </div>
                         <p class="text-xs text-text-muted">
-                            Blank means the configured default ({{
-                                quotaDefaults.perHour
+                            {{
+                                $t(
+                                    'Blank means the configured default (:perHour per hour, :perDay per day). Mail over the quota is held and released automatically when the next hour or day begins; urgent mail is never held. Brands without their own SMTP server share one budget, since they send through one account.',
+                                    {
+                                        perHour: String(quotaDefaults.perHour),
+                                        perDay: String(quotaDefaults.perDay),
+                                    },
+                                )
                             }}
-                            per hour, {{ quotaDefaults.perDay }} per day). Mail
-                            over the quota is held and released automatically
-                            when the next hour or day begins; urgent mail is
-                            never held. Brands without their own SMTP server
-                            share one budget, since they send through one
-                            account.
                         </p>
                     </CardContent>
                 </Card>
@@ -285,21 +315,21 @@ function blankToNull(value: number | string | null): number | null {
 
             <div class="flex items-center gap-3">
                 <Button type="submit" :disabled="form.processing">
-                    Save mail settings
+                    {{ $t('Save mail settings') }}
                 </Button>
                 <span
                     v-if="form.isDirty"
                     role="status"
                     class="text-sm text-warning"
                 >
-                    Unsaved changes
+                    {{ $t('Unsaved changes') }}
                 </span>
             </div>
         </form>
 
         <Card>
             <CardHeader>
-                <CardTitle>How your mail looks</CardTitle>
+                <CardTitle>{{ $t('How your mail looks') }}</CardTitle>
             </CardHeader>
             <CardContent class="flex flex-col gap-4">
                 <div class="flex items-center gap-3">
@@ -319,7 +349,9 @@ function blankToNull(value: number | string | null): number | null {
                         :style="{ backgroundColor: identity.accentColor }"
                         aria-hidden="true"
                     />
-                    <span class="text-text-muted">Accent colour</span>
+                    <span class="text-text-muted">{{
+                        $t('Accent colour')
+                    }}</span>
                     <span class="font-mono">{{ identity.accentColor }}</span>
                 </div>
                 <p class="text-sm text-text-muted">
@@ -330,18 +362,18 @@ function blankToNull(value: number | string | null): number | null {
                         v-if="identity.imprintUrl"
                         :href="identity.imprintUrl"
                         class="underline-offset-4 hover:underline"
-                        >Imprint</a
+                        >{{ $t('Imprint') }}</a
                     >
                     <a
                         v-if="identity.privacyUrl"
                         :href="identity.privacyUrl"
                         class="underline-offset-4 hover:underline"
-                        >Privacy</a
+                        >{{ $t('Privacy') }}</a
                     >
                 </div>
                 <div>
                     <Button type="button" variant="outline" @click="sendTest">
-                        Send test mail to me
+                        {{ $t('Send test mail to me') }}
                     </Button>
                 </div>
             </CardContent>

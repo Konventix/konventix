@@ -80,28 +80,34 @@ const columns = computed<number[]>(() =>
 </script>
 
 <template>
-    <Head :title="`Programm – ${props.event.name ?? ''}`" />
+    <Head
+        :title="$t('Programme — :event', { event: props.event.name ?? '' })"
+    />
 
     <div
         class="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6 text-text lg:p-8"
     >
         <header class="flex flex-col gap-1">
-            <h1 class="text-2xl font-semibold">Programm</h1>
+            <h1 class="text-2xl font-semibold">{{ $t('Programme') }}</h1>
             <p class="text-sm text-text-muted">
                 <span v-if="props.event.name">{{ props.event.name }} · </span>
-                Alle Zeiten in {{ props.event.timezone }}
+                {{
+                    $t('All times in :timezone', {
+                        timezone: props.event.timezone,
+                    })
+                }}
             </p>
         </header>
 
         <p v-if="props.days.length === 0" class="text-sm text-text-muted">
-            Für diese Veranstaltung ist noch kein Programm veröffentlicht.
+            {{ $t('No programme has been published for this event yet.') }}
         </p>
 
         <template v-else-if="selectedDay">
             <nav
                 v-if="props.days.length > 1"
                 class="flex flex-wrap gap-2"
-                aria-label="Tag wählen"
+                :aria-label="$t('Choose a day')"
             >
                 <Button
                     v-for="day in props.days"
@@ -122,7 +128,7 @@ const columns = computed<number[]>(() =>
                 v-if="selectedDay.trackNames.length > 0"
                 class="flex flex-wrap items-center gap-2"
             >
-                <span class="text-sm text-text-muted">Tracks:</span>
+                <span class="text-sm text-text-muted">{{ $t('Tracks:') }}</span>
                 <Button
                     v-for="name in selectedDay.trackNames"
                     :key="name"

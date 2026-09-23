@@ -49,7 +49,7 @@ final class GenericPasswordResetLinkResponse implements FailedPasswordResetLinkR
     public function toResponse($request)
     {
         return $request->wantsJson()
-            ? new JsonResponse(['message' => self::MESSAGE], 200)
-            : back()->with('status', self::MESSAGE);
+            ? new JsonResponse(['message' => __(self::MESSAGE)], 200)
+            : back()->with('status', __(self::MESSAGE));
     }
 }

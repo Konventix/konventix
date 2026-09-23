@@ -14,7 +14,7 @@ import { update as updateCompetitions } from '@/routes/admin/events/agenda/compe
 /**
  * The programme editor's second half (timetable design §4.5, §6,
  * D-AGD-02): which of the event's published competitions the programme
- * shows, under which track and in what order. Console copy, so English.
+ * shows, under which track and in what order.
  *
  * **Its own form and its own endpoint.** Tracks and places are one whole
  * set on the page's form; this is another whole set beside it, saved by
@@ -156,16 +156,20 @@ const savedTracks = computed(() =>
 
 <template>
     <Card class="border-border bg-surface">
-        <CardHeader><CardTitle>Competitions</CardTitle></CardHeader>
+        <CardHeader
+            ><CardTitle>{{ $t('Competitions') }}</CardTitle></CardHeader
+        >
         <CardContent>
             <form class="flex flex-col gap-4" @submit.prevent="submit">
                 <p
                     v-if="form.rows.length === 0"
                     class="text-sm text-text-muted"
                 >
-                    This event has no published competitions yet. Once
-                    Competition publishes one, it can be added to the programme
-                    here.
+                    {{
+                        $t(
+                            'This event has no published competitions yet. Once Competition publishes one, it can be added to the programme here.',
+                        )
+                    }}
                 </p>
 
                 <ul v-else class="flex flex-col gap-3">
@@ -205,21 +209,33 @@ const savedTracks = computed(() =>
                                 class="text-sm text-text-muted"
                             >
                                 <span v-if="row.withdrawn" class="text-warning">
-                                    Unpublished in Competition — not shown
+                                    {{
+                                        $t(
+                                            'Unpublished in Competition — not shown',
+                                        )
+                                    }}
                                 </span>
                                 <template v-else>
                                     <span v-if="row.startsAt">{{
                                         formatDateTime(row.startsAt)
                                     }}</span>
                                     <span v-else class="text-warning">
-                                        No start time yet — not shown in the
-                                        programme
+                                        {{
+                                            $t(
+                                                'No start time yet — not shown in the programme',
+                                            )
+                                        }}
                                     </span>
                                     <span
                                         v-if="row.cancelled"
                                         class="text-danger"
                                     >
-                                        · Cancelled — shown struck through
+                                        ·
+                                        {{
+                                            $t(
+                                                'Called off — shown struck through',
+                                            )
+                                        }}
                                     </span>
                                 </template>
                             </p>
@@ -234,7 +250,7 @@ const savedTracks = computed(() =>
                                     :for="`competition-${row.competitionId}-track`"
                                     class="text-xs text-text-muted"
                                 >
-                                    Track
+                                    {{ $t('Track') }}
                                 </Label>
                                 <select
                                     :id="`competition-${row.competitionId}-track`"
@@ -247,7 +263,9 @@ const savedTracks = computed(() =>
                                                 .value || null
                                     "
                                 >
-                                    <option value="">No track</option>
+                                    <option value="">
+                                        {{ $t('No track') }}
+                                    </option>
                                     <option
                                         v-for="track in savedTracks"
                                         :key="track.id"
@@ -264,7 +282,9 @@ const savedTracks = computed(() =>
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                :aria-label="`Move ${row.name} up`"
+                                :aria-label="
+                                    $t('Move :name up', { name: row.name })
+                                "
                                 :disabled="index === 0"
                                 @click="move(index, -1)"
                             >
@@ -274,7 +294,9 @@ const savedTracks = computed(() =>
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                :aria-label="`Move ${row.name} down`"
+                                :aria-label="
+                                    $t('Move :name down', { name: row.name })
+                                "
                                 :disabled="index === form.rows.length - 1"
                                 @click="move(index, 1)"
                             >
@@ -285,7 +307,11 @@ const savedTracks = computed(() =>
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                aria-label="Remove withdrawn competition from the programme"
+                                :aria-label="
+                                    $t(
+                                        'Remove withdrawn competition from the programme',
+                                    )
+                                "
                                 @click="remove(index)"
                             >
                                 <Trash2 class="size-4 text-danger" />
@@ -296,21 +322,23 @@ const savedTracks = computed(() =>
 
                 <div class="flex items-center gap-3">
                     <Button type="submit" :disabled="form.processing">
-                        Save competitions
+                        {{ $t('Save competitions') }}
                     </Button>
                     <span
                         v-if="form.isDirty"
                         role="status"
                         class="text-sm text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
 
                 <p class="text-xs text-text-muted">
-                    Start times belong to Competition and move here by
-                    themselves. A selected competition appears in the programme
-                    as an open-ended block at its start time.
+                    {{
+                        $t(
+                            'Start times belong to Competition and move here by themselves. A selected competition appears in the programme as an open-ended block at its start time.',
+                        )
+                    }}
                 </p>
             </form>
         </CardContent>

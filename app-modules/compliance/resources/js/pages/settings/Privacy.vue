@@ -13,6 +13,11 @@ import {
     show as showPolicy,
 } from '@/routes/policies';
 import { edit } from '@/routes/privacy';
+import {
+    captureContextLabel,
+    requestTypeLabel,
+    subjectRequestStateLabel,
+} from '../../lib/labels';
 
 /**
  * What this account has agreed to, when, and what is still outstanding.
@@ -63,6 +68,8 @@ const props = defineProps<{
 
 defineOptions({
     layout: {
+        // English key: `defineOptions` is evaluated at import, before the
+        // catalog loads, so the shell's breadcrumb renders it through `$t`.
         breadcrumbs: [
             {
                 title: 'Privacy settings',
@@ -83,28 +90,18 @@ function withdraw(consent: ConsentRow): void {
 function requestData(type: 'export' | 'deletion'): void {
     router.post(storeDataRequest().url, { type }, { preserveScroll: true });
 }
-
-const stateLabels: Record<
-    Konventix.Compliance.Enums.DataSubjectRequestState,
-    string
-> = {
-    received: 'Received',
-    in_progress: 'In progress',
-    fulfilled: 'Done',
-    refused: 'Refused',
-};
 </script>
 
 <template>
-    <Head title="Privacy settings" />
+    <Head :title="$t('Privacy settings')" />
 
-    <h1 class="sr-only">Privacy settings</h1>
+    <h1 class="sr-only">{{ $t('Privacy settings') }}</h1>
 
     <div class="flex flex-col space-y-6">
         <Heading
             variant="small"
-            title="Privacy"
-            description="The documents you have agreed to, and when"
+            :title="$t('Privacy')"
+            :description="$t('The documents you have agreed to, and when')"
         />
 
         <section
@@ -112,14 +109,18 @@ const stateLabels: Record<
             class="flex flex-col gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4"
         >
             <p class="text-sm">
-                {{ props.outstanding.length }} document{{
-                    props.outstanding.length === 1 ? '' : 's'
+                {{
+                    $tChoice(
+                        '{1} :count document still needs your agreement.|[2,*] :count documents still need your agreement.',
+                        props.outstanding.length,
+                    )
                 }}
-                still need your agreement.
             </p>
             <div>
                 <Button as-child size="sm">
-                    <Link :href="requiredPolicies().url">Review now</Link>
+                    <Link :href="requiredPolicies().url">{{
+                        $t('Review now')
+                    }}</Link>
                 </Button>
             </div>
         </section>
@@ -138,15 +139,25 @@ const stateLabels: Record<
                         {{ consent.policyName }}
                     </Link>
                     <p class="text-xs text-text-muted">
-                        Version {{ consent.version }} · agreed
-                        {{ formatDate(consent.grantedAt) }} ·
-                        {{ consent.captureContext }}
+                        {{
+                            $t('Version :version · agreed :date · :context', {
+                                version: consent.version,
+                                date: formatDate(consent.grantedAt),
+                                context: captureContextLabel(
+                                    consent.captureContext,
+                                ),
+                            })
+                        }}
                     </p>
                     <p
                         v-if="consent.withdrawnAt"
                         class="text-xs text-text-muted"
                     >
-                        Withdrawn {{ formatDate(consent.withdrawnAt) }}
+                        {{
+                            $t('Withdrawn :date', {
+                                date: formatDate(consent.withdrawnAt),
+                            })
+                        }}
                     </p>
                 </div>
 
@@ -155,7 +166,7 @@ const stateLabels: Record<
                     class="flex flex-col items-end gap-1"
                 >
                     <span class="text-xs text-text-muted" role="status">
-                        Withdrawal pending
+                        {{ $t('Withdrawal pending') }}
                     </span>
                 </div>
 
@@ -170,8 +181,8 @@ const stateLabels: Record<
                     >
                         {{
                             consent.selfServiceWithdrawal
-                                ? 'Withdraw'
-                                : 'Request withdrawal'
+                                ? $t('Withdraw consent')
+                                : $t('Request withdrawal')
                         }}
                     </Button>
                     <span
@@ -179,20 +190,22 @@ const stateLabels: Record<
                         class="text-xs text-warning"
                         role="status"
                     >
-                        Required — you will be asked again
+                        {{ $t('Required — you will be asked again') }}
                     </span>
                 </div>
             </li>
         </ul>
 
         <p v-else class="text-sm text-text-muted">
-            Nothing recorded yet. Agreements you give appear here.
+            {{ $t('Nothing recorded yet. Agreements you give appear here.') }}
         </p>
 
         <Heading
             variant="small"
-            title="Your data"
-            description="Ask for a copy of your data, or for it to be deleted"
+            :title="$t('Your data')"
+            :description="
+                $t('Ask for a copy of your data, or for it to be deleted')
+            "
         />
 
         <div class="flex flex-wrap gap-3">
@@ -201,22 +214,23 @@ const stateLabels: Record<
                 :disabled="props.openTypes.includes('export')"
                 @click="requestData('export')"
             >
-                Request a copy of my data
+                {{ $t('Request a copy of my data') }}
             </Button>
             <Button
                 variant="outline"
                 :disabled="props.openTypes.includes('deletion')"
                 @click="requestData('deletion')"
             >
-                Request deletion
+                {{ $t('Request deletion') }}
             </Button>
         </div>
 
         <p class="text-sm text-text-muted">
-            We answer within 30 days. Deletion anonymizes your records rather
-            than erasing every trace: documents we are legally required to keep
-            — invoices, above all — survive without your personal details
-            attached.
+            {{
+                $t(
+                    'We answer within 30 days. Deletion anonymizes your records rather than erasing every trace: documents we are legally required to keep — invoices, above all — survive without your personal details attached.',
+                )
+            }}
         </p>
 
         <ul v-if="props.requests.length > 0" class="flex flex-col gap-3">
@@ -229,22 +243,34 @@ const stateLabels: Record<
                     <span class="font-medium">
                         {{
                             dataRequest.type === 'export'
-                                ? 'Copy of my data'
-                                : 'Deletion'
+                                ? $t('Copy of my data')
+                                : dataRequest.type === 'deletion'
+                                  ? $t('Deletion')
+                                  : requestTypeLabel(dataRequest.type)
                         }}
-                        — {{ stateLabels[dataRequest.state] }}
+                        — {{ subjectRequestStateLabel(dataRequest.state) }}
                     </span>
                     <span class="text-xs text-text-muted">
-                        Opened {{ formatDateTime(dataRequest.openedAt) }} ·
-                        answer due by
-                        {{ formatCalendarDate(dataRequest.deadlineAt) }}
+                        {{
+                            $t('Opened :opened · answer due by :deadline', {
+                                opened: formatDateTime(dataRequest.openedAt),
+                                deadline: formatCalendarDate(
+                                    dataRequest.deadlineAt,
+                                ),
+                            })
+                        }}
                     </span>
                     <span
                         v-if="dataRequest.archiveExpiresAt"
                         class="text-xs text-text-muted"
                     >
-                        Download available until
-                        {{ formatCalendarDate(dataRequest.archiveExpiresAt) }}
+                        {{
+                            $t('Download available until :date', {
+                                date: formatCalendarDate(
+                                    dataRequest.archiveExpiresAt,
+                                ),
+                            })
+                        }}
                     </span>
                 </div>
 
@@ -254,7 +280,9 @@ const stateLabels: Record<
                     size="sm"
                     as-child
                 >
-                    <a :href="downloadArchive(dataRequest.id).url">Download</a>
+                    <a :href="downloadArchive(dataRequest.id).url">{{
+                        $t('Download')
+                    }}</a>
                 </Button>
             </li>
         </ul>

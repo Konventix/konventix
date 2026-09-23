@@ -1,5 +1,6 @@
 import { usePage } from '@inertiajs/vue3';
 import { echo } from '@laravel/echo-vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { toast } from 'vue-sonner';
 import type { PendingLine, WallEntry, WallLine, WallTombstone } from './wall';
@@ -31,7 +32,7 @@ import { mergeAll, newestId, oldestId, remove, upsert } from './wall';
  * **Optimistic, then reconciled** (design §8): a sent line shows at once as
  * pending; the server's answer replaces it with the real line, the
  * broadcast of the same id changes nothing further, and a refusal rolls it
- * back with a toast. The German sentence of a refusal is the server's
+ * back with a toast. The sentence of a refusal is the server's
  * (`ShoutboxWriteException`); this file only reads the fields next to it.
  *
  * The URLs are handed in: the hub card may not import a route helper
@@ -172,7 +173,7 @@ export function useShoutboxWall(
         const message =
             body?.errors?.body?.[0] ??
             body?.message ??
-            'Deine Nachricht konnte nicht gesendet werden.';
+            trans('Your message could not be sent.');
 
         refusal.value = message;
         toast.error(message);
@@ -314,7 +315,7 @@ export function useShoutboxWall(
             entries.value = mergeAll(entries.value, feed.lines);
             hasOlder.value = feed.hasMore;
         } catch {
-            toast.error('Ältere Nachrichten konnten nicht geladen werden.');
+            toast.error(trans('Older messages could not be loaded.'));
         } finally {
             loadingOlder.value = false;
         }

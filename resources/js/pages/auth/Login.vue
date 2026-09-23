@@ -94,7 +94,7 @@ async function signInWithPasskey(): Promise<void> {
 </script>
 
 <template>
-    <Head title="Log in" />
+    <Head :title="$t('Log in')" />
 
     <div
         v-if="status"
@@ -111,7 +111,7 @@ async function signInWithPasskey(): Promise<void> {
     >
         <div class="grid gap-6">
             <div class="grid gap-2">
-                <Label for="email">Email address</Label>
+                <Label for="email">{{ $t('Email address') }}</Label>
                 <Input
                     id="email"
                     type="email"
@@ -127,14 +127,14 @@ async function signInWithPasskey(): Promise<void> {
 
             <div class="grid gap-2">
                 <div class="flex items-center justify-between">
-                    <Label for="password">Password</Label>
+                    <Label for="password">{{ $t('Password') }}</Label>
                     <TextLink
                         v-if="canResetPassword"
                         :href="request()"
                         class="text-sm"
                         :tabindex="5"
                     >
-                        Forgot your password?
+                        {{ $t('Forgot your password?') }}
                     </TextLink>
                 </div>
                 <PasswordInput
@@ -143,7 +143,7 @@ async function signInWithPasskey(): Promise<void> {
                     required
                     :tabindex="2"
                     autocomplete="current-password"
-                    placeholder="Password"
+                    :placeholder="$t('Password')"
                 />
                 <InputError :message="errors.password" />
             </div>
@@ -156,7 +156,7 @@ async function signInWithPasskey(): Promise<void> {
                         name="remember"
                         :tabindex="3"
                     />
-                    <span>Remember me</span>
+                    <span>{{ $t('Remember me') }}</span>
                 </Label>
             </div>
 
@@ -176,8 +176,10 @@ async function signInWithPasskey(): Promise<void> {
             v-if="canRegister"
             class="space-x-1 text-center text-sm text-muted-foreground"
         >
-            <span>Don't have an account?</span>
-            <TextLink :href="register()" :tabindex="6">Sign up</TextLink>
+            <span>{{ $t("Don't have an account?") }}</span>
+            <TextLink :href="register()" :tabindex="6">{{
+                $t('Create an account')
+            }}</TextLink>
         </div>
     </Form>
 
@@ -187,7 +189,7 @@ async function signInWithPasskey(): Promise<void> {
         </div>
         <div class="relative flex justify-center text-xs uppercase">
             <span class="bg-background px-2 text-muted-foreground">
-                Or continue with
+                {{ $t('Or continue with') }}
             </span>
         </div>
     </div>
@@ -202,7 +204,7 @@ async function signInWithPasskey(): Promise<void> {
                 issue's own acceptance criteria call reachable only from the
                 settings page today.
             -->
-            <a :href="steamRedirectUrl">Sign in with Steam</a>
+            <a :href="steamRedirectUrl">{{ $t('Sign in with Steam') }}</a>
         </Button>
 
         <Button
@@ -216,7 +218,7 @@ async function signInWithPasskey(): Promise<void> {
             @click="signInWithPasskey"
         >
             <Spinner v-if="passkeyBusy" />
-            Sign in with a passkey
+            {{ $t('Sign in with a passkey') }}
         </Button>
 
         <p

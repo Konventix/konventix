@@ -37,16 +37,21 @@ function formatDeadline(value: string): string {
 </script>
 
 <template>
-    <Head title="Request your data" />
+    <Head :title="$t('Request your data')" />
 
     <div
         class="mx-auto flex w-full max-w-lg flex-col gap-6 p-6 text-text lg:p-8"
     >
         <header class="flex flex-col gap-2">
-            <h1 class="text-3xl font-semibold">Request your data</h1>
+            <h1 class="text-3xl font-semibold">
+                {{ $t('Request your data') }}
+            </h1>
             <p class="text-sm text-text-muted">
-                Ask for a copy of what we hold about you, or for it to be
-                deleted — whether or not you have an account with us.
+                {{
+                    $t(
+                        'Ask for a copy of what we hold about you, or for it to be deleted — whether or not you have an account with us.',
+                    )
+                }}
             </p>
         </header>
 
@@ -55,11 +60,14 @@ function formatDeadline(value: string): string {
             role="status"
             class="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4"
         >
-            <p class="font-medium">Your request is open.</p>
+            <p class="font-medium">{{ $t('Your request is open.') }}</p>
             <p class="text-sm text-text-muted">
-                We will answer by
-                {{ formatDeadline(props.opened.deadline) }} at the latest, at
-                the address you just confirmed.
+                {{
+                    $t(
+                        'We will answer by :date at the latest, at the address you just confirmed.',
+                        { date: formatDeadline(props.opened.deadline) },
+                    )
+                }}
             </p>
         </div>
 
@@ -68,10 +76,13 @@ function formatDeadline(value: string): string {
             role="status"
             class="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4"
         >
-            <p class="font-medium">Check your mail.</p>
+            <p class="font-medium">{{ $t('Check your mail.') }}</p>
             <p class="text-sm text-text-muted">
-                If that address is one we can act on, we have sent a link to
-                confirm your request. It expires in 24 hours.
+                {{
+                    $t(
+                        'If that address is one we can act on, we have sent a link to confirm your request. It expires in 24 hours.',
+                    )
+                }}
             </p>
         </div>
 
@@ -82,7 +93,7 @@ function formatDeadline(value: string): string {
             class="flex flex-col gap-6"
         >
             <div class="grid gap-2">
-                <Label for="email">Email address</Label>
+                <Label for="email">{{ $t('Email address') }}</Label>
                 <Input
                     id="email"
                     type="email"
@@ -96,7 +107,9 @@ function formatDeadline(value: string): string {
             </div>
 
             <fieldset class="grid gap-2">
-                <legend class="text-sm font-medium">What do you need?</legend>
+                <legend class="text-sm font-medium">
+                    {{ $t('What do you need?') }}
+                </legend>
                 <label class="flex items-center gap-2 text-sm">
                     <input
                         type="radio"
@@ -105,7 +118,7 @@ function formatDeadline(value: string): string {
                         checked
                         class="size-4 accent-accent"
                     />
-                    A copy of my data
+                    {{ $t('A copy of my data') }}
                 </label>
                 <label class="flex items-center gap-2 text-sm">
                     <input
@@ -114,14 +127,14 @@ function formatDeadline(value: string): string {
                         value="deletion"
                         class="size-4 accent-accent"
                     />
-                    Deletion
+                    {{ $t('Deletion') }}
                 </label>
                 <InputError :message="errors.type" />
             </fieldset>
 
             <Button type="submit" :disabled="processing">
                 <Spinner v-if="processing" />
-                Send me a confirmation link
+                {{ $t('Send me a confirmation link') }}
             </Button>
         </Form>
     </div>

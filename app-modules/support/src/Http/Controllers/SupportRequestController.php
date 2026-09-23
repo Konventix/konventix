@@ -76,7 +76,7 @@ final class SupportRequestController
         // account already has one.
         if ($userId === null && ($data->email === null || trim($data->email) === '')) {
             throw ValidationException::withMessages([
-                'email' => 'Tell us an e-mail address so we can answer you.',
+                'email' => __('Tell us an e-mail address so we can answer you.'),
             ]);
         }
 
@@ -88,7 +88,7 @@ final class SupportRequestController
         // who failed a challenge has to be told what to do about it.
         if (! $captcha->verify($request)) {
             throw ValidationException::withMessages([
-                'captcha' => 'We could not verify that you are human. Please try again.',
+                'captcha' => __('We could not verify that you are human. Please try again.'),
             ]);
         }
 

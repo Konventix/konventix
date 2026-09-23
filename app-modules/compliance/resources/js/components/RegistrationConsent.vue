@@ -94,7 +94,7 @@ const labelSegments = computed(() => consentLabelSegments(props.policies));
         </div>
 
         <p v-if="notices.length > 0" class="text-sm text-text">
-            Please read:
+            {{ $t('Please read:') }}
             <template v-for="(notice, index) in notices" :key="notice.slug">
                 <template v-if="index > 0">, </template>
                 <Link

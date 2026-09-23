@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DateTimeField from '@/components/datetime/DateTimeField.vue';
@@ -25,10 +26,11 @@ import {
     update as updateItemRoute,
 } from '@/routes/admin/events/agenda/items';
 import CompetitionSelection from '../../../components/admin/CompetitionSelection.vue';
+import { itemStateLabel } from '../../../lib/labels';
 
 /**
  * The programme editor (design §6): tracks, places and items for one
- * event, under `ManageAgenda`. Console copy, so English.
+ * event, under `ManageAgenda`.
  *
  * **Two different kinds of write, so two different forms.** Tracks and
  * places are saved as whole sets — `SaveTracks`/`SaveLocations` take the
@@ -149,7 +151,9 @@ function removeTrack(index: number): void {
     if (
         track?.id !== null &&
         !window.confirm(
-            'Remove this track? Items on it stay, but lose their column.',
+            trans(
+                'Remove this track? Items on it stay, but lose their column.',
+            ),
         )
     ) {
         return;
@@ -166,7 +170,9 @@ function removeLocation(index: number): void {
 
     if (
         location?.id !== null &&
-        !window.confirm('Remove this place? Items there keep their note only.')
+        !window.confirm(
+            trans('Remove this location? Items there keep their note only.'),
+        )
     ) {
         return;
     }
@@ -267,7 +273,9 @@ function cancelItem(item: ItemRow): void {
     }
 
     const reason = window.prompt(
-        'Why is this cancelled? Participants read this on the programme.',
+        trans(
+            'Why is this called off? Participants read this on the programme.',
+        ),
         item.cancelledReason ?? '',
     );
 
@@ -286,7 +294,9 @@ function destroyItem(item: ItemRow): void {
     if (
         item.id === null ||
         !window.confirm(
-            'Delete this item? Cancel it instead if anyone has seen it.',
+            trans(
+                'Delete this item? Call it off instead if anyone has seen it.',
+            ),
         )
     ) {
         return;
@@ -326,18 +336,25 @@ const stateBadgeClass: Record<string, string> = {
 </script>
 
 <template>
-    <Head :title="`Programme — ${props.event.name ?? ''}`" />
+    <Head
+        :title="$t('Programme — :event', { event: props.event.name ?? '' })"
+    />
 
     <div class="flex max-w-4xl flex-col gap-6">
         <AdminPageHeader
-            title="Programme"
-            :description="`Tracks, places and items — item times are stored as instants and shown in the event's zone (${props.event.timezone}) on the public page`"
+            :title="$t('Programme')"
+            :description="
+                $t(
+                    'Tracks, locations and items — item times are stored as instants and shown in the event’s zone (:timezone) on the public page',
+                    { timezone: props.event.timezone },
+                )
+            "
         >
             <Link
                 :href="showEvent(props.event.id).url"
                 class="text-sm text-text-muted hover:text-text"
             >
-                Dashboard
+                {{ $t('Dashboard') }}
             </Link>
         </AdminPageHeader>
 
@@ -346,27 +363,35 @@ const stateBadgeClass: Record<string, string> = {
              simply has no day to appear under, which is worth seeing here
              rather than discovering on the public page. -->
         <p v-if="props.days.length > 0" class="text-sm text-text-muted">
-            Event days:
+            {{ $t('Event days:') }}
             <span v-for="(day, index) in props.days" :key="day.day_id">
                 <span v-if="index > 0">, </span>{{ day.date
                 }}<span v-if="day.label"> ({{ day.label }})</span>
             </span>
         </p>
         <p v-else class="text-sm text-warning" role="status">
-            This event has no days yet — the public programme has nothing to
-            group items under until it does.
+            {{
+                $t(
+                    'This event has no days yet — the public programme has nothing to group items under until it does.',
+                )
+            }}
         </p>
 
         <form class="flex flex-col gap-6" @submit.prevent="submit">
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Tracks</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{ $t('Tracks') }}</CardTitle></CardHeader
+                >
                 <CardContent class="flex flex-col gap-3">
                     <p
                         v-if="form.tracks.length === 0"
                         class="text-sm text-text-muted"
                     >
-                        No tracks yet. Without one, every item lands in the
-                        “Ohne Track” band above the grid.
+                        {{
+                            $t(
+                                'No tracks yet. Without one, every item lands in the “No track” band above the grid.',
+                            )
+                        }}
                     </p>
                     <div
                         v-for="(track, index) in form.tracks"
@@ -374,7 +399,9 @@ const stateBadgeClass: Record<string, string> = {
                         class="flex items-end gap-2"
                     >
                         <div class="grid flex-1 gap-2">
-                            <Label :for="`track-${index}-name`">Name</Label>
+                            <Label :for="`track-${index}-name`">{{
+                                $t('Name')
+                            }}</Label>
                             <Input
                                 :id="`track-${index}-name`"
                                 v-model="track.name"
@@ -387,7 +414,7 @@ const stateBadgeClass: Record<string, string> = {
                             type="button"
                             variant="ghost"
                             size="sm"
-                            aria-label="Move track up"
+                            :aria-label="$t('Move track up')"
                             :disabled="index === 0"
                             @click="move(form.tracks, index, -1)"
                         >
@@ -397,7 +424,7 @@ const stateBadgeClass: Record<string, string> = {
                             type="button"
                             variant="ghost"
                             size="sm"
-                            aria-label="Move track down"
+                            :aria-label="$t('Move track down')"
                             :disabled="index === form.tracks.length - 1"
                             @click="move(form.tracks, index, 1)"
                         >
@@ -407,7 +434,7 @@ const stateBadgeClass: Record<string, string> = {
                             type="button"
                             variant="ghost"
                             size="sm"
-                            aria-label="Remove track"
+                            :aria-label="$t('Remove track')"
                             @click="removeTrack(index)"
                         >
                             <Trash2 class="size-4 text-danger" />
@@ -421,20 +448,25 @@ const stateBadgeClass: Record<string, string> = {
                         @click="addTrack"
                     >
                         <Plus class="size-4" />
-                        Add track
+                        {{ $t('Add track') }}
                     </Button>
                 </CardContent>
             </Card>
 
             <Card class="border-border bg-surface">
-                <CardHeader><CardTitle>Places</CardTitle></CardHeader>
+                <CardHeader
+                    ><CardTitle>{{ $t('Locations') }}</CardTitle></CardHeader
+                >
                 <CardContent class="flex flex-col gap-3">
                     <p
                         v-if="form.locations.length === 0"
                         class="text-sm text-text-muted"
                     >
-                        No places yet. An item can still carry a free-text note
-                        instead.
+                        {{
+                            $t(
+                                'No locations yet. An item can still carry a free-text note instead.',
+                            )
+                        }}
                     </p>
                     <div
                         v-for="(location, index) in form.locations"
@@ -442,7 +474,9 @@ const stateBadgeClass: Record<string, string> = {
                         class="flex items-end gap-2"
                     >
                         <div class="grid flex-1 gap-2">
-                            <Label :for="`location-${index}-name`">Name</Label>
+                            <Label :for="`location-${index}-name`">{{
+                                $t('Name')
+                            }}</Label>
                             <Input
                                 :id="`location-${index}-name`"
                                 v-model="location.name"
@@ -457,7 +491,7 @@ const stateBadgeClass: Record<string, string> = {
                             type="button"
                             variant="ghost"
                             size="sm"
-                            aria-label="Move place up"
+                            :aria-label="$t('Move location up')"
                             :disabled="index === 0"
                             @click="move(form.locations, index, -1)"
                         >
@@ -467,7 +501,7 @@ const stateBadgeClass: Record<string, string> = {
                             type="button"
                             variant="ghost"
                             size="sm"
-                            aria-label="Move place down"
+                            :aria-label="$t('Move location down')"
                             :disabled="index === form.locations.length - 1"
                             @click="move(form.locations, index, 1)"
                         >
@@ -477,7 +511,7 @@ const stateBadgeClass: Record<string, string> = {
                             type="button"
                             variant="ghost"
                             size="sm"
-                            aria-label="Remove place"
+                            :aria-label="$t('Remove location')"
                             @click="removeLocation(index)"
                         >
                             <Trash2 class="size-4 text-danger" />
@@ -491,21 +525,21 @@ const stateBadgeClass: Record<string, string> = {
                         @click="addLocation"
                     >
                         <Plus class="size-4" />
-                        Add place
+                        {{ $t('Add location') }}
                     </Button>
                 </CardContent>
             </Card>
 
             <div class="flex items-center gap-3 self-start">
                 <Button type="submit" :disabled="form.processing">
-                    Save tracks and places
+                    {{ $t('Save tracks and locations') }}
                 </Button>
                 <span
                     v-if="form.isDirty"
                     role="status"
                     class="text-sm text-warning"
                 >
-                    Unsaved changes
+                    {{ $t('Unsaved changes') }}
                 </span>
             </div>
         </form>
@@ -518,13 +552,15 @@ const stateBadgeClass: Record<string, string> = {
         />
 
         <Card class="border-border bg-surface">
-            <CardHeader><CardTitle>Items</CardTitle></CardHeader>
+            <CardHeader
+                ><CardTitle>{{ $t('Items') }}</CardTitle></CardHeader
+            >
             <CardContent class="flex flex-col gap-6">
                 <p
                     v-if="props.items.length === 0"
                     class="text-sm text-text-muted"
                 >
-                    Nothing on the programme yet.
+                    {{ $t('Nothing on the programme yet.') }}
                 </p>
 
                 <ul v-else class="flex flex-col gap-3">
@@ -545,7 +581,7 @@ const stateBadgeClass: Record<string, string> = {
                                         'bg-surface-muted text-text-muted'
                                     "
                                 >
-                                    {{ item.state }}
+                                    {{ itemStateLabel(item.state) }}
                                 </span>
                             </div>
                             <p class="text-sm text-text-muted">
@@ -580,7 +616,7 @@ const stateBadgeClass: Record<string, string> = {
                                 size="sm"
                                 @click="editItem(item)"
                             >
-                                Edit
+                                {{ $t('Edit') }}
                             </Button>
                             <Button
                                 v-if="item.state !== 'published'"
@@ -589,7 +625,7 @@ const stateBadgeClass: Record<string, string> = {
                                 size="sm"
                                 @click="publishItem(item)"
                             >
-                                Publish
+                                {{ $t('Publish') }}
                             </Button>
                             <Button
                                 v-if="item.state !== 'cancelled'"
@@ -598,13 +634,13 @@ const stateBadgeClass: Record<string, string> = {
                                 size="sm"
                                 @click="cancelItem(item)"
                             >
-                                Cancel
+                                {{ $t('Call off') }}
                             </Button>
                             <Button
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                aria-label="Delete item"
+                                :aria-label="$t('Delete item')"
                                 @click="destroyItem(item)"
                             >
                                 <Trash2 class="size-4 text-danger" />
@@ -618,17 +654,23 @@ const stateBadgeClass: Record<string, string> = {
                     @submit.prevent="submitItem"
                 >
                     <h3 class="text-sm font-semibold text-text">
-                        {{ editingId === null ? 'New item' : 'Edit item' }}
+                        {{
+                            editingId === null
+                                ? $t('New item')
+                                : $t('Edit item')
+                        }}
                     </h3>
 
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div class="grid gap-2 sm:col-span-2">
-                            <Label for="item-title">Title</Label>
+                            <Label for="item-title">{{ $t('Title') }}</Label>
                             <Input id="item-title" v-model="itemForm.title" />
                             <InputError :message="itemForm.errors.title" />
                         </div>
                         <div class="grid gap-2 sm:col-span-2">
-                            <Label for="item-description">Description</Label>
+                            <Label for="item-description">{{
+                                $t('Description')
+                            }}</Label>
                             <Input
                                 id="item-description"
                                 :model-value="itemForm.description ?? ''"
@@ -642,7 +684,9 @@ const stateBadgeClass: Record<string, string> = {
                             />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="item-speaker">Speaker</Label>
+                            <Label for="item-speaker">{{
+                                $t('Speaker')
+                            }}</Label>
                             <Input
                                 id="item-speaker"
                                 :model-value="itemForm.speaker ?? ''"
@@ -653,7 +697,7 @@ const stateBadgeClass: Record<string, string> = {
                             <InputError :message="itemForm.errors.speaker" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="item-track">Track</Label>
+                            <Label for="item-track">{{ $t('Track') }}</Label>
                             <select
                                 id="item-track"
                                 :value="itemForm.trackId ?? ''"
@@ -664,7 +708,7 @@ const stateBadgeClass: Record<string, string> = {
                                             .value || null
                                 "
                             >
-                                <option value="">No track</option>
+                                <option value="">{{ $t('No track') }}</option>
                                 <option
                                     v-for="track in props.tracks"
                                     :key="track.id ?? track.name"
@@ -676,7 +720,9 @@ const stateBadgeClass: Record<string, string> = {
                             <InputError :message="itemForm.errors.trackId" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="item-location">Place</Label>
+                            <Label for="item-location">{{
+                                $t('Location')
+                            }}</Label>
                             <select
                                 id="item-location"
                                 :value="itemForm.locationId ?? ''"
@@ -687,7 +733,9 @@ const stateBadgeClass: Record<string, string> = {
                                             .value || null
                                 "
                             >
-                                <option value="">No place</option>
+                                <option value="">
+                                    {{ $t('No location') }}
+                                </option>
                                 <option
                                     v-for="location in props.locations"
                                     :key="location.id ?? location.name"
@@ -700,7 +748,7 @@ const stateBadgeClass: Record<string, string> = {
                         </div>
                         <div class="grid gap-2">
                             <Label for="item-location-note">
-                                Place note (free text)
+                                {{ $t('Location note (free text)') }}
                             </Label>
                             <Input
                                 id="item-location-note"
@@ -717,22 +765,34 @@ const stateBadgeClass: Record<string, string> = {
                         <DateTimeField
                             id="item-starts-at"
                             v-model="itemForm.startsAt"
-                            label="Starts"
-                            hint="Leave empty for an item that only says when it ends."
+                            :label="$t('Starts')"
+                            :hint="
+                                $t(
+                                    'Leave empty for an item that only says when it ends.',
+                                )
+                            "
                             :error="itemForm.errors.startsAt"
                         />
                         <DateTimeField
                             id="item-ends-at"
                             v-model="itemForm.endsAt"
-                            label="Ends"
-                            hint="Leave empty for an open-ended item (“ab 12:00”)."
+                            :label="$t('Ends')"
+                            :hint="
+                                $t(
+                                    'Leave empty for an open-ended item (“from 12:00”).',
+                                )
+                            "
                             :error="itemForm.errors.endsAt"
                         />
                     </div>
 
                     <div class="flex items-center gap-3">
                         <Button type="submit" :disabled="itemForm.processing">
-                            {{ editingId === null ? 'Add item' : 'Save item' }}
+                            {{
+                                editingId === null
+                                    ? $t('Add item')
+                                    : $t('Save item')
+                            }}
                         </Button>
                         <Button
                             v-if="editingId !== null"
@@ -741,21 +801,23 @@ const stateBadgeClass: Record<string, string> = {
                             size="sm"
                             @click="resetItemForm"
                         >
-                            Cancel editing
+                            {{ $t('Cancel editing') }}
                         </Button>
                         <span
                             v-if="itemForm.isDirty"
                             role="status"
                             class="text-sm text-warning"
                         >
-                            Unsaved changes
+                            {{ $t('Unsaved changes') }}
                         </span>
                     </div>
 
                     <p class="text-xs text-text-muted">
-                        A new item starts as a draft — the public programme
-                        shows it only once it is published. Cancelling keeps it
-                        there, struck through, with its reason.
+                        {{
+                            $t(
+                                'A new item starts as a draft — the public programme shows it only once it is published. Calling it off keeps it there, struck through, with its reason.',
+                            )
+                        }}
                     </p>
                 </form>
             </CardContent>
