@@ -8,8 +8,9 @@ namespace Konventix\Competition\Enums;
  * Where an entrant stands in a competition.
  *
  * `CheckedIn` is distinct from `Registered` because D-CMP-05 splits the two
- * gates: a confirmed Registration suffices to *enter*, while admission
- * possession is verified at check-in or match start. Competition records that
+ * gates: a confirmed Registration suffices to *enter* (as, since #330, does a
+ * non-revoked admission in one's own name, §5.1 addendum), while being seen
+ * at the door is verified at check-in or match start. Competition records that
  * the check happened; it never performs it.
  */
 enum EntrantState: string

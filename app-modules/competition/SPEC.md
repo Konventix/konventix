@@ -403,7 +403,7 @@ maintains from them. Every listener is idempotent and replayable (ADR-0004).
 | `UserRegistered` / `UserProfileUpdated` | Identity | Maintains `ParticipantProfile` (`display_name`, `username`, `visibility`). Ungated for the same reason. `identity:replay-profiles` backfills it. |
 | `SocialIdentityLinked` / `SocialIdentityUnlinked` / `SocialIdentityAnnounced` / `AccountsMerged` | Identity | Maintains `competition_linked_identities`, the providers a person has linked, which a discipline's `requires_linked_provider` is checked against on entry and on every roster join (design §5.6). Global rather than per brand, and it stores no provider account id. It is ungated, because the events carry no brand and a brand switching the module on must find the links already there. `identity:announce-social-identities` backfills it. |
 | `EventCreated` / `EventDetailsUpdated` / `EventRescheduled` and the seven lifecycle events | Event | Maintains `competition_event_summaries` — slug, name, time zone and lifecycle state — which the public tournament pages resolve by and are gated on. Ungated. `event:replay-details --with-state` backfills it. |
-| `AdmissionIssued` / `AdmissionHolderAssigned` / `AdmissionHolderUnassigned` / `AdmissionCheckedIn` / `AdmissionRevoked` / `AdmissionOwnershipAnnounced` | Admission | Maintains the **presence read model** — which person the door has seen at which event. Read by check-in when a competition sets `requires_event_check_in` (D-CMP-18). Never a signup gate (D-CMP-05). Gated on the brand the event names; `admission:announce-ownership` backfills it, but cannot restore a scan time. |
+| `AdmissionIssued` / `AdmissionHolderAssigned` / `AdmissionHolderUnassigned` / `AdmissionCheckedIn` / `AdmissionRevoked` / `AdmissionOwnershipAnnounced` | Admission | Maintains the **presence read model** — which person the door has seen at which event. Read by check-in when a competition sets `requires_event_check_in` (D-CMP-18). and, since #330, the ticket leg of the §5.1 gate: a holder named on a row that still stands may enter (D-CMP-05 as amended 2026-09-23). Gated on the brand the event names; `admission:announce-ownership` backfills it, but cannot restore a scan time. |
 | `MatchSessionLive` *(proposed)* | GameOps | The server is up and the handler has started the match; Competition moves the match to live and can show connection details. It is a lifecycle signal, not a result. |
 | `MatchResultReported` *(proposed)* | GameOps | The match handler observed a final score. Competition remains the owner of result state: it decides whether the reported score is recorded, held for review, or overridden. |
 | `MatchSessionFailed` *(proposed)* | GameOps | Provisioning or the handler failed; the match is flagged for the tournament desk rather than silently stalling. |
@@ -438,7 +438,7 @@ and so runs a tournament end to end except for corrections and roster changes
 Entering a competition, joining a team by code, registering interest,
 reporting, confirming or disputing a result and self-service check-in are
 **not** capabilities: they follow from a confirmed registration (D-CMP-05)
-and membership in a side.
+or a ticket in one's name (§5.1 addendum, #330) and membership in a side.
 
 ## Activation
 
@@ -528,7 +528,10 @@ its words (design §14).
   admissions exist, which may be too late for a schedule built in advance.~~
   **Decision log Round 6 (D-CMP-05):** confirmed Registration suffices to
   enter; admission possession is verified at check-in / match start, not at
-  signup.
+  signup. **Amended 2026-09-23 (#330, design §5.1 addendum):** a
+  non-revoked admission held in one's own name opens the gate as well, read
+  from the presence read model; being scanned at the door is still not asked
+  at signup, and losing either leg later removes nobody from a roster.
 - ~~How are ranking and points systems configured per brand without
   reintroducing free-form settings blobs (ADR-0009)?~~ **Decision log Round 7
   (D-BATCH-7):** typed per-discipline config Data objects (ADR-0009) — no

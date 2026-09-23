@@ -75,8 +75,12 @@ class ParticipantProfile extends Model
     /**
      * The console's person search (design §5.2): people the §5.1 gate lets
      * into this event's competitions — a confirmed registration in this
-     * module's own read model — whose name or username contains `$term`, at
+     * module's own read model, or since #330 a non-revoked admission in their
+     * name (§5.1 addendum) — whose name or username contains `$term`, at
      * most `$limit` of them, by name.
+     *
+     * The two legs sit in one closure so the `orWhereIn` cannot escape into
+     * the name condition that follows.
      *
      * Only somebody who could actually be added is offered: `AddTeamMember`
      * refuses anybody else, and a search that listed them would be a list of
@@ -89,11 +93,13 @@ class ParticipantProfile extends Model
         $pattern = '%'.addcslashes($term, '%_\\').'%';
 
         return self::query()
-            ->whereIn('user_id', EligibleRegistration::withoutBrandScope()
-                ->select('user_id')
-                ->where('brand_id', $brandId)
-                ->where('event_id', $eventId)
-                ->where('is_confirmed', true))
+            ->where(fn ($query) => $query
+                ->whereIn('user_id', EligibleRegistration::withoutBrandScope()
+                    ->select('user_id')
+                    ->where('brand_id', $brandId)
+                    ->where('event_id', $eventId)
+                    ->where('is_confirmed', true))
+                ->orWhereIn('user_id', AdmissionPresence::holderIdsQuery($brandId, $eventId)))
             ->where(fn ($query) => $query
                 ->where('display_name', 'ilike', $pattern)
                 ->orWhere('username', 'ilike', $pattern))

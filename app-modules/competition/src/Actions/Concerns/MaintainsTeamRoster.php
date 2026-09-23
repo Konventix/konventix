@@ -22,7 +22,8 @@ use Konventix\Competition\Models\LinkedIdentity;
  * (design §5.2, §5.3, §5.4). Every Action that adds or removes a member goes
  * through here, so none of them can grow a private idea of what a join costs.
  *
- * 1. **The gate is a confirmed registration** (§5.1, D-CMP-05) — the same one
+ * 1. **The gate is a confirmed registration** (§5.1, D-CMP-05), or since #330
+ *    a ticket in one's own name (§5.1 addendum) — the same one
  *    `EnterCompetition` asks, because joining a team that is already entered
  *    puts you in the bracket exactly as entering would.
  * 2. **Interest is retired on joining.** Somebody on a roster is no longer

@@ -165,6 +165,16 @@ Found on the way and not built. Each one is still true as of #302.
       I1): `RegistrationCancelled` and `RegistrationRejected` clear the
       confirmation, and `registration:announce-standing` is the backfill for
       registrations written without events (design §14).
+- [x] **A ticket in one's own name opens the signup gate** (#330, design §5.1
+      addendum): `EligibleRegistration::userMayEnter()` also asks
+      `AdmissionPresence::holdsAdmission()`, and the console's person search
+      unions `AdmissionPresence::holderIdsQuery()`. Not retroactive, crew
+      badges count, and `admission:announce-ownership` is the backfill, to be
+      run after every enable of the module.
+- [ ] **Expiry and the ticket leg** (design §5.1 addendum, point 7): the
+      ticket leg keeps an `expired` admission's holder, and whoever builds
+      expiry owes it a listen. `AdmissionState::Expired` has no producing
+      Action yet.
 - [ ] **`CompetitionUnpublished`** before Agenda's competition half ships
       (design §14; Agenda's `TODO.md` names it as its precondition).
 - [x] **Two notices §12 names** (fix round): `competition.match-disputed`

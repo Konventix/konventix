@@ -16,7 +16,8 @@ use Konventix\Competition\Models\Entrant;
 /**
  * "I would play this" (design §5.3).
  *
- * The gate is §5.1's — a confirmed registration for the event — because the
+ * The gate is §5.1's — a confirmed registration for the event, or since #330
+ * a ticket in one's own name (§5.1 addendum) — because the
  * list is public and its whole purpose is that people find each other: a list
  * anybody could write into would be a recruiting board for people who are not
  * coming.

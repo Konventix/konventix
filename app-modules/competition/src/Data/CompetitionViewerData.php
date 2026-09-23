@@ -24,7 +24,7 @@ final class CompetitionViewerData extends Data
      */
     public function __construct(
         public readonly bool $signedIn,
-        /** A confirmed registration for the event (§5.1). */
+        /** A confirmed registration for the event, or a ticket in one's own name for it (§5.1 and its #330 addendum). */
         public readonly bool $eligible,
         /** The name of the viewer's team in this competition, if it is in. */
         public readonly ?string $enteredTeamName,

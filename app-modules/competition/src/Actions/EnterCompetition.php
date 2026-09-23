@@ -24,7 +24,10 @@ use Konventix\Competition\Models\Entrant;
  * settles that admission possession is verified later, at check-in or match
  * start — so this Action must not reach for an admission, and does not. It
  * asks Competition's own eligibility read model, built from Registration's
- * contract events, never Registration's tables (ADR-0004).
+ * contract events, never Registration's tables (ADR-0004). Since #330 the gate
+ * also opens for a non-revoked admission held in one's own name, read from
+ * Competition's own presence projection through the same `userMayEnter()`
+ * (§5.1 addendum); being scanned at the door is still not asked here.
  *
  * Every entrant is a team, including a solo player (D-CMP-13): one shape
  * means the bracket engine never branches on whether a side is a person or a
