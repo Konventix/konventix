@@ -15,10 +15,11 @@ use Konventix\Messaging\Data\SendMessageRequest;
  * for exactly this event the listener lives here — the general rule (a
  * module that wants a message sends one) stands for everything else.
  *
- * The billing contact may have no account, so the send is address-based;
- * German wording default, matching the invoice mail (ADR-0030's DACH
- * framing). The `commerce.dunning` topic is non-suppressible: a payment
- * reminder offers no opt-out, only the mail suppression list applies.
+ * The billing contact may have no account, so the send is address-based,
+ * in the invoice's frozen locale — the same one the invoice mail went out
+ * in (ADR-0068 §6). The `commerce.dunning` topic is non-suppressible: a
+ * payment reminder offers no opt-out, only the mail suppression list
+ * applies.
  */
 final class SendDunningNotice
 {
@@ -46,7 +47,7 @@ final class SendDunningNotice
                 dueOn: $event->dueOn,
             ),
             recipientEmail: $event->billingEmail,
-            recipientLocale: 'de',
+            recipientLocale: $event->locale,
             brandId: $event->brandId,
             topicKey: 'commerce.dunning',
         ));

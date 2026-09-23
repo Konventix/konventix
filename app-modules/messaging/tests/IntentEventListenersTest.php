@@ -33,7 +33,7 @@ function intentEventsRecipient(string $email = 'erika@example.test'): string
     return $userId;
 }
 
-function intentEventsDunning(string $brandId, ?string $email = 'billing@example.test'): DunningLevelRaised
+function intentEventsDunning(string $brandId, ?string $email = 'billing@example.test', string $locale = 'de'): DunningLevelRaised
 {
     return new DunningLevelRaised(
         invoiceId: (string) Str::ulid(),
@@ -48,6 +48,7 @@ function intentEventsDunning(string $brandId, ?string $email = 'billing@example.
         totalGross: '119.00',
         currency: 'EUR',
         dueOn: '2026-08-01',
+        locale: $locale,
     );
 }
 
@@ -65,6 +66,21 @@ it('sends a dunning notice to the billing contact when a level is raised', funct
         ->and($row->recipient_id)->toBeNull()
         ->and($row->status)->toBe(MessageStatus::Sent)
         ->and($row->payload['invoiceNumber'])->toBe('KVX-2026-00042');
+});
+
+it('sends the dunning notice in the invoice\'s frozen locale, not the brand\'s (ADR-0068 §6)', function (): void {
+    $brand = $this->withBrand();
+    $brand->forceFill(['locale' => 'de'])->save();
+
+    // MAIL_MAILER=array keeps the sent message inspectable (the log row
+    // stores no body unless the operator opted in).
+    event(intentEventsDunning($brand->getKey(), locale: 'en'));
+
+    $subjects = collect(Mail::mailer()->getSymfonyTransport()->messages())
+        ->map(fn ($message): ?string => $message->getOriginalMessage()->getSubject());
+
+    expect(MessageRecord::withoutBrandScope()->sole()->recipient_locale)->toBe('en')
+        ->and($subjects->all())->toBe(['Payment reminder 2 for invoice KVX-2026-00042']);
 });
 
 it('skips a dunning notice with no billing address rather than aborting the sweep', function (): void {

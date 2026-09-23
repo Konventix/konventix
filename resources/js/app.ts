@@ -182,15 +182,19 @@ createInertiaApp({
 
         // The catalogs ride along with the page chunk, so `installI18n` can
         // hand them to the plugin synchronously (see `loadCatalogs`). A
-        // catalog chunk that fails to load leaves the page in English
-        // rather than rejecting the visit into a blank page.
-        const [component] = await Promise.all([
+        // catalog chunk that fails to load leaves the page in its current
+        // language rather than rejecting the visit into a blank page.
+        const [component, catalogsLoaded] = await Promise.all([
             loader(),
-            loadCatalogs(localeChain).catch(() => undefined),
+            loadCatalogs(localeChain),
         ]);
 
-        // A client-side visit may arrive in another language (ADR-0068 §4).
-        followLocale(localeChain);
+        // A client-side visit may arrive in another language (ADR-0068 §4);
+        // only follow it once its catalogs are here, so a later visit that
+        // loads them still switches.
+        if (catalogsLoaded) {
+            followLocale(localeChain);
+        }
 
         // Last, with no await after it: see `applyDateTimeSettings`.
         applyDateTimeSettings(visit?.props);

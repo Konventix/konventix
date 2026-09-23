@@ -1,7 +1,13 @@
 import { getActiveLanguage, trans } from 'laravel-vue-i18n';
 import { describe, expect, it } from 'vitest';
 import { createApp } from 'vue';
-import { catalogFor, chainFrom, followLocale, installI18n } from './i18n';
+import {
+    catalogFor,
+    chainFrom,
+    followLocale,
+    installI18n,
+    loadCatalogs,
+} from './i18n';
 
 const files = {
     '/lang/de.json': { Save: 'Speichern', Cancel: 'Abbrechen' },
@@ -90,5 +96,29 @@ describe('followLocale', () => {
         expect(trans('Sign in')).toBe('Melden Sie sich an');
         expect(trans('Save')).toBe('Speichern');
         expect(trans('Add to cart')).toBe('In den Warenkorb');
+    });
+
+    it('recovers on the next visit after a catalog chunk failed to load', async () => {
+        installed(['en']);
+        const chain = ['fr', 'en'];
+
+        const failed = await loadCatalogs(chain, {
+            '/lang/fr.json': () => Promise.reject(new Error('chunk failed')),
+        });
+
+        expect(failed).toBe(false);
+        expect(getActiveLanguage()).toBe('en');
+
+        const loaded = await loadCatalogs(chain, {
+            '/lang/fr.json': () =>
+                Promise.resolve({ default: { Save: 'Enregistrer' } }),
+        });
+
+        expect(loaded).toBe(true);
+
+        followLocale(chain);
+
+        expect(getActiveLanguage()).toBe('fr');
+        expect(trans('Save')).toBe('Enregistrer');
     });
 });

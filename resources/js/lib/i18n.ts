@@ -1,4 +1,4 @@
-import { I18n, i18nVue } from 'laravel-vue-i18n';
+import { getActiveLanguage, I18n, i18nVue } from 'laravel-vue-i18n';
 import type { App } from 'vue';
 
 /**
@@ -79,23 +79,37 @@ const loadedFiles: Record<string, Catalog> = {};
  * requires, and which the client needs to hydrate in the server's language:
  * `mount()` follows `withApp` synchronously, while the plugin applies even a
  * synchronous answer a microtask late in the browser.
+ *
+ * Answers whether every file arrived. A chunk that fails to load does not
+ * reject the visit into a blank page: the caller keeps the current language
+ * and does not `followLocale` into a chain it has no catalog for, so a later
+ * visit that loads it still switches.
  */
-export async function loadCatalogs(chain: string[]): Promise<void> {
-    const wanted = Object.entries(catalogFiles).filter(
+export async function loadCatalogs(
+    chain: string[],
+    importers: Record<string, () => Promise<Loaded>> = catalogFiles,
+): Promise<boolean> {
+    const wanted = Object.entries(importers).filter(
         ([path]) =>
             !(path in loadedFiles) &&
             chain.some((locale) => path.endsWith(`/${locale}.json`)),
     );
 
-    const loaded = await Promise.all(
-        wanted.map(
-            async ([path, load]) => [path, (await load()).default] as const,
-        ),
-    );
+    try {
+        const loaded = await Promise.all(
+            wanted.map(
+                async ([path, load]) => [path, (await load()).default] as const,
+            ),
+        );
 
-    for (const [path, catalog] of loaded) {
-        loadedFiles[path] = catalog;
+        for (const [path, catalog] of loaded) {
+            loadedFiles[path] = catalog;
+        }
+    } catch {
+        return false;
     }
+
+    return true;
 }
 
 /**
@@ -144,21 +158,26 @@ export function installI18n(
 /**
  * Switch the active language to the page's chain on a client-side visit.
  * `app.ts` calls it from the page `resolve`, after `loadCatalogs` for the
- * same chain and before Inertia swaps the page in — the one hook every swap
- * passes through; the `navigate` event skips a redirect back to the same
- * URL, which is what saving a locale in the profile is. A no-op before the
- * app is installed (the first page) and when the chain has not changed.
+ * same chain succeeded and before Inertia swaps the page in — the one hook
+ * every swap passes through; the `navigate` event skips a redirect back to
+ * the same URL, which is what saving a locale in the profile is. A no-op
+ * before the app is installed (the first page) and when the page is already
+ * in that language. The comparison is against the language the plugin
+ * actually shows, not a remembered chain, so nothing a failed visit left
+ * behind can make a later one look like "no change".
  */
 export function followLocale(
     chain: string[],
     files: Record<string, Catalog> = loadedFiles,
 ): void {
-    if (!installedInBrowser || chain.join() === currentChain.join()) {
+    const lang = chain[0] ?? SOURCE_LOCALE;
+
+    if (!installedInBrowser || lang === getActiveLanguage()) {
         return;
     }
 
-    currentChain = chain;
     setMessages(chain, files);
+    currentChain = chain;
 }
 
 /**

@@ -166,6 +166,29 @@ it('escalates an approaching deadline once, then again when it lapses', function
             ->count())->toBe(2);
 });
 
+it('escalates in the operator\'s locale, not the brand\'s (ADR-0068 §5)', function (string $operatorLocale, string $brandLocale): void {
+    $brand = $this->withBrand();
+
+    $operator = Operator::factory()->create(['contact_email' => 'legal@operator.test', 'locale' => $operatorLocale]);
+    $brand->forceFill(['operator_id' => $operator->id, 'locale' => $brandLocale])->save();
+
+    DataSubjectRequest::factory()->create([
+        'filed_on_brand_id' => $brand->getKey(),
+        'state' => DataSubjectRequestState::Received,
+        'deadline_at' => now()->addDays(3),
+    ]);
+
+    $this->artisan(WatchSubjectRequestDeadlinesCommand::class)->assertSuccessful();
+
+    expect(MessageRecord::withoutBrandScope()
+        ->where('template_key', WatchSubjectRequestDeadlinesCommand::TEMPLATE_KEY)
+        ->sole()
+        ->recipient_locale)->toBe($operatorLocale);
+})->with([
+    'English operator, German brand' => ['en', 'de'],
+    'German operator, English brand' => ['de', 'en'],
+]);
+
 it('leaves a closed request alone and one whose deadline is far off', function (): void {
     $brand = $this->withBrand();
 

@@ -34,5 +34,10 @@ final readonly class DunningLevelRaised
         public string $totalGross = '',
         public string $currency = '',
         public string $dueOn = '',
+        // The invoice's frozen locale (ADR-0068 §6, additive): the reminder
+        // about a document is sent in the language the document speaks.
+        // Defaults to German, which every invoice issued before the column
+        // existed was rendered in.
+        public string $locale = 'de',
     ) {}
 }

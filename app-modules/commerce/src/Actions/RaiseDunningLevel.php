@@ -155,6 +155,7 @@ final class RaiseDunningLevel
                     totalGross: $invoice->total_gross,
                     currency: $invoice->currency,
                     dueOn: $invoice->due_on->toDateString(),
+                    locale: $invoice->locale,
                 ));
             }
         });

@@ -13,6 +13,7 @@ use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Compliance\Models\DataSubjectRequestResponse;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
+use Konventix\Platform\Locales\LocaleResolver;
 use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use Konventix\Platform\Operators\OperatorSettings;
 
@@ -48,6 +49,7 @@ final class WatchSubjectRequestDeadlinesCommand extends Command
         // Resolved once for the whole sweep, not once per warned request: the
         // service memoises the operator's chosen formats (review finding 6).
         OperatorDateTimeFormat $dates,
+        LocaleResolver $locales,
     ): int {
         $open = DataSubjectRequest::query()
             ->whereIn('state', [DataSubjectRequestState::Received, DataSubjectRequestState::InProgress])
@@ -104,7 +106,9 @@ final class WatchSubjectRequestDeadlinesCommand extends Command
                     openModules: $this->openModules($request),
                 ),
                 recipientEmail: $recipient,
-                recipientLocale: 'de',
+                // The operator's contact reads it, so the operator's locale
+                // speaks (ADR-0068 §5) — not the brand's, not the filer's.
+                recipientLocale: $locales->forOperatorOfBrand($request->filed_on_brand_id),
                 brandId: $request->filed_on_brand_id,
             ));
 

@@ -31,6 +31,17 @@ final class LocaleResolver
         return $this->firstSupported([$operator?->locale, (string) config('app.locale')]);
     }
 
+    /**
+     * The operator behind a brand, by id — for mail to the operator's own
+     * contact address (Compliance's deadline escalation), which is read in
+     * the operator's language, not the brand's storefront one. Modules
+     * outside Platform may not import the Operator model (ADR-0004).
+     */
+    public function forOperatorOfBrand(string $brandId): string
+    {
+        return $this->forOperator(Brand::query()->withoutGlobalScopes()->find($brandId)?->operator);
+    }
+
     public function forBrand(?Brand $brand): string
     {
         if ($brand === null) {

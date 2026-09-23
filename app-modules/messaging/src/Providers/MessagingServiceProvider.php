@@ -353,7 +353,7 @@ class MessagingServiceProvider extends ModuleServiceProvider
                 'items' => [
                     ['subject' => 'Neue Ankündigung: Programm steht', 'url' => 'https://sxlan.example/news/programm-steht'],
                     ['subject' => 'Zahlungserinnerung RE-2026-0142', 'url' => null],
-                    ['subject' => 'Ihre Anmeldung ist bestätigt', 'url' => null],
+                    ['subject' => 'Deine Anmeldung ist bestätigt', 'url' => null],
                 ],
             ],
         ));
