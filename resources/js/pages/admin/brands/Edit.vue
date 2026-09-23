@@ -151,7 +151,7 @@ const alwaysOnModuleNames = computed(() =>
                                     id="brand-currency"
                                     v-model="form.currency"
                                     maxlength="3"
-                                    placeholder="EUR"
+                                    :placeholder="'EUR'"
                                 />
                                 <InputError :message="form.errors.currency" />
                             </div>
@@ -172,7 +172,7 @@ const alwaysOnModuleNames = computed(() =>
                             >
                                 <Input
                                     v-model="form.hosts[index]"
-                                    placeholder="brand.example"
+                                    :placeholder="'brand.example'"
                                 />
                                 <Button
                                     type="button"

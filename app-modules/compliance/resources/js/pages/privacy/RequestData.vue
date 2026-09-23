@@ -101,7 +101,7 @@ function formatDeadline(value: string): string {
                     required
                     autofocus
                     autocomplete="email"
-                    placeholder="you@example.com"
+                    :placeholder="'you@example.com'"
                 />
                 <InputError :message="errors.email" />
             </div>

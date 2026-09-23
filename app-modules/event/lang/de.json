@@ -20,7 +20,7 @@
     "Applies to signed-in, admitted guests only; the public home page stays cached.": "Gilt nur für eingeloggte, eingelassene Gäste; die öffentliche Startseite bleibt im Cache.",
     "Archive": "Archivieren",
     "Archived": "Archiviert",
-    "Assign": "Zuordnen",
+    "Assign": "Zuweisen",
     "Assign venue": "Veranstaltungsort zuordnen",
     "Attendee list": "Teilnehmendenliste",
     "Attendees": "Teilnehmende",
@@ -198,9 +198,11 @@
     "What this place is, in the visitor's words": "Was dieser Ort ist, in den Worten der Besuchenden",
     "When": "Zeitpunkt",
     "Where": "Ort",
+    "carousel": "Karussell",
     "events": "Veranstaltungen",
     "for :place (opens in a new tab)": "für :place (öffnet in einem neuen Tab)",
     "primary": "Hauptort",
+    "slide": "Folie",
     "venues": "Veranstaltungsorte",
     "{1} Venue|[2,*] Venues": "{1} Veranstaltungsort|[2,*] Veranstaltungsorte"
 }

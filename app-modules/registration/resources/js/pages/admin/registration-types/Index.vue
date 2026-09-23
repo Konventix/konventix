@@ -437,7 +437,7 @@ function submit(): void {
                                         v-model="
                                             form.priceDeclaration.unitAmountNet
                                         "
-                                        placeholder="250.00"
+                                        :placeholder="'250.00'"
                                     />
                                 </div>
                                 <div class="grid gap-2">

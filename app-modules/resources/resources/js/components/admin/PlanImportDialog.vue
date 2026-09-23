@@ -140,7 +140,7 @@ function submit(): void {
                                 'Element ids the export carries are kept; ids that already exist under another plan are refused. Expected format:',
                             )
                         }}
-                        <code>konventix.plan/v1</code>
+                        <code>{{ 'konventix.plan/v1' }}</code>
                     </p>
                     <InputError :message="form.errors.file ?? documentError" />
                 </div>

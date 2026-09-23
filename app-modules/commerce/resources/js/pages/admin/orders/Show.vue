@@ -478,7 +478,7 @@ const refundOpen = ref(false);
                                 >
                                     <a :href="invoiceDocument(invoice.id).url">
                                         <FileText class="size-4" />
-                                        PDF
+                                        {{ 'PDF' }}
                                     </a>
                                 </Button>
                             </div>
@@ -793,7 +793,7 @@ const refundOpen = ref(false);
                                         :aria-label="`Download credit note ${note.number} PDF`"
                                     >
                                         <FileText class="size-4" />
-                                        PDF
+                                        {{ 'PDF' }}
                                     </a>
                                 </Button>
                             </div>

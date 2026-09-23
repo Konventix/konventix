@@ -289,9 +289,15 @@ function submit(): void {
                             v-model="form.dateFormat"
                             class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                         >
-                            <option value="DD.MM.YYYY">DD.MM.YYYY</option>
-                            <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                            <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                            <option value="DD.MM.YYYY">
+                                {{ $t('DD.MM.YYYY') }}
+                            </option>
+                            <option value="MM/DD/YYYY">
+                                {{ $t('MM/DD/YYYY') }}
+                            </option>
+                            <option value="YYYY-MM-DD">
+                                {{ $t('YYYY-MM-DD') }}
+                            </option>
                         </select>
                         <InputError :message="form.errors.dateFormat" />
                     </div>

@@ -258,6 +258,47 @@ export default defineConfigWithVueTs(
     },
     {
         /*
+          ADR-0068 §9: every word a person reads comes from the catalog. Text
+          in a template, or in an attribute a person reads or hears, goes
+          through `$t()`. The allowlist holds symbols, punctuation and units
+          only; a word that fails here gets a key, never an allowlist entry.
+          A proper name, a code identifier or an example value is not prose:
+          write it as an expression (`{{ 'Steam' }}`, `<code>{{ 'agb' }}</code>`,
+          `:placeholder="'you@example.com'"`) so it reads as verbatim on purpose.
+          The vendored shadcn-vue components are excluded: they take their
+          words from the caller.
+        */
+        files: ['resources/js/**/*.vue', 'app-modules/*/resources/js/**/*.vue'],
+        ignores: ['resources/js/components/ui/**'],
+        rules: {
+            'vue/no-bare-strings-in-template': [
+                'error',
+                {
+                    allowlist: [
+                        '(', ')', ',', '.', '&', '+', '-', '=', '*', '/', '#', '%', '!', '?', ':',
+                        '[', ']', '{', '}', '<', '>', '·', '•', '‐', '–', '—', '−', '|', '…', '€', '×',
+                        '@', '“', '”', '„', '←', '→', '●', 'mm',
+                    ],
+                    attributes: {
+                        '/.+/': [
+                            'title',
+                            'aria-label',
+                            'aria-placeholder',
+                            'aria-roledescription',
+                            'aria-valuetext',
+                            'placeholder',
+                            'alt',
+                            'label',
+                            'description',
+                        ],
+                    },
+                    directives: ['v-text'],
+                },
+            ],
+        },
+    },
+    {
+        /*
           Vendored shadcn-vue components. They are deliberately NOT ignored, so
           that `konventix/no-palette-colors` covers them — they are the largest
           surface where a palette utility could sneak in via `shadcn-vue add`.

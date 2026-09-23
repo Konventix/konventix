@@ -104,6 +104,8 @@ onBeforeUnmount(() => {
 
 <template>
     <Head :title="$t('Waiting room')">
+        <!-- Markup, not prose: the parser reads <noscript> content as text. -->
+        <!-- eslint-disable-next-line vue/no-bare-strings-in-template -->
         <noscript>
             <meta http-equiv="refresh" content="10" />
         </noscript>

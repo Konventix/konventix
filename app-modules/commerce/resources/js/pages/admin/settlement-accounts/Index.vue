@@ -297,7 +297,7 @@ function submitConnect(): void {
                                         type="text"
                                         maxlength="10"
                                         autocomplete="off"
-                                        placeholder="SXLAN"
+                                        :placeholder="'SXLAN'"
                                         :aria-invalid="
                                             form.errors
                                                 .statement_descriptor_suffix

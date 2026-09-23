@@ -474,7 +474,9 @@ function submit(): void {
                                             'Public URL path. It freezes once a version of this policy has been published. The checkout asks only for these slugs:',
                                         )
                                     }}
-                                    <code>terms</code>, <code>withdrawal</code>.
+                                    <code>{{ 'terms' }}</code
+                                    >, <code>{{ 'withdrawal' }}</code
+                                    >.
                                 </p>
                                 <InputError :message="form.errors.slug" />
                             </div>

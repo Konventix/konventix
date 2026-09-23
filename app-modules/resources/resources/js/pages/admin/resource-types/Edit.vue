@@ -291,7 +291,7 @@ function submit(): void {
                                     v-model.number="shapeWidth"
                                     type="number"
                                     min="1"
-                                    placeholder="800"
+                                    :placeholder="'800'"
                                 />
                             </div>
                             <div class="grid gap-2">
@@ -301,7 +301,7 @@ function submit(): void {
                                     v-model.number="shapeHeight"
                                     type="number"
                                     min="1"
-                                    placeholder="800"
+                                    :placeholder="'800'"
                                 />
                             </div>
                         </div>

@@ -188,7 +188,7 @@ function submit(): void {
                         <Input
                             :id="`${hintId}-url-${index}`"
                             v-model="link.url"
-                            placeholder="/pages/imprint"
+                            :placeholder="'/pages/imprint'"
                         />
                         <p class="text-xs text-text-muted">
                             {{
@@ -225,7 +225,7 @@ function submit(): void {
                         <Input
                             :id="`${hintId}-dialog-${index}`"
                             :model-value="link.dialogKey ?? ''"
-                            placeholder="cookie-settings"
+                            :placeholder="'cookie-settings'"
                             @update:model-value="
                                 (value: string | number | null) =>
                                     (link.dialogKey =

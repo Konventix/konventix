@@ -120,7 +120,7 @@ async function signInWithPasskey(): Promise<void> {
                     autofocus
                     :tabindex="1"
                     autocomplete="email"
-                    placeholder="email@example.com"
+                    :placeholder="'email@example.com'"
                 />
                 <InputError :message="errors.email" />
             </div>

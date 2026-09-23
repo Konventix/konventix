@@ -245,6 +245,7 @@
     "registration types": "Anmeldearten",
     "requests": "Anfragen",
     "required": "erforderlich",
+    "slug": "Slug",
     "system": "System",
     "{0} No concluded events currently counting for event-scoped rules.|{1} :count concluded event currently counting for event-scoped rules.|[2,*] :count concluded events currently counting for event-scoped rules.": "{0} Derzeit zählt keine abgeschlossene Veranstaltung für veranstaltungsbezogene Regeln.|{1} Derzeit zählt :count abgeschlossene Veranstaltung für veranstaltungsbezogene Regeln.|[2,*] Derzeit zählen :count abgeschlossene Veranstaltungen für veranstaltungsbezogene Regeln.",
     "{1} :count agreement|[0,*] :count agreements": "{1} :count Zustimmung|[0,*] :count Zustimmungen",

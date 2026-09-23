@@ -141,7 +141,7 @@ function submit(): void {
                                 >
                                     <Input
                                         v-model="form.hosts[index]"
-                                        placeholder="brand.example"
+                                        :placeholder="'brand.example'"
                                     />
                                 </div>
                                 <Button

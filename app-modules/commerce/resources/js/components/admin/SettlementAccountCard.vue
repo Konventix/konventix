@@ -187,7 +187,7 @@ function offeredStatus(account: SettlementAccount): OfferedStatus {
                 <Input
                     :id="`statement-suffix-${account.id}`"
                     v-model="labelForm.statementDescriptorSuffix"
-                    placeholder="SXLAN"
+                    :placeholder="'SXLAN'"
                     maxlength="10"
                     autocomplete="off"
                     class="max-w-xs"

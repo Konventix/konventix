@@ -90,7 +90,8 @@ function createUrl(gap: Gap, slug: string): string {
                         'Publish the missing text under exactly the slug named below. A policy under any other slug is never found, for example',
                     )
                 }}
-                <code>agb</code>.
+                <code>{{ 'agb' }}</code
+                >.
             </p>
 
             <ul class="mt-3 flex flex-col gap-2">
@@ -105,7 +106,7 @@ function createUrl(gap: Gap, slug: string): string {
                         <span v-if="index > 0">, </span>
                         {{ roleName(slug) }}
                         <span class="text-text-muted"
-                            >(slug <code>{{ slug }}</code
+                            >({{ $t('slug') }} <code>{{ slug }}</code
                             >)</span
                         >
                     </span>

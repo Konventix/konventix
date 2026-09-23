@@ -54,7 +54,7 @@ function submit(withAddress: boolean): void {
                 v-model="form.email"
                 type="email"
                 autocomplete="off"
-                placeholder="name@example.com"
+                :placeholder="'name@example.com'"
                 :aria-invalid="form.errors.email ? 'true' : undefined"
                 :aria-describedby="
                     form.errors.email ? `${id}-error` : undefined

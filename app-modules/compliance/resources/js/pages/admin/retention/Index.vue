@@ -142,7 +142,7 @@ function toggleActive(rule: RuleRow): void {
                             <Input
                                 id="rule-category"
                                 v-model="form.data_category"
-                                placeholder="admission.check-ins"
+                                :placeholder="'admission.check-ins'"
                             />
                             <p class="text-xs text-text-muted">
                                 {{

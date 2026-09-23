@@ -318,7 +318,7 @@ function onFlag(
                     </div>
                 </div>
                 <p class="text-xs text-text-muted">
-                    {{ $t('Placeholders:') }} {row}, {n}, {n:02}, {col}.
+                    {{ $t('Placeholders:') }} {{ '{row}, {n}, {n:02}, {col}' }}.
                     {{ $t('Regenerating keeps ids and hand-moved places.') }}
                 </p>
                 <Button

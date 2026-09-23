@@ -173,7 +173,8 @@ function submitCreate(): void {
                     'This brand has no roles yet — create your own with “New role”. Default roles arrive with',
                 )
             }}
-            <code class="rounded bg-subtle px-1">permissions:sync</code>.
+            <code class="rounded bg-subtle px-1">{{ 'permissions:sync' }}</code
+            >.
         </p>
 
         <Card
@@ -276,7 +277,7 @@ function submitCreate(): void {
                         <Input
                             :id="`assign-${role.id}`"
                             v-model="form.user_id"
-                            placeholder="01k..."
+                            :placeholder="'01k...'"
                             class="font-mono"
                         />
                         <InputError

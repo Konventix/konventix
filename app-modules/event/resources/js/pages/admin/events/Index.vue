@@ -282,7 +282,7 @@ function submit(): void {
                                     <Input
                                         id="event-starts"
                                         v-model="form.startsAt"
-                                        placeholder="2027-05-14 18:00:00"
+                                        :placeholder="'2027-05-14 18:00:00'"
                                     />
                                     <InputError
                                         :message="form.errors.startsAt"
@@ -295,7 +295,7 @@ function submit(): void {
                                     <Input
                                         id="event-ends"
                                         v-model="form.endsAt"
-                                        placeholder="2027-05-16 14:00:00"
+                                        :placeholder="'2027-05-16 14:00:00'"
                                     />
                                     <InputError :message="form.errors.endsAt" />
                                 </div>

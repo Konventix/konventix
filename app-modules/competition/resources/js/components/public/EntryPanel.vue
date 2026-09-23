@@ -171,7 +171,7 @@ function withdrawInterest(): void {
                             </option>
                         </select>
                         <Button type="submit" :disabled="entry.processing">
-                            {{ $t('Sign up') }}
+                            {{ $t('Sign up for this tournament') }}
                         </Button>
                     </div>
                     <p class="text-sm text-text-muted">

@@ -294,7 +294,7 @@ function acceptConsentWithdrawal(): void {
                             <Input
                                 id="refusal-reason"
                                 v-model="refusal.reasonCode"
-                                placeholder="art_17_3_b_legal_obligation"
+                                :placeholder="'art_17_3_b_legal_obligation'"
                             />
                             <InputError :message="refusal.errors.reasonCode" />
                             <Button

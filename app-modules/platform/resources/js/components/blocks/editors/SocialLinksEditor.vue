@@ -113,7 +113,7 @@ function removeLink(index: number): void {
                 <Input
                     :id="`${id}-url-${index}`"
                     :model-value="link.url"
-                    placeholder="https://github.com/konventix"
+                    :placeholder="'https://github.com/konventix'"
                     @update:model-value="
                         (v) => setLink(index, 'url', String(v))
                     "

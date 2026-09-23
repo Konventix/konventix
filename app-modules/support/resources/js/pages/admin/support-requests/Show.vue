@@ -108,7 +108,8 @@ const request = computed(() => props.detail.request);
                                     'Every look at the unmasked address is recorded. Seeing it needs the permission',
                                 )
                             }}
-                            <code>support.view-reporter-contact</code>.
+                            <code>{{ 'support.view-reporter-contact' }}</code
+                            >.
                         </p>
                         <p class="text-xs text-text-muted">
                             {{

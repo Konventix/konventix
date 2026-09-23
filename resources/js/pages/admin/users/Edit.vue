@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, useForm, usePage } from '@inertiajs/vue3';
 import { Lock, LockOpen } from '@lucide/vue';
 import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -38,7 +38,8 @@ type Props = {
         id: string;
         name: string;
         email: string;
-        locale: string;
+        /** ADR-0068 §4: null follows the brand's language. */
+        locale: string | null;
         timezone: string | null;
         state: string;
         verified: boolean;
@@ -56,9 +57,13 @@ const props = defineProps<Props>();
 const form = useForm({
     name: props.user.name,
     email: props.user.email,
-    locale: props.user.locale,
+    // '' is "Default" — a <select> has no null, and `UpdateUserAccount`
+    // stores it as null again.
+    locale: props.user.locale ?? '',
     timezone: props.user.timezone ?? '',
 });
+
+const page = usePage();
 
 const lockForm = useForm({ reason: '' });
 const mergeForm = useForm({
@@ -127,7 +132,7 @@ function submitMerge(): void {
             <Badge v-if="user.verified" variant="secondary">{{
                 $t('Email verified')
             }}</Badge>
-            <Badge v-if="user.twoFactor" variant="secondary">2FA</Badge>
+            <Badge v-if="user.twoFactor" variant="secondary">{{ '2FA' }}</Badge>
         </AdminPageHeader>
 
         <div class="grid gap-6 xl:grid-cols-2">
@@ -161,13 +166,24 @@ function submitMerge(): void {
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div class="grid gap-2">
                                 <Label for="user-locale">{{
-                                    $t('Locale')
+                                    $t('Language')
                                 }}</Label>
-                                <Input
+                                <select
                                     id="user-locale"
                                     v-model="form.locale"
-                                    placeholder="de"
-                                />
+                                    class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
+                                >
+                                    <option value="">
+                                        {{ $t('Default (follows the brand)') }}
+                                    </option>
+                                    <option
+                                        v-for="option in page.props.locales"
+                                        :key="option.code"
+                                        :value="option.code"
+                                    >
+                                        {{ option.name }}
+                                    </option>
+                                </select>
                                 <InputError :message="form.errors.locale" />
                             </div>
                             <div class="grid gap-2">
@@ -177,7 +193,7 @@ function submitMerge(): void {
                                 <Input
                                     id="user-timezone"
                                     v-model="form.timezone"
-                                    placeholder="Europe/Berlin"
+                                    :placeholder="'Europe/Berlin'"
                                     aria-describedby="user-timezone-hint user-timezone-error"
                                 />
                                 <p
@@ -333,7 +349,7 @@ function submitMerge(): void {
                                     id="merge-email"
                                     v-model="mergeForm.email"
                                     type="email"
-                                    placeholder="other-account@example.test"
+                                    :placeholder="'other-account@example.test'"
                                 />
                                 <InputError :message="mergeForm.errors.email" />
                                 <a

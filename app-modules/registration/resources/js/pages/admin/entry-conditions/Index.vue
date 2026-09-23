@@ -289,7 +289,7 @@ function submit(): void {
                                             'It travels to the door and onto the ticket, so keep it stable. Lower case, words joined by hyphens, for example:',
                                         )
                                     }}
-                                    <code>student</code>
+                                    <code>{{ 'student' }}</code>
                                 </p>
                                 <InputError :message="form.errors.key" />
                             </div>

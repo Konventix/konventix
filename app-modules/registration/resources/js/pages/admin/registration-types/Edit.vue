@@ -382,7 +382,7 @@ function submit(): void {
                                     "
                                     type="number"
                                     min="1"
-                                    placeholder="1"
+                                    :placeholder="'1'"
                                 />
                                 <p class="text-xs text-text-muted">
                                     {{
@@ -456,7 +456,7 @@ function submit(): void {
                                         form.priceDeclaration.unitAmountNet
                                     "
                                     :disabled="props.termsFrozen"
-                                    placeholder="250.00"
+                                    :placeholder="'250.00'"
                                 />
                             </div>
                             <div class="grid gap-2">

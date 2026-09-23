@@ -188,7 +188,7 @@ function submitBanner(event: Event): void {
                     :default-value="profile.username"
                     required
                     autocomplete="off"
-                    placeholder="ada-lovelace"
+                    :placeholder="'ada-lovelace'"
                 />
                 <p class="text-sm text-text-muted">
                     {{
@@ -220,7 +220,7 @@ function submitBanner(event: Event): void {
                     class="mt-1 block w-32"
                     name="statusEmoji"
                     :default-value="profile.statusEmoji ?? ''"
-                    placeholder="🚀"
+                    :placeholder="'🚀'"
                 />
                 <p class="text-sm text-text-muted">
                     {{ $t('A single emoji.') }}
@@ -351,7 +351,7 @@ function submitBanner(event: Event): void {
                 </p>
 
                 <div class="grid gap-2">
-                    <Label for="socialLinks.steam">Steam</Label>
+                    <Label for="socialLinks.steam">{{ 'Steam' }}</Label>
                     <Input
                         id="socialLinks.steam"
                         class="mt-1 block w-full"
@@ -373,7 +373,7 @@ function submitBanner(event: Event): void {
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="socialLinks.discord">Discord</Label>
+                    <Label for="socialLinks.discord">{{ 'Discord' }}</Label>
                     <Input
                         id="socialLinks.discord"
                         class="mt-1 block w-full"
@@ -395,7 +395,7 @@ function submitBanner(event: Event): void {
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="socialLinks.twitch">Twitch</Label>
+                    <Label for="socialLinks.twitch">{{ 'Twitch' }}</Label>
                     <Input
                         id="socialLinks.twitch"
                         class="mt-1 block w-full"
@@ -413,13 +413,13 @@ function submitBanner(event: Event): void {
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="socialLinks.youtube">YouTube</Label>
+                    <Label for="socialLinks.youtube">{{ 'YouTube' }}</Label>
                     <Input
                         id="socialLinks.youtube"
                         class="mt-1 block w-full"
                         name="socialLinks[youtube]"
                         :default-value="profile.socialLinks.youtube ?? ''"
-                        placeholder="@channel"
+                        :placeholder="'@channel'"
                     />
                     <p class="text-sm text-text-muted">
                         {{
@@ -435,7 +435,7 @@ function submitBanner(event: Event): void {
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="socialLinks.x">X</Label>
+                    <Label for="socialLinks.x">{{ 'X' }}</Label>
                     <Input
                         id="socialLinks.x"
                         class="mt-1 block w-full"
@@ -457,7 +457,7 @@ function submitBanner(event: Event): void {
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="socialLinks.instagram">Instagram</Label>
+                    <Label for="socialLinks.instagram">{{ 'Instagram' }}</Label>
                     <Input
                         id="socialLinks.instagram"
                         class="mt-1 block w-full"
@@ -482,7 +482,7 @@ function submitBanner(event: Event): void {
                         class="mt-1 block w-full"
                         name="socialLinks[website]"
                         :default-value="profile.socialLinks.website ?? ''"
-                        placeholder="https://example.com"
+                        :placeholder="'https://example.com'"
                     />
                     <p class="text-sm text-text-muted">
                         {{ $t('Full address including https://.') }}

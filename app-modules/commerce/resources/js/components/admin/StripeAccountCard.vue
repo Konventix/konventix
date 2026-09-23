@@ -115,7 +115,9 @@ function clear(): void {
                         'Konventix settles into one Stripe account — this instance’s own. Every brand below that sells through Stripe is settled on this one account and told apart by the metadata each payment carries. Enter the account’s Secret Key and Webhook Signing Secret here: they are stored encrypted and take precedence over the environment variables',
                     )
                 }}
-                <code>STRIPE_SECRET</code> / <code>STRIPE_WEBHOOK_SECRET</code>.
+                <code>{{ 'STRIPE_SECRET' }}</code> /
+                <code>{{ 'STRIPE_WEBHOOK_SECRET' }}</code
+                >.
             </p>
 
             <div class="flex flex-wrap items-center gap-3">
@@ -194,7 +196,8 @@ function clear(): void {
                 role="alert"
                 class="rounded-md border border-danger p-3 text-sm font-medium text-danger"
             >
-                <code>sk_live_</code>:
+                <code>{{ 'sk_live_' }}</code
+                >:
                 {{
                     $t(
                         'This is not a production instance, and the key installed here is a live key. Any checkout started here moves real money. Replace it with the sandbox key unless that is deliberate.',
@@ -212,7 +215,7 @@ function clear(): void {
                         v-model="form.secretKey"
                         type="password"
                         autocomplete="off"
-                        placeholder="sk_test_…"
+                        :placeholder="'sk_test_…'"
                         :aria-invalid="form.errors.secretKey ? true : undefined"
                         :aria-describedby="
                             form.errors.secretKey
@@ -235,7 +238,7 @@ function clear(): void {
                         v-model="form.webhookSecret"
                         type="password"
                         autocomplete="off"
-                        placeholder="whsec_…"
+                        :placeholder="'whsec_…'"
                         :aria-invalid="
                             form.errors.webhookSecret ? true : undefined
                         "
@@ -260,7 +263,7 @@ function clear(): void {
                         v-model="form.publishableKey"
                         type="text"
                         autocomplete="off"
-                        placeholder="pk_test_…"
+                        :placeholder="'pk_test_…'"
                         :aria-invalid="
                             form.errors.publishableKey ? true : undefined
                         "
@@ -328,7 +331,8 @@ function clear(): void {
                 <p class="text-xs text-text-muted">
                     {{ props.setup.secretGroupHint }}
                     {{ $t('See “Stripe credentials per environment” in') }}
-                    <code>docs/helm-chart-requirements.md</code>.
+                    <code>{{ 'docs/helm-chart-requirements.md' }}</code
+                    >.
                 </p>
 
                 <div class="flex flex-col gap-2">
@@ -417,7 +421,7 @@ function clear(): void {
                             'The Secret Key is this account’s standard key under Developers → API keys: the sandbox key for development and staging, the live key for production. Local development needs no endpoint at all; this script tunnels the same events and prints the signing secret to use instead:',
                         )
                     }}
-                    <code>contrib/stripe-listen.sh</code>
+                    <code>{{ 'contrib/stripe-listen.sh' }}</code>
                 </p>
             </section>
         </CardContent>

@@ -128,7 +128,7 @@ function dialogComponent(key: string | null) {
                         rel="noopener noreferrer"
                         class="underline underline-offset-4 hover:text-text"
                     >
-                        Konventix
+                        {{ 'Konventix' }}
                     </a>
                 </span>
             </div>

@@ -111,7 +111,7 @@ function blankToNull(value: number | string | null): number | null {
                                 id="from-address"
                                 v-model="form.fromAddress"
                                 type="email"
-                                placeholder="hello@brand.example"
+                                :placeholder="'hello@brand.example'"
                             />
                             <InputError :message="form.errors.fromAddress" />
                         </div>
@@ -133,7 +133,7 @@ function blankToNull(value: number | string | null): number | null {
                             <Input
                                 id="timezone"
                                 v-model="form.timezone"
-                                placeholder="Europe/Berlin"
+                                :placeholder="'Europe/Berlin'"
                             />
                             <p class="text-xs text-text-muted">
                                 {{
@@ -251,9 +251,11 @@ function blankToNull(value: number | string | null): number | null {
                                         {{ $t('Automatic') }}
                                     </option>
                                     <option value="smtp">
-                                        smtp (STARTTLS)
+                                        {{ 'smtp (STARTTLS)' }}
                                     </option>
-                                    <option value="smtps">smtps (TLS)</option>
+                                    <option value="smtps">
+                                        {{ 'smtps (TLS)' }}
+                                    </option>
                                 </select>
                                 <InputError :message="form.errors.smtpScheme" />
                             </div>

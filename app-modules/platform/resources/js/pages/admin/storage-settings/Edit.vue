@@ -96,7 +96,8 @@ function submit(): void {
                                         'Off means new uploads go to the deployment’s media disk. Switching moves nothing; to move files, run',
                                     )
                                 }}
-                                <code>storage:migrate</code>.
+                                <code>{{ 'storage:migrate' }}</code
+                                >.
                             </p>
                         </div>
                     </div>
@@ -137,7 +138,7 @@ function submit(): void {
                             <Input
                                 id="endpoint"
                                 v-model="form.endpoint"
-                                placeholder="https://s3.example.com"
+                                :placeholder="'https://s3.example.com'"
                             />
                             <InputError :message="form.errors.endpoint" />
                         </div>
@@ -210,7 +211,8 @@ function submit(): void {
                                             'Visitors then fetch media straight from the bucket. Leave off and media is served through the application. This claim is checked by',
                                         )
                                     }}
-                                    <code>storage:doctor</code>.
+                                    <code>{{ 'storage:doctor' }}</code
+                                    >.
                                 </p>
                             </div>
                         </div>
@@ -221,7 +223,7 @@ function submit(): void {
                             <Input
                                 id="url"
                                 v-model="form.url"
-                                placeholder="https://cdn.example.com"
+                                :placeholder="'https://cdn.example.com'"
                             />
                             <InputError :message="form.errors.url" />
                         </div>

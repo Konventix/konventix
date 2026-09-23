@@ -238,7 +238,7 @@ const columns = computed(() =>
                 <a :href="exportHref">
                     <Button variant="outline">
                         <Download class="size-4" />
-                        CSV
+                        {{ 'CSV' }}
                     </Button>
                 </a>
             </template>

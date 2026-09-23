@@ -63,7 +63,7 @@ const props = defineProps<{
                 type="email"
                 name="billingEmail"
                 autocomplete="email"
-                placeholder="billing@example.com"
+                :placeholder="'billing@example.com'"
             />
             <InputError :message="props.errors.billingEmail" />
         </div>
@@ -113,7 +113,7 @@ const props = defineProps<{
                         id="billingCountryCode"
                         name="billingCountryCode"
                         autocomplete="country"
-                        placeholder="DE"
+                        :placeholder="'DE'"
                         maxlength="2"
                     />
                     <InputError :message="props.errors.billingCountryCode" />
@@ -125,7 +125,7 @@ const props = defineProps<{
                     <Input
                         id="billingVatId"
                         name="billingVatId"
-                        placeholder="DE123456789"
+                        :placeholder="'DE123456789'"
                     />
                     <InputError :message="props.errors.billingVatId" />
                 </div>

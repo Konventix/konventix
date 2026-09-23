@@ -52,7 +52,7 @@ defineOptions({
                     required
                     :tabindex="2"
                     autocomplete="username"
-                    placeholder="ada-lovelace"
+                    :placeholder="'ada-lovelace'"
                 />
                 <p class="text-sm text-text-muted">
                     {{
@@ -73,7 +73,7 @@ defineOptions({
                     required
                     :tabindex="3"
                     autocomplete="email"
-                    placeholder="email@example.com"
+                    :placeholder="'email@example.com'"
                 />
                 <InputError :message="errors.email" />
             </div>

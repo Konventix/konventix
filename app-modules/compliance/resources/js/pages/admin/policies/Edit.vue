@@ -637,7 +637,7 @@ function openVersion(id: string): void {
                                         <Input
                                             id="draft-version"
                                             v-model="draftForm.version"
-                                            placeholder="2026-01"
+                                            :placeholder="'2026-01'"
                                         />
                                         <InputError
                                             :message="draftForm.errors.version"

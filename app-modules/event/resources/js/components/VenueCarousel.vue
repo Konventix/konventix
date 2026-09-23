@@ -74,7 +74,7 @@ function onKeydown(keyEvent: KeyboardEvent): void {
     <section
         v-else-if="count > 1"
         class="venue-carousel flex flex-col gap-3"
-        aria-roledescription="carousel"
+        :aria-roledescription="$t('carousel')"
         :aria-label="$t('Pictures of :name', { name: props.label })"
         tabindex="0"
         @keydown="onKeydown"
@@ -84,7 +84,7 @@ function onKeydown(keyEvent: KeyboardEvent): void {
                 v-for="(image, index) in props.images"
                 :key="image.url"
                 role="group"
-                aria-roledescription="slide"
+                :aria-roledescription="$t('slide')"
                 :aria-label="
                     $t(':number of :count', {
                         number: String(index + 1),

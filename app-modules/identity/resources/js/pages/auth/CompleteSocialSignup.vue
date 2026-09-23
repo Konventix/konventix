@@ -75,7 +75,7 @@ defineOptions({
                         type="text"
                         required
                         autocomplete="username"
-                        placeholder="ada-lovelace"
+                        :placeholder="'ada-lovelace'"
                     />
                     <InputError :message="errors.username" />
                     <p class="text-xs text-text-muted">
