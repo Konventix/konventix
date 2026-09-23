@@ -35,7 +35,8 @@ namespace Konventix\Registration\Events;
  * them. All three are trailing and optional (ADR-0004, additive), so an
  * emitter written before them still compiles; `status` is the
  * `RegistrationStatus` value, and a consumer that finds it null falls back
- * to `confirmed`.
+ * on the `$confirmed` flag — Admission's projection reads `confirmed` when
+ * it is true and a non-committal `unconfirmed` when it is false.
  *
  * Scalars only (ADR-0004).
  */

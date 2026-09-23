@@ -18,8 +18,33 @@
       "In" is read on the current event day only, through
       `Support\LatestAcceptedCheckIn`, which `CheckInFromConsole` uses too
       (Task 3 review I1).
-      Follow-ups: the ticket page and the row actions (Task 5), after which
-      the reference column becomes a link to it.
+      The reference column links to the ticket page (Task 5).
+
+- [x] The console check-in, check-out and the ticket page (#329, Task 5).
+      `POST /admin/tickets/{admission}/check-in|check-out`
+      (`ConsoleCheckInController`, `Data\ConsoleCheckInData`, the named
+      `admission-console-check-in` limiter at 60 a minute per account) and
+      `GET /admin/tickets/{admission}` (`TicketDetailController`,
+      `Queries\TicketDetailQuery`, page `admin/tickets/Show`). Each row of the
+      attendee list gets Check in / Check out / Show ticket
+      (`AttendeeRowActions`, `CheckInDialog`, `CheckOutDialog`); the dialog
+      asks every owed door check Confirm / Refuse. Every refusal is one
+      sentence under `check_in`, never a 500.
+
+- [ ] **Per-brand console desk roles** (ADR-0029): a console capability is
+      resolved against the operator's team, so a brand's own door staff
+      cannot be given the attendee list without operator-wide reach. Tracked
+      with the Einlass role below (#334).
+
+- [ ] Move `AdmissionCheckedIn` and `CheckInRejected` to `DB::afterCommit()`
+      (`.ai/rules/src.md`) as a change of its own. They still fire
+      synchronously inside the core's transaction, because moving them
+      changes door behaviour, which #329 was not allowed to do.
+
+- [ ] The attendee list and the ticket page are not audited as *views*
+      (`AuditRecorder`); only the writes are (`ConsoleCheckInRecorded`).
+      Not asked for in #329; decide whether reading who is on site should
+      leave a trace.
 
 - [ ] The **Einlass** default role (D-ATT-06) is deferred to #334. Console
       capabilities resolve against the operator's team (ADR-0029), every

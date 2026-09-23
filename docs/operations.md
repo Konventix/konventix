@@ -198,6 +198,26 @@ calendars" row is what an operator watches during a sale: a steady trickle
 is reissues behaving as designed, a spike against one event is worth asking
 about.
 
+### Checking a guest in at the console desk
+
+A guest whose QR code does not work (dead phone, no printout) is found by
+name, email, username or ticket reference on the event's attendee list
+(`/admin/events/{event}/attendees`, the Attendees button on the event
+dashboard) and checked in from the row's menu or from the ticket page
+(`/admin/tickets/{admission}`). The console writes through the same core as
+the door, so it refuses exactly what the door refuses — a revoked ticket, a
+day the ticket is not valid on, a re-entry the event does not permit — and
+says why in the dialog; the operator answers the ticket's outstanding door
+checks there, and a refusal is recorded while the guest still goes in, as at
+the door (ADR-0066). The desk needs `admission.check-in-attendees`, which
+today only Operator Admin holds: the narrower **Einlass** role is deferred to
+#334, so do not hand a brand's door staff a brand role and expect the page to
+open — it will not (ADR-0029). Console check-ins and check-outs count in
+`admission_console_check_ins_total` by `outcome` (`in`, `out`, `refused`); a
+desk carrying the whole door shows up there as a climb against a flat door
+scan rate, which is the sign the scanners are down. The writes are
+rate-limited at 60 a minute per account.
+
 ### Backfilling the ticket's read models
 
 Two commands, safe to re-run, neither one specific to a single event:

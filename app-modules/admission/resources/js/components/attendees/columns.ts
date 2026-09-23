@@ -1,8 +1,11 @@
+import { Link } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
 import { h } from 'vue';
+import { show as showTicket } from '@/routes/admin/tickets';
 import AttendeeCheckInCell from './AttendeeCheckInCell.vue';
 import AttendeeHolderCell from './AttendeeHolderCell.vue';
 import AttendeeRegistrationCell from './AttendeeRegistrationCell.vue';
+import AttendeeRowActions from './AttendeeRowActions.vue';
 
 export type AttendeeRow = Konventix.Admission.Data.AttendeeRowData;
 
@@ -50,11 +53,19 @@ export const attendeeColumns: ColumnDef<AttendeeRow>[] = [
         id: 'reference',
         header: 'Ticket',
         enableSorting: false,
-        // The reference a guest reads out at the desk (design §3). It
-        // becomes the link to the ticket page once that page exists
-        // (Task 5).
+        // The reference a guest reads out at the desk (design §3), as a
+        // real link to the ticket page (D-ATT-05) — the keyboard's way in,
+        // since a `<tr>` cannot take focus (`.ai/rules/js.md`).
         cell: ({ row }) =>
-            h('span', { class: 'font-mono text-xs' }, row.original.reference),
+            h(
+                Link,
+                {
+                    href: showTicket(row.original.admissionId).url,
+                    class: 'font-mono text-xs underline-offset-4 hover:underline',
+                    'aria-label': `Ticket ${row.original.reference}`,
+                },
+                () => row.original.reference,
+            ),
     },
     {
         id: 'registration',
@@ -81,5 +92,12 @@ export const attendeeColumns: ColumnDef<AttendeeRow>[] = [
         enableSorting: true,
         cell: ({ row }) =>
             h(AttendeeCheckInCell, { checkIn: row.original.checkIn }),
+    },
+    {
+        id: 'actions',
+        header: () => h('span', { class: 'sr-only' }, 'Actions'),
+        enableSorting: false,
+        // Check in, Check out, Show ticket (design §4.3, D-ATT-03).
+        cell: ({ row }) => h(AttendeeRowActions, { row: row.original }),
     },
 ];

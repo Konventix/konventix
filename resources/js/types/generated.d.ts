@@ -35,6 +35,18 @@ declare namespace Konventix {
                 readonly showQrCode: boolean;
                 readonly footerText: string | null;
             };
+            export type CheckInHistoryRowData = {
+                readonly id: string;
+                readonly scannedAt: string;
+                readonly direction: 'in' | 'out';
+                readonly result: 'accepted' | 'rejected';
+                readonly reason: string | null;
+                readonly source: 'door' | 'console';
+                readonly checkpointName: string | null;
+                readonly deviceLabel: string | null;
+                readonly actorUserId: string | null;
+                readonly actorName: string | null;
+            };
             export type ClaimLandingData = {
                 readonly linkId: string;
                 readonly eventName: string | null;
@@ -45,6 +57,12 @@ declare namespace Konventix {
                 readonly expiresAt: string;
                 readonly alreadyHolderOfAnother: boolean;
                 readonly claimUrl: string;
+            };
+            export type ConsoleCheckInData = {
+                readonly conditions: Array<{
+                    key: string;
+                    outcome: 'confirmed' | 'refused';
+                }>;
             };
             export type DoorCheckData = {
                 readonly key: string;
@@ -86,6 +104,40 @@ declare namespace Konventix {
                 readonly role: string;
                 readonly state: string;
                 readonly holderUsername: string | null;
+            };
+            export type TicketDetailData = {
+                readonly admissionId: string;
+                readonly reference: string;
+                readonly state: string;
+                readonly role: string;
+                readonly validFrom: string | null;
+                readonly validUntil: string | null;
+                readonly eventId: string;
+                readonly eventName: string;
+                readonly holderUserId: string | null;
+                readonly holderName: string | null;
+                readonly holderUsername: string | null;
+                readonly buyerUserId: string | null;
+                readonly buyerName: string | null;
+                readonly buyerUsername: string | null;
+                readonly ticketType: string;
+                readonly registrationId: string | null;
+                readonly registrationShortId: string | null;
+                readonly registrationTypeName: string | null;
+                readonly registrationStatus: string | null;
+                readonly doorChecks: Konventix.Admission.Data.TicketDoorCheckData[];
+                readonly history: Konventix.Admission.Data.CheckInHistoryRowData[];
+                readonly badgeUrl: string | null;
+                readonly canCheckIn: boolean;
+                readonly canCheckOut: boolean;
+                readonly owedDoorChecks: Konventix.Admission.Data.DoorCheckData[];
+            };
+            export type TicketDoorCheckData = {
+                readonly key: string;
+                readonly label: string;
+                readonly verification: string;
+                readonly documentHint: string | null;
+                readonly outcome: 'confirmed' | 'refused' | null;
             };
             export type TicketManagerData = {
                 readonly registrationId: string;

@@ -332,3 +332,15 @@ function attendeeTicket(
 
     return $admission;
 }
+
+/**
+ * A console ticket URL on the operator's admin host (#329): the ticket page,
+ * or with `$action` (`check-in`, `check-out`) one of its two writes. The
+ * host goes in the URL (.ai/rules/tests.md).
+ */
+function attendeeTicketUrl(Operator $operator, string $admissionId, ?string $action = null): string
+{
+    $url = "http://{$operator->admin_host}/admin/tickets/{$admissionId}";
+
+    return $action === null ? $url : "{$url}/{$action}";
+}

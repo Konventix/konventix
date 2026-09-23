@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Konventix\Admission\Providers;
 
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
 use Konventix\Admission\Actions\SendClaimLink;
 use Konventix\Admission\Console\AnnounceAdmissionOwnershipCommand;
 use Konventix\Admission\Console\CloseExpiredPresenceWindowsCommand;
@@ -116,6 +119,7 @@ class AdmissionServiceProvider extends ModuleServiceProvider
     {
         parent::boot();
 
+        $this->configureRateLimiting();
         $this->registerMetrics();
 
         // The Resources read-model backfill (#292), the entrance signing
@@ -144,6 +148,20 @@ class AdmissionServiceProvider extends ModuleServiceProvider
             // behind must not stack a second pass and emit twice.
             $schedule->command(CloseExpiredPresenceWindowsCommand::class)->everyMinute()->withoutOverlapping();
         });
+    }
+
+    /**
+     * The console desk's budget (attendee-list design §5, #329): sixty
+     * check-ins and check-outs a minute per account, well above what one
+     * person at a desk can type and far below a script. Named, so it is
+     * Admission's own counter rather than the one every unnamed throttle
+     * shares; keyed on the account, as Competition's `competition-participant`
+     * is, because every route on it is `auth`.
+     */
+    private function configureRateLimiting(): void
+    {
+        RateLimiter::for('admission-console-check-in', fn (Request $request): Limit => Limit::perMinute(60)
+            ->by('admission-console-check-in:'.($request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown')));
     }
 
     /**

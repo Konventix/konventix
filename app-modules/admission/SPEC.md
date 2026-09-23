@@ -134,6 +134,10 @@ reading either.
   `cancelled`, never creates one: the event carries no brand) and the
   backfill `RegistrationStandingAnnounced` (`registration:announce-standing`).
   A null type id or name in a payload never overwrites a stored one.
+  A row the backfill wrote for a `submitted` or `approved` registration goes
+  stale when that registration is later approved or rejected, because the
+  projection does not listen to those events; that is harmless, since such a
+  registration has issued no admission and no ticket joins its row.
 - **`admissions.buyer_user_id`** — the registrant who paid for or submitted
   the registration this admission came from, threaded from
   `RegistrationConfirmed`/`RegistrationAmended` and backfilled for
@@ -162,11 +166,31 @@ reading either.
   checkpoint, device, operator, and timestamp. This is the audit trail of who
   was in the building. `scanned_at` and `synced_at` are separate: an offline
   device buffers, so a scan can reach the server long after the person walked
-  in, and the trail must say when they actually did.
+  in, and the trail must say when they actually did. Since #329 a row also
+  carries `actor_user_id` (the admin who checked the ticket in or out from the
+  console, null for a door scan; exported and nulled by the GDPR handler) and
+  `conditions_checked` (the `[{key, outcome}]` door-check answers of an
+  accepted check-in, ADR-0066 §6.4), which is where the ticket page and
+  `Support\OwedDoorChecks` read what a ticket has already been asked.
+- **The console desk** (#329, attendee-list design §4) — the attendee list
+  of an event (`/admin/events/{event}/attendees`), the ticket detail page
+  (`/admin/tickets/{admission}`, `TicketDetailController`,
+  `Queries\TicketDetailQuery`) and the console check-in and check-out
+  (`POST /admin/tickets/{admission}/check-in|check-out`,
+  `ConsoleCheckInController`, rate-limited by `admission-console-check-in`,
+  60 a minute per account). Every write goes through
+  `Actions\CheckInFromConsole` and the shared core `RecordCheckIn`, so the
+  console cannot admit anyone the door would refuse; the operator only
+  answers the door checks. Gated by `CheckInAttendees`, then scoped to the
+  admin host's operator (404 otherwise).
 - **`Checkpoint`** — a named door at an event. **Carries no policy**: whether a
   repeat scan is a conflict or legitimate re-entry is the event's decision
   (D-ADM-03), and a checkpoint only enforces it. The absence of a policy
-  column is that decision made structural (ADR-0033).
+  column is that decision made structural (ADR-0033). `kind` (`door` or
+  `console`, `CheckpointKind`) is not a policy either: each event has one
+  `console` checkpoint, created on the first console check-in, that the
+  console writes against and no device is ever enrolled at; anything offering
+  checkpoints to a device reads `Checkpoint::doors()` (#328).
 - **`EntranceDevice`** — one enrolled scanner, holding a hash of its own bearer
   token and revocable individually. Replaces LanCore's single shared
   integration token, where one leak meant re-tokening every scanner at the
@@ -301,6 +325,15 @@ reprinting badges, managing checkpoints and entrance devices, and reading the
 check-in log. Door staff need a narrow set — scan and print — and nothing else;
 that separation is the reason the check-in capability is distinct from the
 management ones.
+
+`CheckInAttendees` (`admission.check-in-attendees`, #329) is the console
+desk: the attendee list, the ticket page and checking a ticket in or out by
+hand. It is apart from `ScanCheckIn` because the door never sees a name
+(ADR-0033) and the desk does. The **Einlass** default role that would grant
+only it (D-ATT-06) is deferred to #334: console capabilities resolve against
+the operator's team (ADR-0029) and a module can declare default roles at
+brand scope only (ADR-0045), so a brand-scoped Einlass would open no page.
+Until then Operator Admin holds it through its full grant.
 
 ## Activation
 

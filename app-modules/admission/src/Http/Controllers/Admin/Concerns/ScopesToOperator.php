@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Admission\Http\Controllers\Admin\Concerns;
 
+use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\EventSummary;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Operators\OperatorContext;
@@ -43,6 +44,20 @@ trait ScopesToOperator
         $this->ensureOperatorOwns($summary->brand_id);
 
         return $summary;
+    }
+
+    /**
+     * The ticket the route names, if its brand is the admin host operator's;
+     * 404 otherwise (attendee-list design §4.3, §4.4). Read outside
+     * `BrandScope`, which reads nothing on the admin host.
+     */
+    private function findAdmission(string $admission): Admission
+    {
+        $model = Admission::withoutBrandScope()->findOrFail($admission);
+
+        $this->ensureOperatorOwns($model->brand_id);
+
+        return $model;
     }
 
     /**
