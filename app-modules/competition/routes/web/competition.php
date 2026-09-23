@@ -16,10 +16,46 @@ declare(strict_types=1);
  */
 
 use Illuminate\Support\Facades\Route;
+use Konventix\Competition\Http\Controllers\CompetitionPageController;
+use Konventix\Competition\Http\Controllers\EventTournamentsController;
 use Konventix\Competition\Http\Controllers\InterestController;
+use Konventix\Competition\Http\Controllers\MatchPageController;
 use Konventix\Competition\Http\Controllers\MyTournamentsController;
 use Konventix\Competition\Http\Controllers\ProofUploadController;
 use Konventix\Competition\Http\Controllers\TeamJoinController;
+use Konventix\Competition\Http\Controllers\TeamPageController;
+
+/*
+ * The public tournament pages (design §10, D-CMP-22). Genuinely public: no
+ * auth and no capability — a bracket is an announcement. The only gate is
+ * `ensure-module:competition`, which the provider wraps this file in.
+ *
+ * `{slug}` and not `{event:slug}`: Event's model is out of reach (ADR-0004),
+ * so the slug resolves against Competition's own `EventSummary`. The pattern
+ * is the one `Str::slug()` produces, like Agenda's programme route. The
+ * competition is addressed by its slug too (unique per brand); a match and a
+ * team by their ULIDs.
+ */
+Route::prefix('/events/{slug}/tournaments')
+    ->where(['slug' => '[a-z0-9-]+'])
+    ->group(function (): void {
+        Route::get('/', EventTournamentsController::class)
+            ->name('competition.event.tournaments');
+
+        Route::get('/{competition}', [CompetitionPageController::class, 'show'])
+            ->where('competition', '[a-z0-9-]+')
+            ->name('competition.page');
+
+        Route::get('/{competition}/matches/{match}', [MatchPageController::class, 'show'])
+            ->where('competition', '[a-z0-9-]+')
+            ->whereUlid('match')
+            ->name('competition.match.page');
+
+        Route::get('/{competition}/teams/{team}', TeamPageController::class)
+            ->where('competition', '[a-z0-9-]+')
+            ->whereUlid('team')
+            ->name('competition.team.page');
+    });
 
 /*
  * The participant surfaces of signup (design §5, §10).
@@ -67,6 +103,38 @@ Route::middleware(['auth'])->group(function (): void {
     Route::post('/my/tournaments/entries/{entrant}/check-in', [MyTournamentsController::class, 'checkIn'])
         ->whereUlid('entrant')
         ->name('competition.my.entries.check-in');
+
+    /*
+     * The participant writes of §10's pages: entering a team (§5.2), a match
+     * report, its confirmation and a dispute (§8.2, §8.4), and a leaderboard
+     * score (§8.3). `auth` like the rest of this file, and throttled like the
+     * proof upload below — `throttle:6,1` — because each one writes rows,
+     * history and, for a report, a notification to the other roster, and
+     * nothing else bounds how often. Who may speak for a side is membership,
+     * which the controllers derive from the roster rather than from the
+     * request (§11).
+     */
+    Route::middleware('throttle:6,1')->group(function (): void {
+        Route::post('/tournaments/{competition}/entries', [CompetitionPageController::class, 'enter'])
+            ->whereUlid('competition')
+            ->name('competition.entries.store');
+
+        Route::post('/tournaments/{competition}/score-entries', [CompetitionPageController::class, 'submitScore'])
+            ->whereUlid('competition')
+            ->name('competition.score-entries.store');
+
+        Route::post('/tournaments/{competition}/matches/{match}/report', [MatchPageController::class, 'report'])
+            ->whereUlid(['competition', 'match'])
+            ->name('competition.matches.report');
+
+        Route::post('/tournaments/{competition}/matches/{match}/confirm', [MatchPageController::class, 'confirm'])
+            ->whereUlid(['competition', 'match'])
+            ->name('competition.matches.confirm');
+
+        Route::post('/tournaments/{competition}/matches/{match}/dispute', [MatchPageController::class, 'dispute'])
+            ->whereUlid(['competition', 'match'])
+            ->name('competition.matches.dispute');
+    });
 
     Route::post('/tournaments/{competition}/interest', [InterestController::class, 'store'])
         ->whereUlid('competition')

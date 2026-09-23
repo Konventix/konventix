@@ -847,3 +847,59 @@ empty slot fed by an undecided match) while still settling a **bye** — an
 empty slot nothing will ever fill, which is how the generators leave the top
 seeds' byes — and refuses a draw on an elimination bracket or wherever the
 discipline or the format's settings have none.
+
+### §10, 2026-09-23 — `{event}` is the event's slug, resolved against Competition's own copy
+
+§10 writes `/events/{event}/tournaments`. The event landing page is
+`/events/{slug}`, so the tournament pages hang off the same slug — but
+Competition may not read Event's model (ADR-0004), and the slug is not on any
+of its own rows. `competition_event_summaries` (event ULID, slug, name) is
+projected from `EventCreated` and `EventDetailsUpdated` by
+`Listeners\ProjectEventSummary`, ungated like the eligibility and name
+projections, and `event:replay-details` backfills it — the same shape Agenda
+and Admission already keep. The competition is addressed by its own slug,
+unique per brand; a match and a team by their ULIDs.
+
+### §10, 2026-09-23 — what the canvas port kept and changed
+
+`useBracketCanvas.ts` is ported into `resources/js/components/bracket/`
+(layout in `bracketModel.ts`, drawing in `useBracketCanvas.ts`). Kept: the
+match box, its two rows, the bezier connectors, pan, wheel zoom, pinch,
+fit-to-screen, the section labels of double elimination. Changed:
+
+- colours are the brand's semantic tokens, read from the element's computed
+  style on every draw (ADR-0008);
+- the connectors are the progression graph (`BracketData.connections`,
+  winner edges), not LanBrackets' "match `i` feeds match `i / 2`" guess;
+- the layout is generalised from its two hard-coded shapes to "sections
+  stacked, grand final to the right", so a group stage and round robin draw
+  too;
+- it draws on change, not on every animation frame: the pulsing "ready" glow
+  and the medal emoji are gone (a still warning border says "ready"; the
+  standings table says who placed);
+- a click on a match opens its page.
+
+The table (`BracketTable.vue`) and the canvas both take
+`bracketSections()` of the same `BracketData`; `bracketModel.test.ts` pins
+that they place the same pairings in the same rounds. The table is the
+server-rendered default and stays the default below 768 px.
+
+### §10, 2026-09-23 — the participant writes, and what a `required` proof does to them
+
+None of §8's participant Actions had a route. They are routed from the pages
+that offer them: `POST /tournaments/{competition}/entries` (a captain enters a
+team), `…/score-entries`, `…/matches/{match}/report|confirm|dispute`. All are
+`auth` plus `throttle:6,1`, the proof upload's budget — which, keyed by the
+signed-in user, is one budget of six a minute across all of them. The entrant
+or side is always the viewer's own, derived from their roster, never read
+from the request; somebody on no side gets a 404.
+
+There is no proof upload control on any screen until Platform can guard who
+reads a proof (#322, §8.7). A competition whose `proof_policy` is `required`
+therefore offers its participants no report or score form at all — a report
+without the owed proof would only be refused — and says that the desk
+collects the result and the proof. Confirm and dispute stay.
+
+§8.6 shows a match's history "to the sides and the desk": the public match
+page sends it only to a member of a side.
+

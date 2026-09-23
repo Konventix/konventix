@@ -5,6 +5,8 @@ import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/datetime';
+import { page as matchPage } from '@/routes/competition/match';
+import { usePollWhile } from '../../../components/public/usePollWhile';
 
 /**
  * "Meine Turniere" (design §10): the teams this person is on, the entries
@@ -39,6 +41,12 @@ import { formatDateTime } from '@/lib/datetime';
  * type an event ULID, which is not a thing anybody has. The endpoint the
  * competition page posts to is `POST /my/tournaments/teams`.
  *
+ * Above the teams, the two things that wait on the person (design §10):
+ * results the other side reported that their side has not answered — linked
+ * to the match page, where confirm, counter-report and dispute live — and
+ * their leaderboard scores with the desk's verdict. Polled every 30 s while
+ * one of their competitions runs.
+ *
  * Participant copy is German (ADR-0001). Names come from the server's
  * `ParticipantProfile` read model, never from Identity.
  */
@@ -67,7 +75,39 @@ type Team = {
     entries: Entry[];
 };
 
-const props = defineProps<{ brandId: string; teams: Team[] }>();
+const props = defineProps<{
+    brandId: string;
+    teams: Team[];
+    pendingConfirmations: Konventix.Competition.Data.PendingConfirmationData[];
+    scoreEntries: Konventix.Competition.Data.MyScoreEntryData[];
+    pollSeconds: number | null;
+}>();
+
+usePollWhile(() => props.pollSeconds);
+
+const scoreStates: Record<string, string> = {
+    pending: 'Wartet auf die Orga',
+    verified: 'Bestätigt',
+    rejected: 'Abgelehnt',
+};
+
+function confirmationHref(
+    item: Konventix.Competition.Data.PendingConfirmationData,
+): string | null {
+    return item.eventSlug === null
+        ? null
+        : matchPage({
+              slug: item.eventSlug,
+              competition: item.competitionSlug,
+              match: item.matchId,
+          }).url;
+}
+
+function claim(scores: Record<number, number | null>): string {
+    return Object.values(scores)
+        .map((score) => (score === null ? '–' : String(score)))
+        .join(' : ');
+}
 
 const stateLabels: Record<string, string> = {
     incomplete: 'Noch nicht vollzählig',
@@ -197,6 +237,68 @@ function canWithdraw(entry: Entry): boolean {
                 >Hier beitreten</Link
             >.
         </p>
+
+        <section
+            v-if="props.pendingConfirmations.length > 0"
+            class="flex flex-col gap-2 rounded-xl border border-warning p-4"
+            aria-labelledby="pending-heading"
+        >
+            <h2 id="pending-heading" class="text-lg font-medium text-text">
+                Ergebnisse zum Bestätigen
+            </h2>
+            <ul class="flex flex-col gap-1">
+                <li
+                    v-for="item in props.pendingConfirmations"
+                    :key="item.matchId"
+                    class="text-sm text-text"
+                >
+                    {{ item.competitionName }}: {{ item.opponentName }} meldet
+                    {{ claim(item.scores) }}.
+                    <Link
+                        v-if="confirmationHref(item)"
+                        :href="confirmationHref(item)!"
+                        class="underline underline-offset-4"
+                        >Bestätigen oder widersprechen</Link
+                    >
+                </li>
+            </ul>
+        </section>
+
+        <section
+            v-if="props.scoreEntries.length > 0"
+            class="flex flex-col gap-2"
+            aria-labelledby="scores-heading"
+        >
+            <h2 id="scores-heading" class="text-lg font-medium text-text">
+                Eingereichte Ergebnisse
+            </h2>
+            <ul class="flex flex-col gap-1">
+                <li
+                    v-for="(entry, index) in props.scoreEntries"
+                    :key="index"
+                    class="text-sm text-text"
+                >
+                    {{ entry.competitionName }} · {{ entry.teamName }}
+                    <template v-if="entry.heat !== null">
+                        · Lauf {{ entry.heat }}</template
+                    >
+                    · {{ entry.value }} ·
+                    <span
+                        :class="
+                            entry.state === 'verified'
+                                ? 'text-success'
+                                : entry.state === 'rejected'
+                                  ? 'text-danger'
+                                  : 'text-text-muted'
+                        "
+                        >{{ scoreStates[entry.state] ?? entry.state }}</span
+                    >
+                    <template v-if="entry.rejectionNote">
+                        – {{ entry.rejectionNote }}</template
+                    >
+                </li>
+            </ul>
+        </section>
 
         <p v-if="props.teams.length === 0" class="text-sm text-text-muted">
             Du bist noch in keinem Team. Melde dich auf der Turnierseite an, um

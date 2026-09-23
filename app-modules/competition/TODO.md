@@ -93,9 +93,22 @@ ADR-0062). The build order for #32, each item its own merge request:
       the desk links to it (§14); `MatchRescheduled` is still not emitted —
       §12's event list is reconciled with #302; no proof upload anywhere on
       the desk (#322).
-- [ ] Public pages (D-CMP-22, #301 second half): the ported canvas bracket
-      with its table view, event tournament index, competition, match and
-      team pages, polling while `Running`.
+- [x] Public pages (D-CMP-22, #301 second half): LanBrackets' canvas
+      bracket ported onto semantic tokens (`components/bracket/`) with the
+      table view as its accessible alternative, both from one `BracketData`;
+      the event tournament index, competition, match and team pages under
+      `/events/{slug}/tournaments`, polled every 30 s while `Running`; the
+      participant writes routed at last — enter a team, report, confirm,
+      dispute, a leaderboard score — `auth` and `throttle:6,1`, the side
+      always derived from the roster; "Meine Turniere" lists the reports
+      waiting on the person's side and their score entries.
+      `ReportMatchResult` now refuses a report while the other side is still
+      to come, as the desk does. Competition keeps its own
+      `competition_event_summaries` (slug and name) for the `{slug}` routes,
+      backfilled by `event:replay-details`. Left: no proof upload control
+      anywhere until #322 — a `required` competition says the desk collects
+      the proof; the refusal causes are still English (#302); the hub cards
+      are 0.9.0's next two tasks.
 - [ ] Capabilities and roles (D-CMP-23): `ViewEntrantContacts`; Tournament
       Desk as a second default role. (`CheckInEntrants` and
       `ManageSchedule` landed with the desk actions they gate.)

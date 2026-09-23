@@ -14,6 +14,7 @@ use Konventix\Competition\Actions\CreateTeam;
 use Konventix\Competition\Actions\LeaveTeam;
 use Konventix\Competition\Actions\RegenerateInviteCode;
 use Konventix\Competition\Actions\WithdrawEntrant;
+use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Enums\WithdrawalReason;
 use Konventix\Competition\Exceptions\CompetitionEntryException;
@@ -22,6 +23,8 @@ use Konventix\Competition\Models\CompetitionTeam;
 use Konventix\Competition\Models\CompetitionTeamMember;
 use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\ParticipantProfile;
+use Konventix\Competition\Pages\MyOpenResults;
+use Konventix\Competition\Pages\TournamentPages;
 use Konventix\Platform\Brands\BrandContext;
 
 /**
@@ -43,7 +46,7 @@ use Konventix\Platform\Brands\BrandContext;
  */
 final class MyTournamentsController
 {
-    public function index(Request $request): Response
+    public function index(Request $request, MyOpenResults $results): Response
     {
         $userId = $this->actorId($request);
         $brandId = $this->brandId();
@@ -72,8 +75,18 @@ final class MyTournamentsController
             array_values($teams->flatMap(fn (CompetitionTeam $team): array => $team->memberUserIds())->all())
         );
 
+        $entrantIds = array_values(array_map(strval(...), $entrants->flatten()->pluck('id')->all()));
+
         return Inertia::render('competition/my/Tournaments', [
             'brandId' => $brandId,
+            // §10: the reports waiting on this person's side, and their
+            // leaderboard scores with the desk's verdict on each.
+            'pendingConfirmations' => $results->pendingConfirmations($entrantIds),
+            'scoreEntries' => $results->scoreEntries($entrantIds),
+            // §10 "Freshness": polled while any of their competitions runs.
+            'pollSeconds' => $competitions->contains(
+                fn (Competition $competition): bool => $competition->status === CompetitionStatus::Running,
+            ) ? TournamentPages::POLL_SECONDS : null,
             'teams' => $teams->map(function (CompetitionTeam $team) use (
                 $userId,
                 $entrants,
