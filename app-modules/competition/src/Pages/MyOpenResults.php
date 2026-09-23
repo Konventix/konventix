@@ -37,11 +37,22 @@ final class MyOpenResults
      */
     public function pendingConfirmations(array $entrantIds): array
     {
+        $reports = (new MatchResultReport)->getTable();
+        $slots = (new MatchSlot)->getTable();
+
         $theirs = MatchResultReport::query()
             ->whereIn('competition_match_id', MatchSlot::query()
                 ->select('competition_match_id')
                 ->whereIn('entrant_id', $entrantIds))
             ->whereNotIn('entrant_id', $entrantIds)
+            // Only a claim by a side that stands in the match now, the rule
+            // of the match page and the Actions (`MatchPowers::currentClaims()`,
+            // fix wave B, item 11): a team moved out of the slot after it
+            // reported waits on nobody's confirmation.
+            ->whereExists(MatchSlot::query()
+                ->selectRaw('1')
+                ->whereColumn("{$slots}.competition_match_id", "{$reports}.competition_match_id")
+                ->whereColumn("{$slots}.entrant_id", "{$reports}.entrant_id"))
             ->whereNotIn('competition_match_id', MatchResultReport::query()
                 ->select('competition_match_id')
                 ->whereIn('entrant_id', $entrantIds))

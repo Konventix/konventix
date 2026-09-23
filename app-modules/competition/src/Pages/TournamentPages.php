@@ -644,10 +644,11 @@ final class TournamentPages
         }
 
         /** @var Collection<int, MatchResultReport> $reports */
-        $reports = MatchResultReport::query()
+        $reports = MatchPowers::currentClaims(MatchResultReport::query()
             ->where('competition_match_id', $match->id)
             ->orderBy('created_at')
-            ->get();
+            ->orderBy('id')
+            ->get(), $data);
 
         $own = $reports->first(fn (MatchResultReport $report): bool => $report->entrant_id === $side->id);
         $opposing = $reports->first(fn (MatchResultReport $report): bool => $report->entrant_id !== $side->id);

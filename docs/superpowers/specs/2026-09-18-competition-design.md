@@ -1650,3 +1650,13 @@ check-in. Anything else is a 404, like the page. Team-level writes (create,
 join, leave, a new invite code) name no competition and keep the §5.1 gate
 as their only event check.
 
+### §8.2/§10a, 2026-09-23 (final review fix wave B) — the readers ask the Actions' question about claims
+
+Wave A made `ConfirmMatchResult` and `ReportMatchResult` read only claims by
+an entrant who stands in the match now. The match page's buttons, the hub
+card's nudge and *Meine Turniere*'s "Ergebnisse zum Bestätigen" still read
+every claim on the match. So a claim left by a side that was moved out of
+its slot could still be offered for confirmation, and the Action then
+refused it. All three now read through `MatchPowers::currentClaims()` (the
+list: a correlated check on `match_slots`), which is the Actions' rule.
+

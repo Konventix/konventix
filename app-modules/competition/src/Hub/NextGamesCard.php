@@ -117,6 +117,7 @@ final class NextGamesCard
         $reports = MatchResultReport::query()
             ->whereIn('competition_match_id', $matches->modelKeys())
             ->orderBy('created_at')
+            ->orderBy('id')
             ->get()
             ->groupBy('competition_match_id');
 
@@ -141,8 +142,10 @@ final class NextGamesCard
                 }
             }
 
+            // Only claims by a side standing in the match now, as on the
+            // match page (`MatchPowers::currentClaims()`).
             /** @var Collection<int, MatchResultReport> $ofMatch */
-            $ofMatch = $reports->get($match->id) ?? new Collection;
+            $ofMatch = MatchPowers::currentClaims($reports->get($match->id) ?? new Collection, $data);
             $own = $ofMatch->first(fn (MatchResultReport $report): bool => $report->entrant_id === $sideId);
             $opposing = $ofMatch->first(fn (MatchResultReport $report): bool => $report->entrant_id !== $sideId);
 

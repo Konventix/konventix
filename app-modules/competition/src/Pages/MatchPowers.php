@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Competition\Pages;
 
+use Illuminate\Database\Eloquent\Collection;
 use Konventix\Competition\Data\BracketMatchData;
 use Konventix\Competition\Data\BracketSideData;
 use Konventix\Competition\Enums\CompetitionStatus;
@@ -33,6 +34,30 @@ final readonly class MatchPowers
         /** Every side is there: no slot waits on an undecided match, and it is not a bye. */
         public bool $everySide,
     ) {}
+
+    /**
+     * The claims on a match that still count: those filed by an entrant who
+     * stands in one of its slots now. A correction upstream, or a
+     * disqualification, can move a side out of a slot after it reported,
+     * and its claim is then nobody's to confirm or dispute — the rule the
+     * Actions apply since the final review's wave A (part 4, I1). The match
+     * page and the hub card read through here, so neither offers a confirm
+     * the Action would refuse (fix wave B, item 11).
+     *
+     * @param  Collection<int, MatchResultReport>  $reports  the match's claims, in filing order
+     * @return Collection<int, MatchResultReport>
+     */
+    public static function currentClaims(Collection $reports, BracketMatchData $data): Collection
+    {
+        $sides = array_values(array_filter(array_map(
+            static fn (BracketSideData $side): ?string => $side->entrantId,
+            $data->sides,
+        )));
+
+        return $reports
+            ->filter(static fn (MatchResultReport $report): bool => in_array($report->entrant_id, $sides, true))
+            ->values();
+    }
 
     /**
      * @param  MatchResultReport|null  $own  the viewer's side's report

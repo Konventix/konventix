@@ -598,6 +598,74 @@ it('drops a displaced side\'s claim from the card once a correction re-pairs the
     expect($competition->refresh()->status)->toBe(CompetitionStatus::Running);
 });
 
+it('reads only claims by a side standing in the match now, on the card, the match page and Meine Turniere alike', function (): void {
+    // Fix wave B, item 11. The correction cascade drops a re-paired match's
+    // claims (wave A), and the Actions read only current sides' claims; the
+    // readers must apply the same rule, or they offer a confirm the Action
+    // refuses. The claim below is left behind on purpose — the slot moves
+    // without the cascade — which is exactly the row the rule is for.
+    //
+    // S(4) = [1, 4, 2, 3]: P (seed 1, viewer's side) v Q (seed 4) and R
+    // (seed 2) v S (seed 3); the final takes match 1's winner in slot 1.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+    $eventId = hubCardsEvent($brand);
+    $ofP = User::factory()->create();
+
+    [$competition, $p, $first, , $stage] = hubCardsCompetition($eventId, $ofP, 'Kilo Cup');
+    $q = hubCardsOpponent($first, $p);
+    $second = competitionMatchAt($stage, 1, 2);
+    $r = Entrant::query()->findOrFail(competitionSidesOf($second)[1]);
+
+    $ofR = User::factory()->create();
+    hubCardsJoin($r->competition_team_id, $r->brand_id, $ofR);
+
+    hubCardsWinAtDesk($first, $p);
+    hubCardsWinAtDesk($second, $r);
+    $final = competitionMatchAt($stage, 2, 1);
+    app(ReportMatchResult::class)->handle($final, $p, new MatchReportData(scores: [1 => 16, 2 => 12]), (string) $ofP->getKey());
+
+    $matchUrl = '/events/sxlan-27/tournaments/kilo-cup/matches/'.$final->getKey();
+
+    // The control: while P stands in slot 1, R is asked to confirm P's claim
+    // on the card, on the match page and on Meine Turniere.
+    expect(hubCardsGamesByCompetition(hubCardsNextGames($brand, $ofR, $eventId))['Kilo Cup']->nudge)->toBe(NextGameNudge::Confirm);
+
+    $this->actingAs($ofR)->get($matchUrl)->assertInertia(fn (Assert $page) => $page
+        ->where('page.viewer.opposingReport', [1 => 16, 2 => 12])
+        ->where('page.viewer.canConfirm', true));
+
+    $this->app->forgetScopedInstances();
+    $this->actingAs($ofR)->get('/my/tournaments')->assertInertia(fn (Assert $page) => $page
+        ->has('pendingConfirmations', 1));
+
+    // Q takes P's slot, and P's claim stays behind.
+    MatchSlot::query()
+        ->where('competition_match_id', $final->getKey())
+        ->where('entrant_id', $p->getKey())
+        ->firstOrFail()
+        ->forceFill(['entrant_id' => $q->getKey()])
+        ->save();
+
+    // Derivation for R, per §10a: no time, so never due; not disputed (rule
+    // 1); P's claim is by no side of the match, so there is nothing to
+    // confirm (rule 2) and R has no claim of its own (rule 3); participants,
+    // open, Q and R both there, no proof required → R may report (rule 4).
+    expect(hubCardsGamesByCompetition(hubCardsNextGames($brand, $ofR, $eventId))['Kilo Cup']->nudge)->toBe(NextGameNudge::Report);
+
+    $this->app->forgetScopedInstances();
+    $this->actingAs($ofR)->get($matchUrl)->assertInertia(fn (Assert $page) => $page
+        ->where('page.viewer.opposingReport', null)
+        ->where('page.viewer.canConfirm', false)
+        ->where('page.viewer.canReport', true));
+
+    $this->app->forgetScopedInstances();
+    $this->actingAs($ofR)->get('/my/tournaments')->assertInertia(fn (Assert $page) => $page
+        ->has('pendingConfirmations', 0));
+
+    expect($competition->refresh()->status)->toBe(CompetitionStatus::Running);
+});
+
 it('shows match times on the event\'s wall clock, projected from EventCreated and kept by EventRescheduled', function (): void {
     $brand = $this->withBrand();
     $eventId = hubCardsEvent($brand);
