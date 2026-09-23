@@ -8,6 +8,7 @@ use Konventix\Competition\Actions\CreateTeam;
 use Konventix\Competition\Actions\EnterCompetition;
 use Konventix\Competition\Actions\ExpressInterest;
 use Konventix\Competition\Actions\JoinTeamByCode;
+use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Enums\WithdrawalReason;
 use Konventix\Competition\Models\Competition;
@@ -353,6 +354,31 @@ it('lets only the captain withdraw the entry', function (): void {
 
     expect($entrant->refresh()->state)->toBe(EntrantState::Withdrawn)
         ->and($entrant->withdrawal_reason)->toBe(WithdrawalReason::CaptainWithdrew);
+});
+
+it('answers a withdrawal the competition has outrun on `entrant`, where Meine Turniere shows it', function (): void {
+    // §5.5: "until Running". The page renders `errors.entrant` on the entry
+    // (final review, part 3, I3), so the refusal has to arrive on that key,
+    // in German, and leave the entry as it was.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+
+    $eventId = (string) Str::ulid();
+    $competition = signupHttpCompetition(teamSize: 1, eventId: $eventId);
+    $captain = signupHttpPlayer($eventId, $brand->id);
+
+    $team = app(CreateTeam::class)->handle($brand->id, $eventId, 'Zu spät', (string) $captain->getKey());
+    $entrant = app(EnterCompetition::class)->handle($competition, $team->refresh());
+
+    $competition->forceFill(['status' => CompetitionStatus::Running])->save();
+
+    $this->actingAs($captain)
+        ->delete('/my/tournaments/entries/'.$entrant->getKey())
+        ->assertSessionHasErrors([
+            'entrant' => 'Dieses Turnier hat schon begonnen oder ist vorbei. Ändern kann das jetzt nur noch die Turnierleitung.',
+        ]);
+
+    expect($entrant->refresh()->state)->toBe(EntrantState::Registered);
 });
 
 it('refuses every bad invite code with one sentence, whatever was wrong', function (): void {

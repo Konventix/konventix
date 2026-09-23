@@ -137,6 +137,20 @@ function stateClass(state: string): string {
 }
 
 /**
+ * `canCheckIn` says the mode and the window allow it; it does **not** know
+ * whether the whole roster has been through the event door, which only the
+ * Action can answer. So the button is offered and the check-in can still
+ * refuse — and the controller answers with a field error on `entrant`
+ * naming who is still outside. Without this the captain clicks "Einchecken"
+ * and nothing whatsoever happens, which reads as a broken page.
+ *
+ * Keyed by entry, so the message lands on the entry it belongs to. Same
+ * shape as `Join.vue`'s refusal: the server's message, verbatim. A refused
+ * withdrawal lands here too.
+ */
+const refusals = ref<Record<string, string | undefined>>({});
+
+/**
  * Leaving and withdrawing ask first (final review, part 3, I2): back on the
  * team needs the captain to share the code again, and a withdrawn slot may
  * be gone for good once the field fills or signup closes.
@@ -152,7 +166,7 @@ function leave(team: Team): void {
     ask({
         title: `${team.name} verlassen?`,
         description: team.isCaptain
-            ? 'Du gibst damit auch die Captain-Rolle ab. Zurück ins Team kommst du nur mit einem neuen Einladungscode.'
+            ? 'Du gibst damit auch die Captain-Rolle ab. Zurück ins Team kommst du nur mit dem Einladungscode vom neuen Captain.'
             : 'Zurück ins Team kommst du nur mit dem Einladungscode vom Captain.',
         confirmLabel: 'Team verlassen',
         cancelLabel: 'Abbrechen',
@@ -178,25 +192,24 @@ function withdraw(entry: Entry): void {
             'Euer Platz wird frei. Ist das Feld danach voll oder die Anmeldung geschlossen, kommt ihr nicht wieder hinein.',
         confirmLabel: 'Anmeldung zurückziehen',
         cancelLabel: 'Abbrechen',
-        run: () =>
+        run: () => {
+            refusals.value = { ...refusals.value, [entry.id]: undefined };
+
             router.delete(`/my/tournaments/entries/${entry.id}`, {
                 preserveScroll: true,
-            }),
+                // The controller answers a refused withdrawal on `entrant`
+                // (the competition started meanwhile); it lands on the
+                // entry like a refused check-in (final review, part 3, I3).
+                onError: (errors) => {
+                    refusals.value = {
+                        ...refusals.value,
+                        [entry.id]: errors.entrant,
+                    };
+                },
+            });
+        },
     });
 }
-
-/**
- * `canCheckIn` says the mode and the window allow it; it does **not** know
- * whether the whole roster has been through the event door, which only the
- * Action can answer. So the button is offered and the check-in can still
- * refuse — and the controller answers with a field error on `entrant`
- * naming who is still outside. Without this the captain clicks "Einchecken"
- * and nothing whatsoever happens, which reads as a broken page.
- *
- * Keyed by entry, so the message lands on the entry it belongs to. Same
- * shape as `Join.vue`'s refusal: the server's message, verbatim.
- */
-const refusals = ref<Record<string, string | undefined>>({});
 
 function checkIn(entry: Entry): void {
     refusals.value = { ...refusals.value, [entry.id]: undefined };

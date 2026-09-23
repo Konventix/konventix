@@ -2,10 +2,11 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { Plus } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
-import { computed, h } from 'vue';
+import { computed, h, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import DataTableToolbar from '@/components/admin/DataTableToolbar.vue';
+import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import type {
     DataTableFilterDef,
@@ -132,6 +133,14 @@ const {
     confirm,
 } = useConfirmation();
 
+/**
+ * A refused move — most often "Start" with no draw, an incomplete roster
+ * left, or an undrawn first stage — comes back on `status`, and is shown
+ * above the list with the competition it was about (final review, part 3,
+ * I3). Before, the click did nothing visible.
+ */
+const moveError = ref<string | undefined>(undefined);
+
 function move(row: CompetitionRow): void {
     const status = row.nextStatus;
 
@@ -140,10 +149,20 @@ function move(row: CompetitionRow): void {
     }
 
     const post = (): void => {
+        moveError.value = undefined;
+
         router.post(
             transitionCompetition(row.id).url,
             { status },
-            { preserveScroll: true },
+            {
+                preserveScroll: true,
+                onError: (errors) => {
+                    moveError.value =
+                        errors.status === undefined
+                            ? undefined
+                            : `${row.name}: ${errors.status}`;
+                },
+            },
         );
     };
 
@@ -274,6 +293,8 @@ const columns: ColumnDef<CompetitionRow>[] = [
             @update:per-page="setPerPage"
             @update:filter="setFilter"
         />
+
+        <InputError :message="moveError" role="alert" />
 
         <DataTable
             data-test="competitions-table"
