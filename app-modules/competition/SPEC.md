@@ -315,13 +315,21 @@ and `ManualSeedSource` carries the desk's drag order as an explicit override.
 and takes its `advance_count` — is the reason the seam exists and is not built:
 adding it is one `register()` call, and no caller changes.
 
-**Regeneration is allowed until the first result.** `RegenerateBracket` deletes
-a stage's matches, slots, edges and standings and draws it again, so a desk
-that spots a wrong seeding fixes it instead of living with it. Both it and
-`SeedStage` refuse once any match of the stage is finished, has a winner, or
-carries a score — seeds break ties in every calculator, so renumbering after a
-result rewrites the table the results produced. Regenerating does **not**
-re-seed: a hand-dragged order survives the redraw.
+**Regeneration is allowed until the first result.** `ResetStage` deletes a
+stage's matches, slots, edges and standings and clears `generated_at`;
+`RegenerateBracket` is `ResetStage` and `GenerateBracket` in one transaction,
+the desk's "draw again", and the only redraw allowed in `Running`, where a bare
+reset would leave a running competition with no bracket. So a desk that spots
+a wrong seeding fixes it instead of living with it. All three and `SeedStage`
+refuse once any match of the stage is finished, has a winner, or carries a
+score, or a leaderboard stage has a verified entry — seeds break ties in every
+calculator, so renumbering after a result rewrites the table the results
+produced. Regenerating does **not** re-seed: a hand-dragged order survives the
+redraw.
+
+**A leaderboard stage is never drawn.** It has no matches, so there is nothing
+for `GenerateBracket` to write, and `StartCompetition` counts it as ready
+without a draw.
 
 `AdvanceBracket` walks those edges: given a finished match it moves the winner
 (and, in double elimination, the loser) into the slot the graph names. It is
@@ -337,24 +345,37 @@ paired from the recomputed standings rather than implied by a graph.
 ## Public contract (events)
 
 Events are the only way other modules may react to this one (ADR-0004).
-Payloads carry ULIDs and scalars — never Eloquent models.
+Payloads carry ULIDs and scalars — never Eloquent models. Every event is
+dispatched after its transaction commits (`DB::afterCommit()`), so a refused
+write announces nothing.
 
 `MatchScheduled` and `MatchFinished` are named in ADR-0012 and are the contract
-GameOps is built against; the remaining rows are **proposed**.
+GameOps is built against. The table lists what is emitted today, with its real
+payload; design §14 ("§12 reconciled") records where it departs from the
+design's §12 and why.
 
 | Event | Emitted when | Payload |
 |---|---|---|
-| `MatchScheduled` | A match's entrants and start time are fixed | `match_id`, `competition_id`, `event_id`, `game_id`, `game_mode`, `round`, `scheduled_at`, `entrant_ids` (list of ULIDs) |
-| `MatchFinished` | A result is recorded and the match is closed | `match_id`, `competition_id`, `winner_entrant_id`, `scores` (scalars per entrant), `finished_at` |
-| `MatchResultCorrected` *(proposed, decision log Round 6, D-CMP-12)* | The tournament desk corrects an already-recorded result | `match_id`, `competition_id`, `previous_winner_entrant_id`, `winner_entrant_id`, `scores` (scalars per entrant), `corrected_by_user_id`, `corrected_at` |
-| `MatchCancelled` *(proposed)* | A scheduled match will not be played | `match_id`, `competition_id`, `cancelled_at`, `reason` |
-| `MatchRescheduled` *(proposed)* | A scheduled match moves in time | `match_id`, `competition_id`, `previous_scheduled_at`, `scheduled_at` |
+| `MatchScheduled` | A match has a time **and** every slot holds a side: when the desk times a full match, when the bracket fills the last slot of a timed match, and when a correction voids a timed match that is then on again between new sides. Never for a bye. Again on a reschedule. Consumers upsert on `match_id`. | `match_id`, `competition_id`, `event_id`, `brand_id`, `game_id`, `game_mode` (both null unless the discipline is a video game), `round`, `scheduled_at`, `entrant_ids` (slot order), `member_user_ids` (entrant ULID => roster) |
+| `MatchFinished` | A result is recorded — **once per match**, even when a voided match is played again (D-CMP-12) | `match_id`, `competition_id`, `brand_id`, `winner_entrant_id`, `scores` (entrant ULID => score), `finished_at` |
+| `MatchResultCorrected` (D-CMP-12) | The desk corrects a recorded result | `match_id`, `competition_id`, `brand_id`, `previous_winner_entrant_id`, `winner_entrant_id`, `scores`, `corrected_by_user_id`, `corrected_at` |
 | `CompetitionPublished` (D-CMP-15) | A competition becomes publicly visible | `competition_id`, `event_id`, `discipline_id`, `brand_id`, `name`, `status`, `starts_at`, `at` |
-| `CompetitionRescheduled` (D-CMP-15) | An announced competition's `starts_at` moves | `competition_id`, `event_id`, `brand_id`, `previous_starts_at`, `starts_at`, `at` |
-| `SignupOpened` / `SignupClosed` (D-CMP-15) | Signup opens (publish into an open window, reopen, scheduler tick) or shuts | `competition_id`, `event_id`, `brand_id`, `entrant_count`, `at` |
-| `EntrantRegistered` / `EntrantWithdrawn` / `EntrantCheckedIn` | An entrant joins, leaves, or is checked in | `entrant_id`, `competition_id`, `team_id`, `member_user_ids` (list of ULIDs), `reason` (withdrawn) |
+| `CompetitionRescheduled` | An announced competition's `starts_at` moves | `competition_id`, `event_id`, `brand_id`, `previous_starts_at`, `starts_at`, `at` |
 | `CompetitionStarted` / `CompetitionFinished` / `CompetitionCancelled` (D-CMP-15) | The lifecycle moves | `competition_id`, `event_id`, `discipline_id`, `brand_id`, `status`, `at` |
-| `MatchResultReported` / `MatchDisputed` / `MatchDisputeResolved` (D-CMP-19) | A side reports; the sides disagree; the desk decides | `match_id`, `competition_id`, `brand_id`, `entrant_id`, `user_id`, `at` |
+| `SignupOpened` / `SignupClosed` (D-CMP-15) | Publish into an open window or reopen; the organizer closes | `competition_id`, `event_id`, `brand_id`, `entrant_count`, `at` |
+| `EntrantRegistered` | A team enters, complete or not | `entrant_id`, `competition_id`, `competition_team_id`, `event_id`, `brand_id`, `registered_at`, `member_user_ids`, `state` (`registered` or `incomplete`) |
+| `EntrantWithdrawn` | An entrant is withdrawn, declined or disqualified | `entrant_id`, `competition_id`, `competition_team_id`, `event_id`, `brand_id`, `member_user_ids`, `reason`, `final_state`, `withdrawn_at` |
+| `EntrantCheckedIn` | The desk or the captain checks a team in | `entrant_id`, `competition_id`, `competition_team_id`, `event_id`, `brand_id`, `member_user_ids`, `checked_in_at`, `via_self_service` |
+| `MatchResultReported` / `MatchDisputed` (D-CMP-19) | A side reports; the sides disagree or one disputes | `match_id`, `competition_id`, `brand_id`, `entrant_id`, `user_id`, `at` |
+| `MatchDisputeResolved` (D-CMP-19) | The desk decides a dispute | `match_id`, `competition_id`, `brand_id`, `entrant_id` (the side the decision went to, null for a draw), `user_id`, `at` |
+
+**Proposed, not emitted.** `MatchRescheduled` (`match_id`, `competition_id`,
+`previous_scheduled_at`, `scheduled_at`) and `MatchCancelled` (`match_id`,
+`competition_id`, `cancelled_at`, `reason`): a reschedule already re-emits
+`MatchScheduled`, and no Action cancels a single match. GameOps' consumer
+(#115) decides whether either is still needed. `CompetitionUnpublished`
+(`competition_id`, `event_id`, `brand_id`, `unpublished_at`) is owed before
+Agenda's competition half ships (design §14).
 
 Competition's own `MatchResultReported` is **not** GameOps' proposed event of
 the same name under "Consumes": same words, opposite direction. A participant's
@@ -369,18 +390,19 @@ no business holding it. It lives one row away, in `competition_match_history`.
 ## Consumes
 
 Events from other modules that this module listens to, and the read models it
-maintains from them.
+maintains from them. Every listener is idempotent and replayable (ADR-0004).
 
 | Event | Owning module | Why |
 |---|---|---|
-| `MatchSessionLive` | GameOps | The server is up and the handler has started the match; Competition moves the match to live and can show connection details. It is a lifecycle signal, not a result. |
+| `RegistrationSubmitted` / `RegistrationConfirmed` | Registration | Maintains `competition_eligible_registrations`, who may enter (D-CMP-05). Ungated, so a brand switching the module on mid-event finds its registrations there. |
+| `UserRegistered` / `UserProfileUpdated` | Identity | Maintains `ParticipantProfile` (`display_name`, `username`, `visibility`). Ungated for the same reason. `identity:replay-profiles` backfills it. |
+| `SocialIdentityLinked` / `SocialIdentityUnlinked` / `SocialIdentityAnnounced` / `AccountsMerged` | Identity | Maintains `competition_linked_identities`, the providers a person has linked, which a discipline's `requires_linked_provider` is checked against on entry and on every roster join (design §5.6). Global rather than per brand, and it stores no provider account id. It is gated on whether any brand runs `competition`, and the unlink handler always applies. `identity:announce-social-identities` backfills it. |
+| `EventCreated` / `EventDetailsUpdated` / `EventRescheduled` and the seven lifecycle events | Event | Maintains `competition_event_summaries` — slug, name, time zone and lifecycle state — which the public tournament pages resolve by and are gated on. Ungated. `event:replay-details --with-state` backfills it. |
+| `AdmissionIssued` / `AdmissionHolderAssigned` / `AdmissionHolderUnassigned` / `AdmissionCheckedIn` / `AdmissionRevoked` / `AdmissionOwnershipAnnounced` | Admission | Maintains the **presence read model** — which person the door has seen at which event. Read by check-in when a competition sets `requires_event_check_in` (D-CMP-18). Never a signup gate (D-CMP-05). Gated on the brand the event names; `admission:announce-ownership` backfills it, but cannot restore a scan time. |
+| `MatchSessionLive` *(proposed)* | GameOps | The server is up and the handler has started the match; Competition moves the match to live and can show connection details. It is a lifecycle signal, not a result. |
 | `MatchResultReported` *(proposed)* | GameOps | The match handler observed a final score. Competition remains the owner of result state: it decides whether the reported score is recorded, held for review, or overridden. |
 | `MatchSessionFailed` *(proposed)* | GameOps | Provisioning or the handler failed; the match is flagged for the tournament desk rather than silently stalling. |
-| `UserProfileUpdated` | Identity | Maintains `ParticipantProfile` (`display_name`, `username`, `visibility`). Idempotent and replayable (ADR-0004). |
-| `SocialIdentityLinked` / `SocialIdentityUnlinked` / `SocialIdentityAnnounced` / `AccountsMerged` | Identity | Maintains `competition_linked_identities`, the providers a person has linked, which a discipline's `requires_linked_provider` is checked against on entry and on every roster join (design §5.6). Global rather than per brand, and it stores no provider account id. It is gated on whether any brand runs `competition`, and the unlink handler always applies. `identity:announce-social-identities` backfills it. Idempotent and replayable (ADR-0004). |
-| `AdmissionHolderAssigned` / `AdmissionHolderUnassigned` / `AdmissionCheckedIn` / `AdmissionRevoked` | Admission | Maintains the **presence read model** — which person the door has seen at which event. Read by check-in when a competition sets `requires_event_check_in` (D-CMP-18). Never a signup gate (D-CMP-05). |
-| `EventArchived` *(proposed)* | Event | Freezes competitions, results, and standings as history. |
-| `DataExportRequested` / `UserDeletionRequested` *(proposed)* | Compliance | Fans out to `src/Gdpr/`: exports a competitor's entrant and match history, anonymizes `ParticipantProfile`, and reports completion back to Compliance. |
+| `EventArchived` *(proposed)* | Event | Freezes competitions, results, and standings as history. Heard today only as a lifecycle state on the event summary. |
 
 ## Capabilities
 
@@ -389,33 +411,85 @@ data, not code (ADR-0013).
 
 - `ViewCompetitions`, `ManageDisciplines`, `ManageCompetitions` (create,
   publish, close, start, finish, cancel; edit rulesets and policies).
-- `ManageEntrants`: fill or decline incomplete teams, move members,
-  withdraw, disqualify, seed.
-- `CheckInEntrants`, `ManageSchedule` — the desk's day-of work (D-CMP-23).
-- `RecordResults` (also verifies score entries and resolves disputes before
-  a result exists) and `CorrectResults` — the capability with the highest
-  blast radius, since a correction cascades through the bracket and
-  standings derive from it.
-- `ViewEntrantContacts` for tournament-desk work.
+- `ManageEntrants`: fill or decline incomplete teams, rename, add, remove and
+  move members, withdraw, disqualify.
+- `CheckInEntrants` (the check-in list) and `ManageSchedule` (seed order,
+  generate, draw again, reset, and the times of matches and rounds) — the
+  desk's day-of work (D-CMP-23).
+- `RecordResults` (also verifies and rejects score entries and resolves
+  disputes before a result exists) and `CorrectResults` — the capability with
+  the highest blast radius, since a correction cascades through the bracket
+  and standings derive from it; it also resolves a dispute raised against a
+  standing result.
+- `ViewEntrantContacts` is declared and gates nothing yet: the module holds no
+  contact data (design §14).
+
+Two default roles (ADR-0045), materialized when a brand activates the module:
+**Tournament Admin** holds all nine; **Tournament Desk** holds
+`ViewCompetitions`, `CheckInEntrants`, `RecordResults` and `ManageSchedule`,
+and so runs a tournament end to end except for corrections and roster changes
+(#135).
 
 Entering a competition, joining a team by code, registering interest,
-reporting or confirming a result and self-service check-in are **not**
-capabilities: they follow from a confirmed registration (D-CMP-05) and
-membership in a side. Default role sets (ADR-0045): Tournament Admin holds
-all nine; Tournament Desk holds view, check-in, record and schedule.
+reporting, confirming or disputing a result and self-service check-in are
+**not** capabilities: they follow from a confirmed registration (D-CMP-05)
+and membership in a side.
 
 ## Activation
 
 Pennant feature name: **`competition`** (the module's kebab-case name), gated
-per brand at all four enforcement points (ADR-0003): the route group carries
-`ensure-module:competition`, Platform's nav registry filters the module's
-entries, UI slots check the feature, and listeners short-circuit when the
-feature is off for the event's brand context.
+per brand (ADR-0003):
+
+- **Routes.** Every brand-host route carries `ensure-module:competition`,
+  added by the base provider. The operator console cannot carry it, because
+  that host resolves no brand, so `ScopesToOperator` treats a brand with the
+  module off as a stranger: its rows answer 404, the lists leave it out and
+  the brand pickers do not offer it.
+- **Navigation.** Competition has no brand-area entry. Its two console
+  entries are filtered by capability only, as Platform's admin navigation is
+  (ADR-0029).
+- **UI slots.** The two hub cards are registered at boot and hidden by the
+  hub registry wherever the module is off.
+- **Listeners.** Door presence short-circuits on the brand the event names;
+  the linked-account projection on whether any brand runs the module. The
+  eligibility, name and event-summary projections are ungated on purpose, so a
+  brand switching the module on mid-event finds them filled (design §14).
 
 With the feature off a brand runs its event without tournaments: no
 competitions, no signups, no schedule, no standings. GameOps becomes inert for
 that brand as a consequence — every trigger it reacts to originates here — so
 enabling `game-ops` without `competition` gives a brand nothing.
+`CompetitionActivationTest` proves both hosts go quiet.
+
+## Observability
+
+ADR-0059, design §13. `src/Metrics/CompetitionMetrics.php` declares four
+metrics, all labelled with the brand slug:
+
+- `competition_entrants_total{brand,state}` and
+  `competition_matches_total{brand,state}` — counters of transitions,
+  recorded by `Listeners\Metrics\RecordCompetitionMetrics` on this module's
+  own events. `scheduled` counts every `MatchScheduled`; `finished` counts
+  each match once.
+- `competition_disputes_open{brand}` and
+  `competition_score_entries_unverified{brand}` — gauges answered at scrape
+  time by `CompetitionGauges`, with a zero row for every brand.
+
+They are the *Tournaments* row of the Platform dashboard.
+`KonventixCompetitionDisputeWaiting` fires when a brand has had an open
+dispute in a running competition for 30 minutes — the desk is told about a
+dispute by nothing else (design §8.4). Runbook:
+`docs/operations.md#konventixcompetitiondisputewaiting`.
+
+## Personal data
+
+`src/Gdpr/CompetitionGdprHandler.php` exports team memberships, interest rows
+and their notes, linked providers, the result reports, score entries and
+match-history rows a person wrote. On erasure it deletes the profile, the
+interest rows and the linked providers, and nulls the person's ULID on every
+row that must survive as the competition's history: score entries, reports,
+history, door presence and eligibility. Free text on a surviving row keeps
+its words (design §14).
 
 ## Open questions
 
@@ -433,8 +507,7 @@ enabling `game-ops` without `competition` gives a brand nothing.
   not tear a server down twice.~~ **Decision log Round 6 (D-CMP-12):** a
   distinct `MatchResultCorrected` event; `MatchFinished` fires exactly once
   per match, so GameOps' "no double teardown" concern is satisfied by
-  construction. `MatchResultCorrected` still needs adding to the "Public
-  contract" table above as proposed — see `TODO.md`.
+  construction.
 - ~~Are solo entrants a team of size one, or a second entrant shape? One model
   is simpler; two avoid awkward single-member rosters in the UI.~~ **Decision
   log Round 6 (D-CMP-13):** a team of size one; the roster UI hides itself for
@@ -465,7 +538,9 @@ enabling `game-ops` without `competition` gives a brand nothing.
 - ~~Swiss: greedy or blossom?~~ **D-CMP-24:** Swiss stays available with
   the greedy pairing; blossom is a later decision, still pinned by its test.
 - **Open:** multi-stage advancement in the UI (`PreviousStageSeedSource`,
-  cross-group ranking of runners-up) — modelled (D-CMP-16), not built.
+  cross-group ranking of runners-up) — modelled (D-CMP-16), not built. Before
+  it is: when a stage counts as complete, how a tie at the advancement cut is
+  broken, and seeds per stage rather than per entrant (design §14).
 - **Open:** free-for-all heats as matches with N slots (a generator and a
   placement-points calculator); the leaderboard with heats covers the need
   by hand until then.

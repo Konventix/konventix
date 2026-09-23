@@ -20,6 +20,14 @@ halves; the first is done and the second is below.
       then. Competition owns the start time and Agenda never writes it
       (D-AGD-03); a selected competition renders as an open-ended block until
       #117's duration estimator can answer an end (D-AGD-02).
+      #296 has landed, so this is no longer blocked on it. **One
+      precondition remains, on Competition's side:** `UnpublishCompetition`
+      emits no event, so a competition unpublished after it was selected
+      would stay in the public programme. Competition must add
+      `CompetitionUnpublished(competitionId, eventId, brandId,
+      unpublishedAt)` and this projection must remove its row on it, in the
+      same change that builds this half (competition design §14,
+      "Unpublishing a competition tells nobody").
 
 ## Backlog
 

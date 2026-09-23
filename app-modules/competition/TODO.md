@@ -21,12 +21,13 @@ ADR-0062). The build order for #32, each item its own merge request:
       `signup_closes_at` passes and opens it when the window arrives (§4),
       and the automatic `Finished` when the last stage's final result lands
       (§8).
-- [ ] Signup (D-CMP-17): captain `role`, `invite_code`, the interested list,
-      `incomplete` entrants, `FillIncompleteEntrant` / `DeclineIncompleteEntrant`
-      at close, `/my/tournaments` and join-by-code; `ParticipantProfile`
-      from `UserProfileUpdated`.
-- [ ] Check-in (D-CMP-18): the presence read model from Admission's events,
-      `CheckInEntrant` / `UndoCheckIn`, self-service window, desk list.
+- [x] Signup (D-CMP-17, #297): captain `role`, `invite_code`, the interested
+      list, `incomplete` entrants, `FillIncompleteEntrant` /
+      `DeclineIncompleteEntrant` at close, `/my/tournaments` and join-by-code;
+      `ParticipantProfile` from `UserProfileUpdated`.
+- [x] Check-in (D-CMP-18, #298): the presence read model from Admission's
+      events, `CheckInEntrant` / `UndoCheckIn`, self-service window, desk
+      list.
 - [x] Leaderboard format (D-CMP-16, #299): `competition_score_entries`,
       `LeaderboardSettings`, `LeaderboardStandingsCalculator`,
       `SubmitScoreEntry` / `VerifyScoreEntry`; `entry_source` /
@@ -90,9 +91,9 @@ ADR-0062). The build order for #32, each item its own merge request:
       both it and the check-in list now use Wayfinder routes. Every console
       controller is held to the admin host's own brands
       (`ScopesToOperator`). Left: the check-in list keeps its own screen and
-      the desk links to it (§14); `MatchRescheduled` is still not emitted —
-      §12's event list is reconciled with #302; no proof upload anywhere on
-      the desk (#322).
+      the desk links to it (§14); `MatchRescheduled` is not emitted, because a
+      reschedule re-emits `MatchScheduled` (#302's reconciliation); no proof
+      upload anywhere on the desk (#322).
 - [x] Public pages (D-CMP-22, #301 second half): LanBrackets' canvas
       bracket ported onto semantic tokens (`components/bracket/`) with the
       table view as its accessible alternative, both from one `BracketData`;
@@ -108,8 +109,8 @@ ADR-0062). The build order for #32, each item its own merge request:
       `competition_event_summaries` (slug and name) for the `{slug}` routes,
       backfilled by `event:replay-details`. Left: no proof upload control
       anywhere until #322 — a `required` competition says the desk collects
-      the proof; the refusal causes are still English (#302); the hub cards
-      are 0.9.0's next two tasks.
+      the proof; the refusal causes were still English (German since #302); the
+      hub cards followed.
 - [x] Hub cards (§10a, D-HUB-07): *Nächste Spiele* — the viewer's open
       matches at the running event, soonest first, five at most, each with
       one nudge (Streitfall offen / Ergebnis bestätigen / Wartet auf
@@ -136,12 +137,69 @@ ADR-0062). The build order for #32, each item its own merge request:
       retroactive, and unlinking removes nobody. Left: GameOps' catalogue
       event may suggest the value one day (ADR-0062); check-in does not ask
       for the link.
-- [ ] Capabilities and roles (D-CMP-23): `ViewEntrantContacts`; Tournament
-      Desk as a second default role. (`CheckInEntrants` and
-      `ManageSchedule` landed with the desk actions they gate.)
-- [ ] Metrics, dashboard row and the open-dispute alert (ADR-0059); GDPR
-      export and anonymisation for the new tables; the two
-      definition-of-done flows and the feature-off test.
+- [x] Capabilities, observability, GDPR and the definition of done (#302):
+      `ViewEntrantContacts` and the **Tournament Desk** default role beside
+      Tournament Admin (§11); the console honours the module gate through
+      `ScopesToOperator`, and `CompetitionActivationTest` proves both hosts go
+      quiet with the module off; §12 reconciled against the code (design §14),
+      which changed `MatchScheduled` to wait for every side and to be
+      re-announced when the bracket fills a timed match or a correction voids
+      one; every refusal a participant can reach answers in German
+      (`participantMessage()`), the join form's single sentence included; the
+      four §13 metrics, the dashboard's *Tournaments* row and
+      `KonventixCompetitionDisputeWaiting`; GDPR export of reports, score
+      entries and history rows, and erasure on the eligibility read model; the
+      two definition-of-done flows (a 2v2 CS cup, a Trackmania leaderboard),
+      which found that a leaderboard competition could never start.
+
+## Owed
+
+Found on the way and not built. Each one is still true as of #302.
+
+- [ ] **The signup scheduler tick** (§4): nothing opens signup when
+      `signup_opens_at` arrives or closes it when `signup_closes_at` passes.
+      Signup is derived from the window, so entering works on time, but a
+      competition published ahead of its window emits no `SignupOpened` when
+      it opens, and the status stays `Published` until the organizer closes
+      it.
+- [ ] **`CompetitionUnpublished`** before Agenda's competition half ships
+      (design §14; Agenda's `TODO.md` names it as its precondition).
+- [ ] **Two notices §12 names**: "a match was disputed" to the side that
+      reported, and "checked in" to the roster. The hub cards and the match
+      page show both today (design §14, "§12 reconciled").
+- [ ] **A contact view** behind `ViewEntrantContacts`, once a read model
+      carries contact data (design §14).
+- [ ] **The admin navigation's module gate**: the console entries stay
+      visible with the module off everywhere and lead to empty lists. Hiding
+      them is a Platform change to admin navigation (design §14).
+- [ ] **Door presence after a mid-event enable**: `AdmissionOwnershipAnnounced`
+      carries no scan time, so `checked_in_at` cannot be backfilled. Until
+      Admission adds a backfill that carries the first `in` scan, operators
+      leave `requires_event_check_in` off (docs/operations.md).
+- [ ] **Multi-stage preconditions** (design §14): when a stage counts as
+      complete, the tie policy at the advancement cut, and seeds per stage
+      rather than on `entrants.seed`.
+- [ ] **Free text on erasure**: a note that names its own author survives
+      the author's erasure (design §14).
+- [ ] The team page still shows match times in the reader's zone, where the
+      match page and the hub card use the event's (§10a).
+- [ ] A knocked-out entrant keeps polling *Nächste Spiele* until the
+      competition ends: there is no eliminated state.
+- [ ] Deferred review minors, each small: `status` is in `Competition`'s
+      `$fillable`, a second door into the state machine; `StartCompetition`
+      runs its guards before the row lock; the invite-code retry loop cannot
+      retry under Postgres (a unique violation aborts the transaction) though
+      its docblock says it does; `ExpressInterest::enteredTeamOf()` is N+1;
+      `my/Tournaments.vue` declares a `brandId` prop it never uses; decline
+      is possible before signup closes; `ScheduleRound` silently does nothing
+      for a round with no open match; the default time on the desk's round
+      form is set for the first round only; `window.confirm` where the dialog
+      primitive belongs; the console scope test walks a hand-written route
+      list; `LeaderboardStandingsCalculator` falls back to a `0.0`
+      tiebreaker; `SignupField` breaks `created_at` ties without a final key;
+      a replayed `AdmissionIssued` out of order can null an existing holder;
+      the deferred `afterCommit()` dispatches do not restore the brand
+      context a later listener might read.
 
 ## Backlog
 
