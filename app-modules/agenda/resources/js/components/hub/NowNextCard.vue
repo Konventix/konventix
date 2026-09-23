@@ -29,7 +29,9 @@ import { formatTime } from '@/lib/datetime';
  * tournament's page — which `NowNext` only sends while Competition is on
  * for the brand. The mark and link are written out here rather than taken
  * from the programme's `ProgrammeCellTitle`, because a hub component
- * imports only `@/components/ui/*`, `@/lib/*` and generated types.
+ * imports only `@/components/ui/*`, `@/lib/*` and generated types. The badge
+ * renders `as="span"`: it sits in a `<p>`, where its default div would be
+ * reparented by the browser and break SSR hydration.
  *
  * Both entries are independently null and the card says so rather than
  * hiding: before the first item of the day there is only a "Gleich", after
@@ -61,6 +63,7 @@ const props = defineProps<Props>();
                 <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <Badge
                         v-if="props.now.kind === 'competition'"
+                        as="span"
                         variant="outline"
                     >
                         Turnier
@@ -97,6 +100,7 @@ const props = defineProps<Props>();
                 <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <Badge
                         v-if="props.next.kind === 'competition'"
+                        as="span"
                         variant="outline"
                     >
                         Turnier

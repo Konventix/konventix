@@ -9,6 +9,11 @@ import { Badge } from '@/components/ui/badge';
  * the builder handed over a `url`. The builder sends one only while
  * Competition is on for the brand, so a missing link is a decision, not a
  * gap to fill here.
+ *
+ * Everything here is phrasing content — the badge renders `as="span"`, not
+ * its default div — because the grid and the phone list put this title
+ * inside a `<p>`, and a div there is invalid HTML the browser reparents,
+ * which breaks SSR hydration on every block.
  */
 type Props = {
     cell: Konventix.Agenda.Data.ProgrammeCellData;
@@ -19,7 +24,11 @@ const props = defineProps<Props>();
 
 <template>
     <span class="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-        <Badge v-if="props.cell.kind === 'competition'" variant="outline">
+        <Badge
+            v-if="props.cell.kind === 'competition'"
+            as="span"
+            variant="outline"
+        >
             Turnier
         </Badge>
         <Link
