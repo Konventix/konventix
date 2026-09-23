@@ -145,7 +145,7 @@ it('refuses interest from somebody without a registration in German', function (
     $brand = $this->withBrand();
     $this->activateModule('competition', $brand);
 
-    $competition = Competition::factory()->create();
+    $competition = Competition::factory()->forEvent(competitionPublicEvent($brand->id))->create();
     $stranger = User::factory()->create();
 
     $this->actingAs($stranger)
@@ -161,7 +161,10 @@ it('turns a proof away in German where the competition takes none', function ():
 
     Storage::fake('media');
 
-    [$competition, $field] = competitionFieldWithRosters(1, ['proof_policy' => ProofPolicy::None]);
+    [$competition, $field] = competitionFieldWithRosters(1, [
+        'proof_policy' => ProofPolicy::None,
+        'event_id' => competitionPublicEvent($brand->id),
+    ]);
 
     // A person who can sign in, on the side's roster, so the refusal is the
     // policy's and not the membership check's.

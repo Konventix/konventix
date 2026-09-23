@@ -13,6 +13,8 @@ use Konventix\Competition\Models\CompetitionTeamMember;
 use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\MatchSlot;
 use Konventix\Competition\Models\Stage;
+use Konventix\Event\Events\EventCreated;
+use Konventix\Event\Events\EventPublished;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
@@ -281,4 +283,36 @@ function competitionSidesOf(CompetitionMatch $match): array
     }
 
     return $sides;
+}
+
+/**
+ * An event Competition knows to be public (design §10), learned the only way
+ * it ever is: Event's `EventCreated`, then `EventPublished` (ADR-0004). Every
+ * participant write refuses a competition of an event that is not public, the
+ * tournament pages' own rule (final review fix wave B, item 3), so a test of
+ * such a write needs one. Returns the event's ULID; pass one to publish an
+ * event a competition already points at. Idempotent per brand and event.
+ */
+function competitionPublicEvent(string $brandId, ?string $eventId = null): string
+{
+    $eventId ??= (string) Str::ulid();
+
+    event(new EventCreated(
+        eventId: $eventId,
+        brandId: $brandId,
+        slug: 'event-'.strtolower($eventId),
+        name: 'SXLan '.substr($eventId, -4),
+        startsAt: '2026-11-20 10:00:00',
+        endsAt: '2026-11-22 18:00:00',
+        timezone: 'Europe/Berlin',
+        predecessorEventId: null,
+    ));
+
+    event(new EventPublished(
+        eventId: $eventId,
+        brandId: $brandId,
+        publishedAt: '2026-10-01T10:00:00+00:00',
+    ));
+
+    return $eventId;
 }

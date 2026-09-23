@@ -13,6 +13,7 @@ use Konventix\Competition\Actions\StoreProofImage;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\Entrant;
+use Konventix\Competition\Models\EventSummary;
 
 /**
  * The participant's door for a proof image (design §8.7).
@@ -36,6 +37,12 @@ class ProofUploadController
 {
     public function store(Request $request, Competition $competition, StoreProofImage $storeProofImage): JsonResponse
     {
+        // The tournament pages' rule, as for every participant write: a draft
+        // competition, or one of an event that is not public, is not there
+        // (final review, part 2, M3; fix wave B, item 3). Asked before the
+        // file is looked at, so a refusal stores nothing.
+        abort_if(! $competition->status->isPubliclyVisible() || ! EventSummary::isPublicEvent($competition->event_id), 404);
+
         $validated = $request->validate([
             'entrant_id' => ['required', 'ulid'],
             'file' => [

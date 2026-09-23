@@ -22,6 +22,7 @@ use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionTeam;
 use Konventix\Competition\Models\CompetitionTeamMember;
 use Konventix\Competition\Models\Entrant;
+use Konventix\Competition\Models\EventSummary;
 use Konventix\Competition\Models\ParticipantProfile;
 use Konventix\Competition\Pages\MyOpenResults;
 use Konventix\Competition\Pages\TournamentPages;
@@ -207,13 +208,7 @@ final class MyTournamentsController
     {
         $userId = $this->actorId($request);
 
-        /** @var Entrant|null $model */
-        $model = Entrant::query()->whereKey($entrant)->first();
-        abort_if($model === null, 404);
-
-        /** @var CompetitionTeam|null $team */
-        $team = CompetitionTeam::query()->whereKey($model->competition_team_id)->first();
-        abort_if($team === null || ! $team->hasMember($userId), 404);
+        [$model, $team] = $this->findOwnEntrant($entrant, $userId);
         abort_unless($team->isCaptain($userId), 403);
 
         try {
@@ -243,13 +238,7 @@ final class MyTournamentsController
     {
         $userId = $this->actorId($request);
 
-        /** @var Entrant|null $model */
-        $model = Entrant::query()->whereKey($entrant)->first();
-        abort_if($model === null, 404);
-
-        /** @var CompetitionTeam|null $team */
-        $team = CompetitionTeam::query()->whereKey($model->competition_team_id)->first();
-        abort_if($team === null || ! $team->hasMember($userId), 404);
+        [$model] = $this->findOwnEntrant($entrant, $userId);
 
         try {
             $checkIn->handle($model, $userId);
@@ -260,6 +249,27 @@ final class MyTournamentsController
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Ihr seid eingecheckt.')]);
 
         return back();
+    }
+
+    /**
+     * An entry of a team the viewer is on, at an event that is public — the
+     * tournament pages' rule, so an entry at a draft or cancelled event
+     * takes no write by id (fix wave B, item 3). Anything else is a 404.
+     *
+     * @return array{0: Entrant, 1: CompetitionTeam}
+     */
+    private function findOwnEntrant(string $entrant, string $userId): array
+    {
+        /** @var Entrant|null $model */
+        $model = Entrant::query()->whereKey($entrant)->first();
+        abort_if($model === null, 404);
+
+        /** @var CompetitionTeam|null $team */
+        $team = CompetitionTeam::query()->whereKey($model->competition_team_id)->first();
+        abort_if($team === null || ! $team->hasMember($userId), 404);
+        abort_unless(EventSummary::isPublicEvent($team->event_id), 404);
+
+        return [$model, $team];
     }
 
     private function findOwnTeam(string $team, string $userId): CompetitionTeam

@@ -17,6 +17,7 @@ use Konventix\Competition\Http\Controllers\Concerns\AnswersTheParticipant;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionTeam;
 use Konventix\Competition\Models\EligibleRegistration;
+use Konventix\Competition\Models\EventSummary;
 use Konventix\Competition\Pages\TournamentPages;
 
 /**
@@ -109,7 +110,11 @@ final class CompetitionPageController
     {
         /** @var Competition|null $model */
         $model = Competition::query()->whereKey($competition)->first();
-        abort_if($model === null || ! $model->status->isPubliclyVisible(), 404);
+        // The page's own rule: a draft competition, or any competition of an
+        // event that is not public, does not exist here (fix wave B, item 3).
+        abort_if($model === null
+            || ! $model->status->isPubliclyVisible()
+            || ! EventSummary::isPublicEvent($model->event_id), 404);
 
         return $model;
     }

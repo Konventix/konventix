@@ -66,4 +66,21 @@ class EventSummary extends Model
     {
         return in_array($this->state, self::PUBLIC_STATES, true);
     }
+
+    /**
+     * The same question for a participant write, which is keyed by a
+     * competition's or an entrant's id and never passes through
+     * `/events/{slug}`: a competition of a draft event must not take an
+     * entry, a report or an interest by id either (final review, part 4,
+     * M10; fix wave B, item 3). The page's rule exactly — a projected name
+     * and a public state — through the ambient `BrandScope`, so another
+     * brand's event is as absent as a draft.
+     */
+    public static function isPublicEvent(string $eventId): bool
+    {
+        /** @var self|null $event */
+        $event = self::query()->where('event_id', $eventId)->first();
+
+        return $event !== null && $event->name !== null && $event->isPublic();
+    }
 }

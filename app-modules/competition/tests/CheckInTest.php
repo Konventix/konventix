@@ -879,7 +879,8 @@ it('lets a captain check in from /my/tournaments inside the window and nobody el
     $brand = $this->withBrand();
     $this->activateModule('competition', $brand);
 
-    $eventId = (string) Str::ulid();
+    // A public event: the check-in is a participant write (fix wave B, item 3).
+    $eventId = competitionPublicEvent($brand->id);
     $competition = checkInTestCompetition($eventId, CheckInMode::SelfService, teamSize: 2, overrides: [
         'check_in_opens_minutes_before' => 180,
     ]);

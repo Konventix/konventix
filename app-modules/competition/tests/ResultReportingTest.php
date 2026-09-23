@@ -899,7 +899,10 @@ describe('the proof upload route (§8.7)', function (): void {
 
         Storage::fake('media');
 
-        [$competition, $field] = competitionFieldWithRosters(1, ['proof_policy' => ProofPolicy::None]);
+        [$competition, $field] = competitionFieldWithRosters(1, [
+            'proof_policy' => ProofPolicy::None,
+            'event_id' => competitionPublicEvent($brand->id),
+        ]);
 
         // Any signed-in account: the policy is asked before the roster is.
         $this->actingAs(User::factory()->create())
@@ -927,7 +930,10 @@ describe('the proof upload route (§8.7)', function (): void {
 
         Storage::fake('media');
 
-        [$competition, $field] = competitionFieldWithRosters(1, ['proof_policy' => ProofPolicy::None]);
+        [$competition, $field] = competitionFieldWithRosters(1, [
+            'proof_policy' => ProofPolicy::None,
+            'event_id' => competitionPublicEvent($brand->id),
+        ]);
         $user = User::factory()->create();
 
         for ($attempt = 1; $attempt <= 10; $attempt++) {

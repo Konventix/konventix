@@ -11,6 +11,7 @@ use Konventix\Competition\Actions\ExpressInterest;
 use Konventix\Competition\Actions\WithdrawInterest;
 use Konventix\Competition\Exceptions\CompetitionEntryException;
 use Konventix\Competition\Models\Competition;
+use Konventix\Competition\Models\EventSummary;
 
 /**
  * The public "Ich würde mitspielen" list (design §5.3).
@@ -67,13 +68,18 @@ final class InterestController
     /**
      * Brand-scoped by the ambient `BrandScope` on the brand host, so a
      * competition of another brand is simply not there — a 404, and no
-     * answer about whether it exists.
+     * answer about whether it exists. A draft competition, and any
+     * competition of an event that is not public, is not there either: the
+     * page's rule, as in the other participant controllers (final review,
+     * part 2, M4; fix wave B, item 3).
      */
     private function find(string $competition): Competition
     {
         /** @var Competition|null $model */
         $model = Competition::query()->whereKey($competition)->first();
-        abort_if($model === null, 404);
+        abort_if($model === null
+            || ! $model->status->isPubliclyVisible()
+            || ! EventSummary::isPublicEvent($model->event_id), 404);
 
         return $model;
     }

@@ -14,6 +14,7 @@ use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionInterest;
 use Konventix\Competition\Models\Discipline;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Models\Brand;
 
 /**
@@ -39,6 +40,10 @@ use Konventix\Platform\Models\Brand;
  */
 function signupHttpCompetition(int $teamSize, string $eventId): Competition
 {
+    // At a public event, under whichever brand is in context: a participant
+    // write refuses any other (fix wave B, item 3).
+    competitionPublicEvent((string) app(BrandContext::class)->id(), $eventId);
+
     return Competition::factory()->create([
         'discipline_id' => Discipline::factory()->teamSize($teamSize)->create()->getKey(),
         'event_id' => $eventId,

@@ -1632,3 +1632,19 @@ and whether its status is `confirmed` now). It follows the pattern of
 replay brings every row to the registration's current state.
 `docs/operations.md` lists it among the Competition backfills.
 
+### §10, 2026-09-23 (final review fix wave B) — a participant write asks the page's rule itself
+
+The fix round made a draft event's tournament pages 404. The participant
+writes do not go through `/events/{slug}`: they are keyed by a competition's
+or an entrant's id and checked only the competition's status. A published
+competition of a draft event therefore took entries, reports, interest and
+proofs by id (final review, part 4, M10).
+
+Every participant write now asks what the pages ask: the competition is not
+a draft, and its event has a projected name and a public state
+(`EventSummary::isPublicEvent()`). That covers enter, score entry, report,
+confirm, dispute, interest, proof upload, and a captain's withdrawal and
+check-in. Anything else is a 404, like the page. Team-level writes (create,
+join, leave, a new invite code) name no competition and keep the §5.1 gate
+as their only event check.
+

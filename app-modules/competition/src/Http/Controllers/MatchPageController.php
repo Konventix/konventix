@@ -17,6 +17,7 @@ use Konventix\Competition\Http\Controllers\Concerns\AnswersTheParticipant;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\Entrant;
+use Konventix\Competition\Models\EventSummary;
 use Konventix\Competition\Pages\TournamentPages;
 
 /**
@@ -85,7 +86,9 @@ final class MatchPageController
     {
         /** @var Competition|null $owner */
         $owner = Competition::query()->whereKey($competition)->first();
-        abort_if($owner === null || ! $owner->status->isPubliclyVisible(), 404);
+        abort_if($owner === null
+            || ! $owner->status->isPubliclyVisible()
+            || ! EventSummary::isPublicEvent($owner->event_id), 404);
 
         /** @var CompetitionMatch|null $model */
         $model = CompetitionMatch::query()
