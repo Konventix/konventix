@@ -18,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Konventix\Platform\Http\Middleware\EnsureOperatorHost;
 use Konventix\Platform\Http\Middleware\ResolveBrand;
+use Konventix\Platform\Http\Middleware\SetRequestLocale;
 use Sentry\Laravel\Integration;
 use Spatie\Health\Http\Controllers\HealthCheckJsonResultsController;
 
@@ -89,6 +90,8 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->web(append: [
+            // Locale before Inertia shares it (ADR-0068).
+            SetRequestLocale::class,
             HandleAppearance::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,

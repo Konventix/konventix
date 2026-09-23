@@ -12,7 +12,8 @@ export type AuthenticatedUser = {
     id: string;
     name: string;
     avatarUrl: string | null;
-    locale: string;
+    // null follows the brand (ADR-0068 §4)
+    locale: string | null;
     timezone: string | null;
 };
 

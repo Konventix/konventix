@@ -20,6 +20,8 @@ use Konventix\Platform\Data\FooterLinkData;
 use Konventix\Platform\Enums\Permission as PlatformPermission;
 use Konventix\Platform\Environment\DeploymentEnvironment;
 use Konventix\Platform\Hub\ActiveEventContext;
+use Konventix\Platform\Locales\LocaleResolver;
+use Konventix\Platform\Locales\Locales;
 use Konventix\Platform\Models\AdminFavorite;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\FooterColumn;
@@ -186,6 +188,19 @@ class HandleInertiaRequests extends Middleware
             // `resources/js/lib/datetime.ts` is the only consumer, and a page
             // that had to pass the setting along is a page that could forget.
             'dateTimeFormat' => $this->dateTimeFormat(),
+            // ADR-0068: the resolved locale, the chain the catalogs load
+            // along (variant → base → fallback), the pickable set for the
+            // settings selects, and the brand's own locale for content
+            // containers (`lang` on brand text, ADR-0055).
+            'locale' => app()->getLocale(),
+            'localeChain' => app(Locales::class)->chain(app()->getLocale()),
+            'locales' => array_map(
+                fn (string $code): array => ['code' => $code, 'name' => app(Locales::class)->nativeName($code)],
+                app(Locales::class)->supported(),
+            ),
+            'contentLocale' => app(BrandContext::class)->current() !== null
+                ? app(LocaleResolver::class)->forBrand(app(BrandContext::class)->current())
+                : app(LocaleResolver::class)->forOperator(app(OperatorContext::class)->current()),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             // The topbar's cart badge (ADR-0047, Task 11). The query itself
             // lives behind Commerce's own `CartSummary` service — the host

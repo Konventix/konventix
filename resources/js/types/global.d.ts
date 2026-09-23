@@ -41,6 +41,12 @@ declare module '@inertiajs/core' {
             /** The corner ribbon off production; null on production. */
             environment: Konventix.Platform.Data.EnvironmentRibbonData | null;
             auth: Auth;
+            /** ADR-0068: the resolved locale and the chain catalogs load along. */
+            locale: string;
+            localeChain: string[];
+            locales: { code: string; name: string }[];
+            /** The brand's own locale — `lang` for brand content (ADR-0055). */
+            contentLocale: string;
             /**
              * Whether the signed-in account has confirmed its email address;
              * `null` for a guest. Kept off `Auth` on purpose — see
