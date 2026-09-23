@@ -36,6 +36,8 @@ use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventPublished;
 use Konventix\Event\Events\EventUnpublished;
 use Konventix\Identity\Models\User;
+use Konventix\Messaging\Actions\SendMessage;
+use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Models\Brand;
 
 /**
@@ -928,6 +930,66 @@ it('answers a score sent to a finished competition in German, not with the desk\
 
     expect(ScoreEntry::query()->where('entrant_id', $a->id)->exists())->toBeFalse();
 });
+
+it('refuses a report, a confirm and a dispute once the competition is over, in German, and files and sends nothing', function (CompetitionStatus $status): void {
+    // Final review, part 4, I2: `ReportMatchResult` had no lifecycle guard,
+    // so the first claim on a leftover match of a finished or cancelled
+    // tournament was filed and the other side e-mailed to confirm it.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+    $eventId = publicPagesEvent($brand);
+
+    [$competition, [$a, $b, , $d], $members, $stage] = publicPagesBracket($eventId);
+    $first = competitionMatchAt($stage, 1, 1);
+    $second = competitionMatchAt($stage, 1, 2);
+
+    // $a's claim on match 1 while the tournament ran, for the confirm and the
+    // dispute to answer; match 2 has no claim at all, for the report.
+    app(ReportMatchResult::class)->handle($first, $a, new MatchReportData(scores: [1 => 16, 2 => 9]), $members[$a->id]);
+
+    $competition->forceFill(['status' => $status])->save();
+
+    $sent = new ArrayObject;
+    app()->instance(SendMessage::class, new class($sent)
+    {
+        /** @param  ArrayObject<int, SendMessageRequest>  $sent */
+        public function __construct(private ArrayObject $sent) {}
+
+        /** @return list<mixed> */
+        public function handle(SendMessageRequest $request): array
+        {
+            $this->sent->append($request);
+
+            return [];
+        }
+    });
+
+    $ofB = publicPagesMember($b);
+    $ofD = publicPagesMember($d);
+    $over = 'Dieses Turnier ist vorbei und nimmt keine Ergebnisse mehr an.';
+
+    $this->actingAs($ofB)
+        ->post('/tournaments/'.$competition->id.'/matches/'.$second->id.'/report', ['scores' => [1 => 16, 2 => 9]])
+        ->assertSessionHasErrors(['scores' => $over]);
+
+    $this->actingAs($ofD)
+        ->post('/tournaments/'.$competition->id.'/matches/'.$first->id.'/confirm')
+        ->assertSessionHasErrors(['result' => $over]);
+
+    $this->actingAs($ofD)
+        ->post('/tournaments/'.$competition->id.'/matches/'.$first->id.'/dispute', ['reason' => 'Das stimmt nicht.'])
+        ->assertSessionHasErrors(['reason' => 'Dieses Turnier ist vorbei. Gegen seine Ergebnisse kann kein Einspruch mehr eingelegt werden.']);
+
+    // Nothing filed on match 2, match 1 untouched, nobody told anything.
+    expect(MatchResultReport::query()->where('competition_match_id', $second->id)->count())->toBe(0)
+        ->and($second->fresh()->reported_at)->toBeNull()
+        ->and($first->fresh()->state)->toBe(MatchState::Pending)
+        ->and($first->fresh()->disputed_at)->toBeNull()
+        ->and($sent->count())->toBe(0);
+})->with([
+    'finished' => [CompetitionStatus::Finished],
+    'cancelled' => [CompetitionStatus::Cancelled],
+]);
 
 it('offers and takes no dispute in a desk_only competition', function (): void {
     // M7: in `desk_only` the sides submit nothing (§8.1) — a dispute

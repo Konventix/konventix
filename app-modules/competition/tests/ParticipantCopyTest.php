@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Konventix\Competition\Enums\ProofPolicy;
 use Konventix\Competition\Enums\TeamRole;
 use Konventix\Competition\Exceptions\CompetitionEntryException;
+use Konventix\Competition\Exceptions\IllegalMatchStateTransitionException;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
+use Konventix\Competition\Http\Controllers\Concerns\AnswersTheParticipant;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionTeamMember;
 use Konventix\Identity\Models\User;
@@ -76,6 +79,10 @@ function participantCopyReachable(): array
         'notALeaderboard' => ResultSubmissionException::notALeaderboard($id, 'swiss'),
         'notInTheField' => ResultSubmissionException::notInTheField($id, $id),
         'noLongerScores' => ResultSubmissionException::noLongerScores($id, 'withdrawn'),
+        // Dispute only: a report or a confirm on a competition that is over
+        // is refused by the lifecycle guard first, whose German sentence
+        // `AnswersTheParticipant` supplies (final review, part 4, I2), and a
+        // re-report during a dispute no longer disputes again (part 1, I5).
         'alreadyDisputed' => ResultSubmissionException::alreadyDisputed($id),
         'resultsOver' => ResultSubmissionException::competitionOver($id, 'finished'),
     ];
@@ -174,4 +181,33 @@ it('turns a proof away in German where the competition takes none', function ():
         ->assertSessionHasErrors(['file' => 'Dieses Turnier nimmt keine Beweisbilder an.']);
 
     expect(Storage::disk('media')->allFiles())->toBe([]);
+});
+
+it('answers a match that moved on under the participant with one German sentence on the field', function (): void {
+    // Final review, part 4, I2: nothing in the suite asserted this mapping.
+    // Since the fix wave re-reads the match under the lock before every
+    // participant check (part 1, I3), a settled match is refused with its own
+    // German cause, and no participant route reaches the state machine's
+    // refusal any more — so the mapping is pinned here, on the concern every
+    // participant controller answers through, rather than through a race a
+    // test cannot stage.
+    $controller = new class
+    {
+        use AnswersTheParticipant;
+
+        public function answer(callable $work, string $field): mixed
+        {
+            return $this->attempt($work, $field);
+        }
+    };
+
+    try {
+        $controller->answer(static function (): never {
+            throw new IllegalMatchStateTransitionException('Match [01J0000000000000000000000] cannot transition from [finished] to [finished].');
+        }, 'result');
+
+        $this->fail('The refusal was not answered as a form error.');
+    } catch (ValidationException $e) {
+        expect($e->errors())->toBe(['result' => ['Dieses Spiel hat sich inzwischen geändert. Lade die Seite neu.']]);
+    }
 });
