@@ -12,7 +12,13 @@ use Konventix\Agenda\Events\AgendaItemPublished;
 use Konventix\Agenda\Hub\NowNextCard;
 use Konventix\Agenda\Listeners\Metrics\RecordAgendaMetrics;
 use Konventix\Agenda\Listeners\ProjectEventSummary;
+use Konventix\Agenda\Listeners\ProjectProgrammeCompetition;
 use Konventix\Agenda\Metrics\AgendaMetrics;
+use Konventix\Competition\Events\CompetitionAnnounced;
+use Konventix\Competition\Events\CompetitionCancelled;
+use Konventix\Competition\Events\CompetitionPublished;
+use Konventix\Competition\Events\CompetitionRescheduled;
+use Konventix\Competition\Events\CompetitionUnpublished;
 use Konventix\Event\Events\EventAnnounced;
 use Konventix\Event\Events\EventArchived;
 use Konventix\Event\Events\EventCancelled;
@@ -125,6 +131,19 @@ class AgendaServiceProvider extends ModuleServiceProvider
         Event::listen(EventConcluded::class, [ProjectEventSummary::class, 'handleLifecycle']);
         Event::listen(EventCancelled::class, [ProjectEventSummary::class, 'handleLifecycle']);
         Event::listen(EventArchived::class, [ProjectEventSummary::class, 'handleLifecycle']);
+
+        // The programme's competition blocks (timetable design §4.5): a read
+        // model of Competition's announced tournaments, projected here and
+        // nowhere else. Ungated for the reason above — a brand switching
+        // Agenda on after its tournaments were published must find them
+        // selectable. `CompetitionAnnounced` is the backfill's restatement
+        // (`competition:announce-competitions`) and only projections may
+        // listen to it.
+        Event::listen(CompetitionPublished::class, [ProjectProgrammeCompetition::class, 'handlePublished']);
+        Event::listen(CompetitionRescheduled::class, [ProjectProgrammeCompetition::class, 'handleRescheduled']);
+        Event::listen(CompetitionCancelled::class, [ProjectProgrammeCompetition::class, 'handleCancelled']);
+        Event::listen(CompetitionUnpublished::class, [ProjectProgrammeCompetition::class, 'handleUnpublished']);
+        Event::listen(CompetitionAnnounced::class, [ProjectProgrammeCompetition::class, 'handleAnnounced']);
 
         // The counter behind the platform dashboard's "Programme items
         // published" (ADR-0059). No gate check: `AgendaItemPublished` is
