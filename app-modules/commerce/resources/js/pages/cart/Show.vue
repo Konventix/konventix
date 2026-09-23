@@ -130,12 +130,12 @@ const expiresInMinutes = computed<number | null>(() => {
 </script>
 
 <template>
-    <Head title="Your cart" />
+    <Head :title="$t('Your cart')" />
 
     <div
         class="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6 text-text lg:p-8"
     >
-        <Heading as="h1" title="Your cart" />
+        <Heading as="h1" :title="$t('Your cart')" />
 
         <CartRemovedLines
             v-if="cart.removedLines.length > 0"
@@ -143,9 +143,9 @@ const expiresInMinutes = computed<number | null>(() => {
         />
 
         <p v-if="cart.lines.length === 0" class="text-sm text-text-muted">
-            Your cart is empty.
+            {{ $t('Your cart is empty.') }}
             <Link :href="shopIndex().url" class="underline underline-offset-4">
-                Browse the shop
+                {{ $t('Browse the shop') }}
             </Link>
         </p>
 
@@ -155,10 +155,12 @@ const expiresInMinutes = computed<number | null>(() => {
                 role="status"
                 class="text-sm text-text-muted"
             >
-                Expires in {{ expiresInMinutes }} minute<span
-                    v-if="expiresInMinutes !== 1"
-                    >s</span
-                >
+                {{
+                    $tChoice(
+                        '{1} Expires in :count minute|[0,*] Expires in :count minutes',
+                        expiresInMinutes,
+                    )
+                }}
             </p>
 
             <ul class="flex flex-col gap-3">
@@ -179,7 +181,12 @@ const expiresInMinutes = computed<number | null>(() => {
                             line.label
                         }}</span>
                         <span class="text-sm text-text-muted">
-                            {{ line.unitAmountGross }} {{ cart.currency }} each
+                            {{
+                                $t(':amount :currency each', {
+                                    amount: line.unitAmountGross,
+                                    currency: cart.currency,
+                                })
+                            }}
                             {{ taxNote('gross', cart.smallBusinessScheme) }}
                         </span>
                     </div>
@@ -195,7 +202,11 @@ const expiresInMinutes = computed<number | null>(() => {
                                 :disabled="
                                     busyLineId === line.id || line.quantity <= 1
                                 "
-                                :aria-label="`Decrease quantity of ${line.label}`"
+                                :aria-label="
+                                    $t('Decrease quantity of :item', {
+                                        item: line.label,
+                                    })
+                                "
                                 @click="changeQuantity(line, line.quantity - 1)"
                             >
                                 <Minus class="size-3" />
@@ -214,14 +225,22 @@ const expiresInMinutes = computed<number | null>(() => {
                                     (line.maxQuantity !== null &&
                                         line.quantity >= line.maxQuantity)
                                 "
-                                :aria-label="`Increase quantity of ${line.label}`"
+                                :aria-label="
+                                    $t('Increase quantity of :item', {
+                                        item: line.label,
+                                    })
+                                "
                                 @click="changeQuantity(line, line.quantity + 1)"
                             >
                                 <Plus class="size-3" />
                             </button>
                         </div>
                         <span v-else class="text-sm text-text-muted">
-                            Qty {{ line.quantity }}
+                            {{
+                                $t('Qty :quantity', {
+                                    quantity: String(line.quantity),
+                                })
+                            }}
                         </span>
 
                         <span
@@ -234,7 +253,11 @@ const expiresInMinutes = computed<number | null>(() => {
                             type="button"
                             class="inline-flex size-8 items-center justify-center rounded-md text-text-muted transition hover:bg-danger/10 hover:text-danger disabled:pointer-events-none disabled:opacity-50"
                             :disabled="busyLineId === line.id"
-                            :aria-label="`Remove ${line.label} from your cart`"
+                            :aria-label="
+                                $t('Remove :item from your cart', {
+                                    item: line.label,
+                                })
+                            "
                             @click="removeLine(line)"
                         >
                             <Trash2 class="size-4" />
@@ -249,19 +272,19 @@ const expiresInMinutes = computed<number | null>(() => {
                 <div
                     class="flex items-center justify-between text-sm text-text-muted"
                 >
-                    <span>Subtotal</span>
+                    <span>{{ $t('Subtotal') }}</span>
                     <span>{{ cart.totalNet }} {{ cart.currency }}</span>
                 </div>
                 <div
                     class="flex items-center justify-between text-sm text-text-muted"
                 >
-                    <span>Tax</span>
+                    <span>{{ $t('Tax') }}</span>
                     <span>{{ cart.totalTax }} {{ cart.currency }}</span>
                 </div>
                 <div
                     class="flex items-center justify-between font-semibold text-text"
                 >
-                    <span>Total</span>
+                    <span>{{ $t('Total') }}</span>
                     <span>
                         {{ cart.totalGross }} {{ cart.currency }}
                         <span class="font-normal text-text-muted">
@@ -306,12 +329,15 @@ const expiresInMinutes = computed<number | null>(() => {
                     @click="choose(account.id)"
                 >
                     <CreditCard class="size-4" />
-                    Continue — {{ account.label }}
+                    {{ $t('Continue — :account', { account: account.label }) }}
                 </Button>
 
                 <p role="status" class="text-sm text-text-muted">
-                    You will see what you are agreeing to before the order is
-                    placed.
+                    {{
+                        $t(
+                            'You will see what you are agreeing to before the order is placed.',
+                        )
+                    }}
                 </p>
 
                 <InputError :message="accountError" />

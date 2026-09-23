@@ -108,16 +108,16 @@ const holdUntilLabel = computed(() =>
 </script>
 
 <template>
-    <Head title="Pay for your order" />
+    <Head :title="$t('Pay for your order')" />
 
     <div
         class="mx-auto flex w-full max-w-xl flex-col gap-6 p-6 text-text lg:p-8"
     >
-        <h1 class="text-2xl font-semibold">Pay for your order</h1>
+        <h1 class="text-2xl font-semibold">{{ $t('Pay for your order') }}</h1>
 
         <Card class="border-border bg-surface">
             <CardHeader>
-                <CardTitle>Order summary</CardTitle>
+                <CardTitle>{{ $t('Order summary') }}</CardTitle>
             </CardHeader>
             <CardContent class="flex flex-col gap-2 text-sm">
                 <div
@@ -143,7 +143,7 @@ const holdUntilLabel = computed(() =>
                 <div
                     class="mt-2 flex items-center justify-between border-t border-border pt-2 font-semibold"
                 >
-                    <span>Total</span>
+                    <span>{{ $t('Total') }}</span>
                     <span
                         >{{ props.order.totalGross }} {{ props.order.currency }}
                         {{
@@ -152,8 +152,12 @@ const holdUntilLabel = computed(() =>
                     >
                 </div>
                 <p class="text-xs text-text-muted">
-                    includes {{ props.order.totalTax }}
-                    {{ props.order.currency }} tax
+                    {{
+                        $t('includes :amount :currency tax', {
+                            amount: props.order.totalTax,
+                            currency: props.order.currency,
+                        })
+                    }}
                 </p>
             </CardContent>
         </Card>
@@ -164,7 +168,7 @@ const holdUntilLabel = computed(() =>
             class="flex items-center gap-3 rounded-md border border-border bg-surface p-4 text-success"
         >
             <CheckCircle2 class="size-5" />
-            <span>Payment received — you are all set.</span>
+            <span>{{ $t('Payment received — you are all set.') }}</span>
         </div>
 
         <div
@@ -173,15 +177,15 @@ const holdUntilLabel = computed(() =>
             class="flex items-center gap-3 rounded-md border border-border bg-surface p-4 text-danger"
         >
             <RotateCcw class="size-5" />
-            <span>
-                Payment reversed — this amount is owed again<template
-                    v-if="props.repayDueOn"
-                >
-                    until
-                    <time :datetime="props.repayDueOn">{{
-                        formatCalendarDate(props.repayDueOn)
-                    }}</time></template
+            <span v-if="props.repayDueOn">
+                {{ $t('Payment reversed — this amount is owed again until') }}
+                <time :datetime="props.repayDueOn">{{
+                    formatCalendarDate(props.repayDueOn)
+                }}</time
                 >.
+            </span>
+            <span v-else>
+                {{ $t('Payment reversed — this amount is owed again.') }}
             </span>
         </div>
 
@@ -191,7 +195,9 @@ const holdUntilLabel = computed(() =>
             class="flex items-center gap-3 rounded-md border border-border bg-surface p-4 text-danger"
         >
             <XCircle class="size-5" />
-            <span>The last payment attempt did not go through.</span>
+            <span>{{
+                $t('The last payment attempt did not go through.')
+            }}</span>
         </div>
 
         <!--
@@ -204,8 +210,12 @@ const holdUntilLabel = computed(() =>
             role="status"
             class="text-sm text-text-muted"
         >
-            Your reservation is held until {{ holdUntilLabel }}. After that the
-            order is released and the items go back on sale.
+            {{
+                $t(
+                    'Your reservation is held until :time. After that the order is released and the items go back on sale.',
+                    { time: holdUntilLabel },
+                )
+            }}
         </p>
 
         <p
@@ -228,7 +238,7 @@ const holdUntilLabel = computed(() =>
             <div
                 v-if="props.accounts.length > 0"
                 role="group"
-                aria-label="Payment options"
+                :aria-label="$t('Payment options')"
                 :aria-describedby="
                     accountError ? 'pay-order-account-error' : undefined
                 "
@@ -241,13 +251,23 @@ const holdUntilLabel = computed(() =>
                     @click="choose(account.id)"
                 >
                     <CreditCard class="size-4" />
-                    {{ lastAttemptFailed ? 'Try again' : 'Continue' }}
-                    — {{ account.label }}
+                    {{
+                        lastAttemptFailed
+                            ? $t('Try again — :account', {
+                                  account: account.label,
+                              })
+                            : $t('Continue — :account', {
+                                  account: account.label,
+                              })
+                    }}
                 </Button>
 
                 <p role="status" class="text-sm text-text-muted">
-                    You will see what you are agreeing to before the order is
-                    placed.
+                    {{
+                        $t(
+                            'You will see what you are agreeing to before the order is placed.',
+                        )
+                    }}
                 </p>
 
                 <!--
@@ -262,8 +282,11 @@ const holdUntilLabel = computed(() =>
             </div>
 
             <p v-else class="text-sm text-text-muted">
-                This organizer settles by bank transfer — payment details arrive
-                with your confirmation.
+                {{
+                    $t(
+                        'This organizer settles by bank transfer — payment details arrive with your confirmation.',
+                    )
+                }}
             </p>
         </template>
     </div>

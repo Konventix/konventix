@@ -1,3 +1,5 @@
+import { trans } from 'laravel-vue-i18n';
+
 /**
  * The orders console's shared reversal vocabulary (ADR-0057 point 8): the
  * index list and the order detail page both show reversals, so the wording
@@ -11,34 +13,23 @@ export type OrderReversal = Konventix.Commerce.Data.OrderReversalData;
 export type UnappliedPayment = Konventix.Commerce.Data.UnappliedPaymentData;
 
 /**
- * Only the status whose raw value says the wrong thing gets a label:
- * `payment_reversed` is not a variant of "paid", it is "was paid, and is
- * owed again" (ADR-0057 point 3).
+ * Built per call rather than at import time: the catalog is loaded after
+ * the modules are imported (ADR-0068). Order and reversal *status* labels
+ * live in `lib/statusLabels.ts`, which the public pages share.
  */
-const statusLabels: Record<string, string> = {
-    payment_reversed: 'Payment reversed',
-};
-
-export function orderStatusLabel(status: string): string {
-    return statusLabels[status] ?? status;
-}
-
-const reversalKindLabels: Record<
-    Konventix.Commerce.Enums.ReversalKind,
-    string
-> = {
-    return: 'Return',
-    dispute: 'Dispute',
-    external_refund: 'Dashboard refund',
-    // A refund made here, in the console (#247); the row exists to carry the
-    // provider's own reference for it.
-    refund: 'Refund',
-};
-
 export function reversalKindLabel(
     kind: Konventix.Commerce.Enums.ReversalKind,
 ): string {
-    return reversalKindLabels[kind] ?? kind;
+    const labels: Record<Konventix.Commerce.Enums.ReversalKind, string> = {
+        return: trans('Return'),
+        dispute: trans('Dispute'),
+        external_refund: trans('Dashboard refund'),
+        // A refund made here, in the console (#247); the row exists to carry
+        // the provider's own reference for it.
+        refund: trans('Refund'),
+    };
+
+    return labels[kind] ?? kind;
 }
 
 /**

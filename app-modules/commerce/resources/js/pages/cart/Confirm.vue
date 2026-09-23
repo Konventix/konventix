@@ -7,7 +7,7 @@ import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
-import { ORDER_WITH_OBLIGATION_TO_PAY, taxNote } from '@/lib/purchaseTexts';
+import { orderWithObligationToPay, taxNote } from '@/lib/purchaseTexts';
 import { consentListSignature } from '../pay/confirmation';
 import type { ConfirmationSlot } from '../pay/confirmation';
 
@@ -78,16 +78,16 @@ function checkout(): void {
 </script>
 
 <template>
-    <Head title="Confirm your order" />
+    <Head :title="$t('Confirm your order')" />
 
     <div
         class="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6 text-text lg:p-8"
     >
-        <Heading as="h1" title="Confirm your order" />
+        <Heading as="h1" :title="$t('Confirm your order')" />
 
         <Card class="border-border bg-surface">
             <CardHeader>
-                <CardTitle>Order summary</CardTitle>
+                <CardTitle>{{ $t('Order summary') }}</CardTitle>
             </CardHeader>
             <CardContent class="flex flex-col gap-2 text-sm">
                 <div
@@ -103,7 +103,7 @@ function checkout(): void {
                 <div
                     class="mt-2 flex items-center justify-between border-t border-border pt-2 font-semibold"
                 >
-                    <span>Total</span>
+                    <span>{{ $t('Total') }}</span>
                     <span
                         >{{ props.summary.totalGross }}
                         {{ props.summary.currency }}
@@ -113,11 +113,16 @@ function checkout(): void {
                     >
                 </div>
                 <p class="text-xs text-text-muted">
-                    includes {{ props.summary.totalTax }}
-                    {{ props.summary.currency }} tax
+                    {{
+                        $t('includes :amount :currency tax', {
+                            amount: props.summary.totalTax,
+                            currency: props.summary.currency,
+                        })
+                    }}
                 </p>
                 <p class="mt-2 border-t border-border pt-2">
-                    Paying with <strong>{{ props.account.label }}</strong>
+                    {{ $t('Paying with') }}
+                    <strong>{{ props.account.label }}</strong>
                 </p>
             </CardContent>
         </Card>
@@ -135,7 +140,7 @@ function checkout(): void {
         <div class="flex flex-col items-start gap-2">
             <Button :disabled="placing || !canCheckout" @click="checkout()">
                 <CreditCard class="size-4" />
-                {{ ORDER_WITH_OBLIGATION_TO_PAY }}
+                {{ orderWithObligationToPay() }}
             </Button>
 
             <p
@@ -143,7 +148,7 @@ function checkout(): void {
                 role="status"
                 class="text-sm text-text-muted"
             >
-                Confirm the documents above to place your order.
+                {{ $t('Confirm the documents above to place your order.') }}
             </p>
 
             <InputError :message="accountError" />
@@ -153,7 +158,7 @@ function checkout(): void {
                 class="flex items-center gap-1 text-sm underline underline-offset-4"
             >
                 <ArrowLeft class="size-4" />
-                Back to your cart
+                {{ $t('Back to your cart') }}
             </Link>
         </div>
     </div>

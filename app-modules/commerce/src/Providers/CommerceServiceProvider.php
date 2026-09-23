@@ -539,10 +539,10 @@ class CommerceServiceProvider extends ModuleServiceProvider
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Guten Tag {{ $recipientName }},</p>
-                    <p>anbei erhalten Sie die Rechnung <strong>{{ $invoiceNumber }}</strong>
+                    <p>Hallo {{ $recipientName }},</p>
+                    <p>anbei bekommst du die Rechnung <strong>{{ $invoiceNumber }}</strong>
                     über <strong>{{ $totalGross }} {{ $currency }}</strong>.</p>
-                    <p>Bitte begleichen Sie den Betrag bis zum <strong>{{ $dueOn }}</strong>
+                    <p>Bitte begleiche den Betrag bis zum <strong>{{ $dueOn }}</strong>
                     unter Angabe der Rechnungsnummer.</p>
                     <p>Mit freundlichen Grüßen<br>{{ $sellerName }}</p>
                     BLADE,
@@ -555,7 +555,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p>Kind regards<br>{{ $sellerName }}</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'recipientName' => 'Erika Musterfrau',
                 'invoiceNumber' => 'RE-2026-0142',
@@ -569,15 +569,15 @@ class CommerceServiceProvider extends ModuleServiceProvider
         $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
             key: 'commerce.invoice-paid',
             subjects: [
-                'de' => 'Ihre Rechnung {{ $invoiceNumber }} – bezahlt',
+                'de' => 'Deine Rechnung {{ $invoiceNumber }} – bezahlt',
                 'en' => 'Your invoice {{ $invoiceNumber }} – paid',
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Guten Tag {{ $recipientName }},</p>
-                    <p>vielen Dank für Ihre Zahlung über <strong>{{ $totalGross }} {{ $currency }}</strong>
+                    <p>Hallo {{ $recipientName }},</p>
+                    <p>vielen Dank für deine Zahlung über <strong>{{ $totalGross }} {{ $currency }}</strong>
                     am <strong>{{ $paidAt }}</strong> via <strong>{{ $paidVia }}</strong>.</p>
-                    <p>Anbei erhalten Sie die Rechnung <strong>{{ $invoiceNumber }}</strong> als Beleg.</p>
+                    <p>Anbei bekommst du die Rechnung <strong>{{ $invoiceNumber }}</strong> als Beleg.</p>
                     <p>Mit freundlichen Grüßen<br>{{ $sellerName }}</p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -588,7 +588,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p>Kind regards<br>{{ $sellerName }}</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'recipientName' => 'Erika Musterfrau',
                 'invoiceNumber' => 'RE-2026-0142',
@@ -618,8 +618,8 @@ class CommerceServiceProvider extends ModuleServiceProvider
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Guten Tag {{ $recipientName }},</p>
-                    <p>anbei erhalten Sie die Gutschrift <strong>{{ $creditNoteNumber }}</strong>
+                    <p>Hallo {{ $recipientName }},</p>
+                    <p>anbei bekommst du die Gutschrift <strong>{{ $creditNoteNumber }}</strong>
                     über <strong>{{ $totalGross }} {{ $currency }}</strong> vom
                     <strong>{{ $issuedOn }}</strong>, Grund: <strong>{{ $reasonLabelDe }}</strong>.</p>
                     @if ($invoiceNumber)
@@ -646,7 +646,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p>Kind regards<br>{{ $sellerName }}</p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'recipientName' => 'Erika Musterfrau',
                 'creditNoteNumber' => 'GS-2026-0007',
@@ -667,17 +667,17 @@ class CommerceServiceProvider extends ModuleServiceProvider
         $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
             key: 'commerce.order-confirmation',
             subjects: [
-                'de' => 'Ihre Bestellung {{ $orderNumberShort }}',
+                'de' => 'Deine Bestellung {{ $orderNumberShort }}',
                 'en' => 'Your order {{ $orderNumberShort }}',
             ],
             bodies: [
                 'de' => <<<'BLADE'
                     @if ($recipientName)
-                    <p>Guten Tag {{ $recipientName }},</p>
+                    <p>Hallo {{ $recipientName }},</p>
                     @else
-                    <p>Guten Tag,</p>
+                    <p>Hallo,</p>
                     @endif
-                    <p>vielen Dank für Ihre Bestellung <strong>{{ $orderNumberShort }}</strong>
+                    <p>vielen Dank für deine Bestellung <strong>{{ $orderNumberShort }}</strong>
                     vom {{ $placedAt }}.</p>
                     <table>
                     <tbody>
@@ -692,7 +692,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     </table>
                     <p>Gesamt: <strong>{{ $totalGross }} {{ $currency }}</strong></p>
                     @if ($reservationUntil)
-                    <p>Ihre Reservierung gilt bis {{ $reservationUntil }} — schließen Sie die
+                    <p>Deine Reservierung gilt bis {{ $reservationUntil }} — schließ die
                     Zahlung bis dahin ab.</p>
                     @endif
                     @if ($payUrl)
@@ -732,7 +732,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p><a href="{{ $ordersUrl }}">My orders</a></p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'recipientName' => 'Erika Musterfrau',
                 'orderNumberShort' => 'A1B2C3',
@@ -760,11 +760,11 @@ class CommerceServiceProvider extends ModuleServiceProvider
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Guten Tag,</p>
-                    <p>Ihre Zahlung zur Bestellung <strong>{{ $orderNumberShort }}</strong>
+                    <p>Hallo,</p>
+                    <p>deine Zahlung zur Bestellung <strong>{{ $orderNumberShort }}</strong>
                     ist fehlgeschlagen. {{ $reason }}</p>
                     @if ($payBy)
-                    <p>Bitte schließen Sie die Zahlung bis {{ $payBy }} ab — danach wird die
+                    <p>Bitte schließ die Zahlung bis {{ $payBy }} ab — danach wird die
                     Bestellung storniert und das Reservierte wieder freigegeben.</p>
                     @endif
                     <p><a href="{{ $retryUrl }}">Zahlung erneut versuchen</a></p>
@@ -784,7 +784,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p><a href="{{ $ordersUrl }}">My orders</a></p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'orderNumberShort' => 'A1B2C3',
                 'reason' => 'Die Karte wurde abgelehnt.',
@@ -809,11 +809,11 @@ class CommerceServiceProvider extends ModuleServiceProvider
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Guten Tag,</p>
+                    <p>Hallo,</p>
                     <p>der Betrag von <strong>{{ $amount }} {{ $currency }}</strong> zur
                     Bestellung <strong>{{ $orderNumberShort }}</strong> wurde zurückgebucht.
                     {{ $reasonDe }}</p>
-                    <p>Ihre Bestellung bleibt bestehen. Bitte gleichen Sie den Betrag bis zum
+                    <p>Deine Bestellung bleibt bestehen. Bitte gleich den Betrag bis zum
                     <strong>{{ $dueOn }}</strong> aus.</p>
                     <p><a href="{{ $payUrl }}">Jetzt bezahlen</a></p>
                     <p><a href="{{ $orderUrl }}">Bestellung ansehen</a></p>
@@ -830,7 +830,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p><a href="{{ $ordersUrl }}">My orders</a></p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'orderNumberShort' => 'A1B2C3',
                 'amount' => '119.00',
@@ -859,11 +859,11 @@ class CommerceServiceProvider extends ModuleServiceProvider
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Guten Tag,</p>
+                    <p>Hallo,</p>
                     <p>der Betrag von <strong>{{ $amount }} {{ $currency }}</strong> zur
                     Bestellung <strong>{{ $orderNumberShort }}</strong> wurde zurückgebucht.
                     {{ $reasonDe }}</p>
-                    <p>Ihre Bestellung bleibt bestehen; der Betrag ist bis zum
+                    <p>Deine Bestellung bleibt bestehen; der Betrag ist bis zum
                     <strong>{{ $dueOn }}</strong> erneut offen. Eine Online-Zahlung ist für
                     diese Bestellung derzeit nicht möglich — der Veranstalter kann eine
                     Überweisung oder eine Zahlung vor Ort verbuchen.</p>
@@ -882,7 +882,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p><a href="{{ $ordersUrl }}">My orders</a></p>
                     BLADE,
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'orderNumberShort' => 'A1B2C3',
                 'amount' => '119.00',
@@ -910,10 +910,10 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 'en' => '{{ $title }}',
             ],
             bodies: [
-                'de' => '<p>{{ $detail }}</p><p><a href="{{ $url }}">Im Konsolenbereich öffnen</a></p>',
+                'de' => '<p>{{ $detail }}</p><p><a href="{{ $url }}">In der Konsole öffnen</a></p>',
                 'en' => '<p>{{ $detail }}</p><p><a href="{{ $url }}">Open in the console</a></p>',
             ],
-            defaultLocale: 'de',
+            defaultLocale: 'en',
             sample: [
                 'title' => 'Lager leer: Tagesticket',
                 'detail' => 'Das Kontingent für Tagesticket ist ausverkauft.',

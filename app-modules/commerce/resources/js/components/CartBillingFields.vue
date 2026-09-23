@@ -37,10 +37,12 @@ defineProps<{
 <template>
     <div class="flex flex-col gap-4 border-t border-border pt-4">
         <p class="text-sm text-text-muted">
-            Orders over 250 € need a billing address on the invoice.
+            {{ $t('Orders over 250 € need a billing address on the invoice.') }}
         </p>
         <div class="grid gap-2">
-            <Label for="billingAddressLine">Street and number</Label>
+            <Label for="billingAddressLine">{{
+                $t('Street and number')
+            }}</Label>
             <Input
                 id="billingAddressLine"
                 v-model="addressLine"
@@ -59,7 +61,7 @@ defineProps<{
         </div>
         <div class="grid grid-cols-3 gap-2">
             <div class="grid gap-2">
-                <Label for="billingPostalCode">Postal code</Label>
+                <Label for="billingPostalCode">{{ $t('Postal code') }}</Label>
                 <Input
                     id="billingPostalCode"
                     v-model="postalCode"
@@ -77,7 +79,7 @@ defineProps<{
                 />
             </div>
             <div class="col-span-2 grid gap-2">
-                <Label for="billingCity">City</Label>
+                <Label for="billingCity">{{ $t('City') }}</Label>
                 <Input
                     id="billingCity"
                     v-model="city"
@@ -94,7 +96,7 @@ defineProps<{
             </div>
         </div>
         <div class="grid gap-2">
-            <Label for="billingCountryCode">Country code</Label>
+            <Label for="billingCountryCode">{{ $t('Country code') }}</Label>
             <Input
                 id="billingCountryCode"
                 v-model="countryCode"

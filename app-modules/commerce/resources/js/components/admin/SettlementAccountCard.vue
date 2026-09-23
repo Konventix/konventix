@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { router, useForm } from '@inertiajs/vue3';
 import { Unplug } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -64,7 +65,9 @@ function saveLabel(): void {
 function disconnect(): void {
     if (
         confirm(
-            'Disconnect this account? The brand falls back to manual booking until a new one is connected.',
+            trans(
+                'Disconnect this account? The brand falls back to manual booking until a new one is connected.',
+            ),
         )
     ) {
         router.post(
@@ -90,20 +93,24 @@ type OfferedStatus = {
  */
 function offeredStatus(account: SettlementAccount): OfferedStatus {
     if (account.offered) {
-        return { text: 'Offered at checkout', variant: 'default' };
+        return { text: trans('Offered at checkout'), variant: 'default' };
     }
 
     if (account.provider === 'stripe') {
         return {
             text: props.stripeSetup.secretKeySet
-                ? 'Enabled — no Stripe signing secret on this instance yet'
-                : 'Enabled — no Stripe key on this instance yet',
+                ? trans(
+                      'Enabled — no Stripe signing secret on this instance yet',
+                  )
+                : trans('Enabled — no Stripe key on this instance yet'),
             variant: 'destructive',
         };
     }
 
     return {
-        text: `Connected — not yet active at ${providerNames[account.provider] ?? account.provider}`,
+        text: trans('Connected — not yet active at :provider', {
+            provider: providerNames[account.provider] ?? account.provider,
+        }),
         variant: 'secondary',
     };
 }
@@ -125,13 +132,21 @@ function offeredStatus(account: SettlementAccount): OfferedStatus {
                 {{ account.providerAccountId }}
             </span>
             <span v-if="account.connectedAt" class="text-xs text-text-muted">
-                connected {{ formatCalendarDate(account.connectedAt) }}
+                {{
+                    $t('connected :date', {
+                        date: formatCalendarDate(account.connectedAt),
+                    })
+                }}
             </span>
             <span
                 v-if="account.statementDescriptorSuffix"
                 class="font-mono text-xs text-text-muted"
             >
-                statement: {{ account.statementDescriptorSuffix }}
+                {{
+                    $t('statement: :suffix', {
+                        suffix: account.statementDescriptorSuffix,
+                    })
+                }}
             </span>
         </div>
 
@@ -141,12 +156,12 @@ function offeredStatus(account: SettlementAccount): OfferedStatus {
         >
             <div class="flex flex-col gap-2">
                 <Label :for="`checkout-label-${account.id}`">
-                    Checkout label
+                    {{ $t('Checkout label') }}
                 </Label>
                 <Input
                     :id="`checkout-label-${account.id}`"
                     v-model="labelForm.checkoutLabel"
-                    placeholder="Card payment"
+                    :placeholder="$t('Card payment')"
                     class="max-w-xs"
                     :aria-invalid="
                         labelForm.errors.checkoutLabel ? true : undefined
@@ -167,7 +182,7 @@ function offeredStatus(account: SettlementAccount): OfferedStatus {
                 class="flex flex-col gap-2"
             >
                 <Label :for="`statement-suffix-${account.id}`">
-                    Statement descriptor suffix
+                    {{ $t('Statement descriptor suffix') }}
                 </Label>
                 <Input
                     :id="`statement-suffix-${account.id}`"
@@ -191,20 +206,22 @@ function offeredStatus(account: SettlementAccount): OfferedStatus {
                     :id="`statement-suffix-${account.id}-hint`"
                     class="max-w-xs text-xs text-text-muted"
                 >
-                    Stripe prepends the account's own prefix and caps the two
-                    together at 22 characters. Leave empty to use the account's
-                    own descriptor.
+                    {{
+                        $t(
+                            'Stripe prepends the account’s own prefix and caps the two together at 22 characters. Leave empty to use the account’s own descriptor.',
+                        )
+                    }}
                 </p>
             </div>
             <Button type="submit" size="sm" :disabled="labelForm.processing">
-                Save
+                {{ $t('Save') }}
             </Button>
             <span
                 v-if="labelForm.isDirty"
                 role="status"
                 class="text-sm text-warning"
             >
-                Unsaved changes
+                {{ $t('Unsaved changes') }}
             </span>
         </form>
 
@@ -215,7 +232,7 @@ function offeredStatus(account: SettlementAccount): OfferedStatus {
             @click="disconnect"
         >
             <Unplug class="size-4" />
-            Disconnect
+            {{ $t('Disconnect') }}
         </Button>
     </div>
 </template>

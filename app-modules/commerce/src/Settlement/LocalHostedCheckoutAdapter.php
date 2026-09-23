@@ -84,6 +84,6 @@ final class LocalHostedCheckoutAdapter implements ProvidesHostedCheckout, Settle
 
     public function defaultCheckoutLabel(): string
     {
-        return 'Test checkout (no PSP)';
+        return __('Test checkout (no PSP)');
     }
 }

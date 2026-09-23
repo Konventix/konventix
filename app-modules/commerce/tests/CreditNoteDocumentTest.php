@@ -673,8 +673,8 @@ it('prints the credited subset line by line with a per-rate breakdown (#7)', fun
         ->toContain('7,00 %')
         // The per-rate breakdown a mixed-rate subset needs: one sum cannot
         // be checked against two bases.
-        ->toContain('Umsatzsteuer 19,00 % auf 100,00 €')
-        ->toContain('Umsatzsteuer 7,00 % auf 100,00 €')
+        ->toContain('VAT 19,00 % on 100,00 €')
+        ->toContain('VAT 7,00 % on 100,00 €')
         ->toContain('226,00');
 });
 

@@ -39,15 +39,15 @@ const props = defineProps<{
 </script>
 
 <template>
-    <Head title="Shop" />
+    <Head :title="$t('Shop')" />
 
     <div
         class="mx-auto flex w-full max-w-3xl flex-col gap-8 p-6 text-text lg:p-8"
     >
         <Heading
             as="h1"
-            title="Shop"
-            description="Merchandise for this brand"
+            :title="$t('Shop')"
+            :description="$t('Merchandise for this brand')"
         />
 
         <!--
@@ -56,7 +56,7 @@ const props = defineProps<{
             the contributions below say so themselves.
         -->
         <p v-if="props.products.length === 0" class="text-sm text-text-muted">
-            No merchandise yet.
+            {{ $t('No merchandise yet.') }}
         </p>
 
         <ul v-if="props.products.length > 0" class="grid gap-4 sm:grid-cols-2">
@@ -80,7 +80,7 @@ const props = defineProps<{
                             v-if="product.soldOut"
                             class="shrink-0 rounded-full bg-danger/15 px-2 py-0.5 text-xs font-medium text-danger"
                         >
-                            Sold out
+                            {{ $t('Sold out') }}
                         </span>
                     </div>
 

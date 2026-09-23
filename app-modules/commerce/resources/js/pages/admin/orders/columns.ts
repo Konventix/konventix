@@ -1,15 +1,18 @@
 import { Link } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import type { VNode } from 'vue';
 import { h } from 'vue';
 import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import { show as showOrder } from '@/routes/admin/orders';
-import type { OrderReversal, UnappliedPayment } from './reversals';
 import {
     orderStatusLabel,
-    repaymentDeadline,
-    reversalKindLabel,
-} from './reversals';
+    reversalStatusLabel,
+    settlesTypeLabel,
+    taxTreatmentLabel,
+} from '../../../lib/labels';
+import type { OrderReversal, UnappliedPayment } from './reversals';
+import { repaymentDeadline, reversalKindLabel } from './reversals';
 
 export type OrderRow = {
     id: string;
@@ -46,141 +49,153 @@ const reversalStatusClasses: Record<string, string> = {
     withdrawn: 'bg-success/15 text-success',
 };
 
-const treatmentLabels: Record<string, string> = {
-    standard: 'USt.',
-    reverse_charge: 'Reverse charge',
-    small_business: '§ 19 UStG',
-};
-
 /**
  * Sort-eligible columns must stay in sync with the allowlist in
  * `OrderAdminController::index()` (`created_at`, `status`, `total_gross`).
+ *
+ * A function, not a constant: the headers are catalog lookups, and the
+ * catalog is loaded after this module is imported (ADR-0068).
  */
-export const columns: ColumnDef<OrderRow>[] = [
-    {
-        id: 'invoice',
-        header: 'Invoice',
-        enableSorting: false,
-        // A link, not a span: the table's row click opens this same page,
-        // and a `<tr>` cannot take focus — without a real link here the
-        // order is unreachable by keyboard (WCAG 2.1.1). An order without an
-        // invoice yet still needs the way in, so the number falls back to the
-        // label the row would otherwise show nothing for.
-        cell: ({ row }) =>
-            h(
-                Link,
-                {
-                    href: showOrder(row.original.id).url,
-                    class: 'font-medium underline-offset-4 hover:underline',
-                },
-                () => row.original.invoice?.number ?? 'Open order',
-            ),
-    },
-    {
-        accessorKey: 'settlesId',
-        header: 'Settles',
-        enableSorting: false,
-        cell: ({ row }) =>
-            h('span', { class: 'text-text-muted' }, [
-                h('span', {}, `${row.original.settlesType} `),
+export function orderColumns(): ColumnDef<OrderRow>[] {
+    return [
+        {
+            id: 'invoice',
+            header: trans('Invoice'),
+            enableSorting: false,
+            // A link, not a span: the table's row click opens this same page,
+            // and a `<tr>` cannot take focus — without a real link here the
+            // order is unreachable by keyboard (WCAG 2.1.1). An order without an
+            // invoice yet still needs the way in, so the number falls back to the
+            // label the row would otherwise show nothing for.
+            cell: ({ row }) =>
                 h(
-                    'span',
-                    { class: 'font-mono text-xs' },
-                    row.original.settlesId,
+                    Link,
+                    {
+                        href: showOrder(row.original.id).url,
+                        class: 'font-medium underline-offset-4 hover:underline',
+                    },
+                    () => row.original.invoice?.number ?? trans('Open order'),
                 ),
-            ]),
-    },
-    {
-        accessorKey: 'status',
-        header: 'Status',
-        enableSorting: true,
-        cell: ({ row }) => {
-            const status = row.getValue<string>('status');
-            const deadline = repaymentDeadline(row.original.reversals);
-
-            const badge = h(
-                'span',
-                {
-                    class: `inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusClasses[status] ?? 'bg-subtle text-text-muted'}`,
-                },
-                orderStatusLabel(status),
-            );
-
-            if (status !== 'payment_reversed' || deadline === null) {
-                return badge;
-            }
-
-            // The sale stands and the amount is owed again (ADR-0057
-            // point 3); the status word alone does not say until when.
-            return h('span', { class: 'flex flex-wrap items-baseline gap-1' }, [
-                badge,
-                h(
-                    'span',
-                    { class: 'text-xs text-text-muted' },
-                    `— owed again until ${deadline}`,
-                ),
-            ]);
         },
-    },
-    {
-        accessorKey: 'provider',
-        header: 'Provider',
-        enableSorting: false,
-        cell: ({ row }) =>
-            h(
-                'span',
-                { class: 'text-text-muted' },
-                row.original.provider ?? '—',
-            ),
-    },
-    {
-        accessorKey: 'total_gross',
-        accessorFn: (row) => row.totalGross,
-        header: 'Total',
-        enableSorting: true,
-        cell: ({ row }) =>
-            h('span', { class: 'tabular-nums' }, [
+        {
+            accessorKey: 'settlesId',
+            header: trans('Settles'),
+            enableSorting: false,
+            cell: ({ row }) =>
+                h('span', { class: 'text-text-muted' }, [
+                    h(
+                        'span',
+                        {},
+                        `${settlesTypeLabel(row.original.settlesType)} `,
+                    ),
+                    h(
+                        'span',
+                        { class: 'font-mono text-xs' },
+                        row.original.settlesId,
+                    ),
+                ]),
+        },
+        {
+            accessorKey: 'status',
+            header: trans('Status'),
+            enableSorting: true,
+            cell: ({ row }) => {
+                const status = row.getValue<string>('status');
+                const deadline = repaymentDeadline(row.original.reversals);
+
+                const badge = h(
+                    'span',
+                    {
+                        class: `inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusClasses[status] ?? 'bg-subtle text-text-muted'}`,
+                    },
+                    orderStatusLabel(status),
+                );
+
+                if (status !== 'payment_reversed' || deadline === null) {
+                    return badge;
+                }
+
+                // The sale stands and the amount is owed again (ADR-0057
+                // point 3); the status word alone does not say until when.
+                return h(
+                    'span',
+                    { class: 'flex flex-wrap items-baseline gap-1' },
+                    [
+                        badge,
+                        h(
+                            'span',
+                            { class: 'text-xs text-text-muted' },
+                            trans('— owed again until :date', {
+                                date: deadline,
+                            }),
+                        ),
+                    ],
+                );
+            },
+        },
+        {
+            accessorKey: 'provider',
+            header: trans('Provider'),
+            enableSorting: false,
+            cell: ({ row }) =>
                 h(
                     'span',
-                    {},
-                    `${row.original.totalGross} ${row.original.currency}`,
+                    { class: 'text-text-muted' },
+                    row.original.provider ?? '—',
                 ),
+        },
+        {
+            accessorKey: 'total_gross',
+            accessorFn: (row) => row.totalGross,
+            header: trans('Total'),
+            enableSorting: true,
+            cell: ({ row }) =>
+                h('span', { class: 'tabular-nums' }, [
+                    h(
+                        'span',
+                        {},
+                        `${row.original.totalGross} ${row.original.currency}`,
+                    ),
+                    h(
+                        'span',
+                        { class: 'ml-1 text-xs text-text-muted' },
+                        taxTreatmentLabel(row.original.taxTreatment),
+                    ),
+                ]),
+        },
+        {
+            id: 'dueOn',
+            header: trans('Due'),
+            enableSorting: false,
+            cell: ({ row }) =>
                 h(
                     'span',
-                    { class: 'ml-1 text-xs text-text-muted' },
-                    treatmentLabels[row.original.taxTreatment] ?? '',
+                    { class: 'text-text-muted' },
+                    row.original.paidAt !== null
+                        ? trans('paid :time', {
+                              time: formatDateTime(row.original.paidAt),
+                          })
+                        : formatCalendarDate(row.original.invoice?.dueOn) ||
+                              '—',
                 ),
-            ]),
-    },
-    {
-        id: 'dueOn',
-        header: 'Due',
-        enableSorting: false,
-        cell: ({ row }) =>
-            h(
-                'span',
-                { class: 'text-text-muted' },
-                row.original.paidAt !== null
-                    ? `paid ${formatDateTime(row.original.paidAt)}`
-                    : formatCalendarDate(row.original.invoice?.dueOn) || '—',
-            ),
-    },
-    {
-        accessorKey: 'created_at',
-        accessorFn: (row) => row.createdAt,
-        header: 'Placed',
-        enableSorting: true,
-        // #238: the raw server string was UTC, so a reader in Berlin saw two
-        // hours too little. `formatDateTime()` is the shared answer (#208) —
-        // the instant arrives as ISO 8601 and the browser owns the zone.
-        cell: ({ row }) =>
-            h(
-                'span',
-                { class: 'text-text-muted' },
-                formatDateTime(row.original.createdAt) || '—',
-            ),
-    },
-];
+        },
+        {
+            accessorKey: 'created_at',
+            accessorFn: (row) => row.createdAt,
+            header: trans('Placed'),
+            enableSorting: true,
+            // #238: the raw server string was UTC, so a reader in Berlin saw two
+            // hours too little. `formatDateTime()` is the shared answer (#208) —
+            // the instant arrives as ISO 8601 and the browser owns the zone.
+            cell: ({ row }) =>
+                h(
+                    'span',
+                    { class: 'text-text-muted' },
+                    formatDateTime(row.original.createdAt) || '—',
+                ),
+        },
+    ];
+}
 
 /**
  * The reversals view's own column (ADR-0057 point 8): what the provider
@@ -188,81 +203,93 @@ export const columns: ColumnDef<OrderRow>[] = [
  * it. Only that view renders it — on the ordinary list every cell would be
  * empty, and the status column already carries the reversed orders.
  */
-export const reversalColumn: ColumnDef<OrderRow> = {
-    id: 'reversal',
-    header: 'Reversal',
-    enableSorting: false,
-    cell: ({ row }) => {
-        const entries: VNode[] = row.original.reversals.map((reversal) =>
-            h('div', { class: 'flex flex-col gap-0.5' }, [
-                h('div', { class: 'flex flex-wrap items-baseline gap-2' }, [
-                    h(
-                        'span',
-                        {
-                            class: `inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${reversalStatusClasses[reversal.status] ?? 'bg-subtle text-text-muted'}`,
-                        },
-                        `${reversalKindLabel(reversal.kind)} · ${reversal.status}`,
-                    ),
-                    h(
-                        'span',
-                        { class: 'tabular-nums' },
-                        `${reversal.amount} ${reversal.currency}`,
-                    ),
-                ]),
-                h(
-                    'span',
-                    { class: 'font-mono text-xs text-text-muted' },
-                    reversal.providerReference,
-                ),
-                reversal.reasonCode
-                    ? h(
-                          'span',
-                          { class: 'text-xs text-text-muted' },
-                          reversal.reasonCode,
-                      )
-                    : null,
-                reversal.repayDueOn
-                    ? h(
-                          'span',
-                          { class: 'text-xs text-text-muted' },
-                          `owed again until ${reversal.repayDueOn}`,
-                      )
-                    : null,
-            ]),
-        );
-
-        const unapplied = row.original.unappliedPayment;
-
-        if (unapplied) {
-            entries.push(
+export function reversalColumn(): ColumnDef<OrderRow> {
+    return {
+        id: 'reversal',
+        header: trans('Reversal'),
+        enableSorting: false,
+        cell: ({ row }) => {
+            const entries: VNode[] = row.original.reversals.map((reversal) =>
                 h('div', { class: 'flex flex-col gap-0.5' }, [
                     h('div', { class: 'flex flex-wrap items-baseline gap-2' }, [
                         h(
                             'span',
                             {
-                                class: 'inline-flex rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning',
+                                class: `inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${reversalStatusClasses[reversal.status] ?? 'bg-subtle text-text-muted'}`,
                             },
-                            'Unapplied payment',
+                            `${reversalKindLabel(reversal.kind)} · ${reversalStatusLabel(reversal.status)}`,
                         ),
                         h(
                             'span',
                             { class: 'tabular-nums' },
-                            `${unapplied.amount} ${unapplied.currency}`,
+                            `${reversal.amount} ${reversal.currency}`,
                         ),
                     ]),
                     h(
                         'span',
-                        { class: 'text-xs text-text-muted' },
-                        `${unapplied.provider} · received ${formatDateTime(unapplied.receivedAt) || 'unknown'}`,
+                        { class: 'font-mono text-xs text-text-muted' },
+                        reversal.providerReference,
                     ),
+                    reversal.reasonCode
+                        ? h(
+                              'span',
+                              { class: 'text-xs text-text-muted' },
+                              reversal.reasonCode,
+                          )
+                        : null,
+                    reversal.repayDueOn
+                        ? h(
+                              'span',
+                              { class: 'text-xs text-text-muted' },
+                              trans('owed again until :date', {
+                                  date: reversal.repayDueOn,
+                              }),
+                          )
+                        : null,
                 ]),
             );
-        }
 
-        if (entries.length === 0) {
-            return h('span', { class: 'text-text-muted' }, '—');
-        }
+            const unapplied = row.original.unappliedPayment;
 
-        return h('div', { class: 'flex flex-col gap-2' }, entries);
-    },
-};
+            if (unapplied) {
+                entries.push(
+                    h('div', { class: 'flex flex-col gap-0.5' }, [
+                        h(
+                            'div',
+                            { class: 'flex flex-wrap items-baseline gap-2' },
+                            [
+                                h(
+                                    'span',
+                                    {
+                                        class: 'inline-flex rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning',
+                                    },
+                                    trans('Unapplied payment'),
+                                ),
+                                h(
+                                    'span',
+                                    { class: 'tabular-nums' },
+                                    `${unapplied.amount} ${unapplied.currency}`,
+                                ),
+                            ],
+                        ),
+                        h(
+                            'span',
+                            { class: 'text-xs text-text-muted' },
+                            `${unapplied.provider} · ${trans('received :time', {
+                                time:
+                                    formatDateTime(unapplied.receivedAt) ||
+                                    trans('unknown'),
+                            })}`,
+                        ),
+                    ]),
+                );
+            }
+
+            if (entries.length === 0) {
+                return h('span', { class: 'text-text-muted' }, '—');
+            }
+
+            return h('div', { class: 'flex flex-col gap-2' }, entries);
+        },
+    };
+}

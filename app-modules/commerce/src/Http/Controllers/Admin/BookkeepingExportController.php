@@ -69,7 +69,7 @@ class BookkeepingExportController
 
         return redirect()
             ->route('admin.bookkeeping.index')
-            ->with('success', 'Bookkeeping settings saved.');
+            ->with('success', __('Bookkeeping settings saved.'));
     }
 
     public function downloadDatev(

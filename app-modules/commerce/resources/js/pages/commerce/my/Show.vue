@@ -15,6 +15,7 @@ import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import { taxNote } from '@/lib/purchaseTexts';
 import { index as myOrders } from '@/routes/commerce/mine';
 import { show as showRegistration } from '@/routes/registration/mine';
+import { orderStatusLabel } from '../../../lib/labels';
 
 /**
  * One order on its own page — where every hosted checkout lands afterwards,
@@ -78,7 +79,7 @@ const billingLines = computed(() => {
 </script>
 
 <template>
-    <Head title="Order" />
+    <Head :title="$t('Order')" />
 
     <div class="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
         <Link
@@ -86,7 +87,7 @@ const billingLines = computed(() => {
             class="inline-flex items-center gap-1.5 text-sm text-text-muted underline-offset-4 hover:underline"
         >
             <ArrowLeft class="size-4" />
-            My orders
+            {{ $t('My orders') }}
         </Link>
 
         <header class="mb-2 space-y-0.5">
@@ -101,7 +102,11 @@ const billingLines = computed(() => {
                 <template v-else>{{ props.order.settlesLabel }}</template>
             </h1>
             <p class="text-sm text-text-muted">
-                Placed {{ formatDateTime(props.order.placedAt) }}
+                {{
+                    $t('Placed :time', {
+                        time: formatDateTime(props.order.placedAt),
+                    })
+                }}
             </p>
         </header>
 
@@ -111,13 +116,14 @@ const billingLines = computed(() => {
             class="flex items-center gap-3 rounded-md border border-border bg-surface p-4 text-success"
         >
             <CheckCircle2 class="size-5" />
-            <span>
-                Payment received — you are all set<template
-                    v-if="props.order.paidAt"
-                >
-                    ({{ formatDateTime(props.order.paidAt) }})</template
-                >.
+            <span v-if="props.order.paidAt">
+                {{
+                    $t('Payment received — you are all set (:time).', {
+                        time: formatDateTime(props.order.paidAt),
+                    })
+                }}
             </span>
+            <span v-else>{{ $t('Payment received — you are all set.') }}</span>
         </div>
 
         <div
@@ -126,15 +132,15 @@ const billingLines = computed(() => {
             class="flex items-center gap-3 rounded-md border border-border bg-surface p-4 text-danger"
         >
             <RotateCcw class="size-5" />
-            <span>
-                Payment reversed — this amount is owed again<template
-                    v-if="props.order.repayDueOn"
-                >
-                    until
-                    <time :datetime="props.order.repayDueOn">{{
-                        formatCalendarDate(props.order.repayDueOn)
-                    }}</time></template
+            <span v-if="props.order.repayDueOn">
+                {{ $t('Payment reversed — this amount is owed again until') }}
+                <time :datetime="props.order.repayDueOn">{{
+                    formatCalendarDate(props.order.repayDueOn)
+                }}</time
                 >.
+            </span>
+            <span v-else>
+                {{ $t('Payment reversed — this amount is owed again.') }}
             </span>
         </div>
 
@@ -145,8 +151,11 @@ const billingLines = computed(() => {
         >
             <Clock3 class="size-5" />
             <span>
-                Waiting for the payment confirmation from the provider. This
-                page can safely be revisited later.
+                {{
+                    $t(
+                        'Waiting for the payment confirmation from the provider. This page can safely be revisited later.',
+                    )
+                }}
             </span>
         </div>
 
@@ -156,7 +165,9 @@ const billingLines = computed(() => {
             class="flex items-center gap-3 rounded-md border border-border bg-surface p-4 text-danger"
         >
             <XCircle class="size-5" />
-            <span>The last payment attempt did not go through.</span>
+            <span>{{
+                $t('The last payment attempt did not go through.')
+            }}</span>
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
@@ -164,19 +175,21 @@ const billingLines = computed(() => {
                 class="rounded-full px-2 py-0.5 text-xs font-medium capitalize"
                 :class="statusTone[props.order.status] ?? 'bg-subtle text-text'"
             >
-                {{ props.order.status.replace('_', ' ') }}
+                {{ orderStatusLabel(props.order.status) }}
             </span>
             <span
                 v-if="props.order.invoiceNumber"
                 class="text-sm text-text-muted"
             >
-                Invoice {{ props.order.invoiceNumber }}
+                {{
+                    $t('Invoice :number', { number: props.order.invoiceNumber })
+                }}
             </span>
         </div>
 
         <Card class="border-border bg-surface">
             <CardHeader>
-                <CardTitle>Order summary</CardTitle>
+                <CardTitle>{{ $t('Order summary') }}</CardTitle>
             </CardHeader>
             <CardContent class="flex flex-col gap-2 text-sm">
                 <div
@@ -202,7 +215,7 @@ const billingLines = computed(() => {
                 <div
                     class="mt-2 flex items-center justify-between border-t border-border pt-2 font-semibold"
                 >
-                    <span>Total</span>
+                    <span>{{ $t('Total') }}</span>
                     <span
                         >{{ props.order.totalGross }} {{ props.order.currency }}
                         {{
@@ -211,16 +224,20 @@ const billingLines = computed(() => {
                     >
                 </div>
                 <p class="text-xs text-text-muted">
-                    {{ props.order.totalNet }} {{ props.order.currency }} net,
-                    includes {{ props.order.totalTax }}
-                    {{ props.order.currency }} tax
+                    {{
+                        $t(':net :currency net, includes :tax :currency tax', {
+                            net: props.order.totalNet,
+                            tax: props.order.totalTax,
+                            currency: props.order.currency,
+                        })
+                    }}
                 </p>
             </CardContent>
         </Card>
 
         <Card v-if="billingLines.length > 0" class="border-border bg-surface">
             <CardHeader>
-                <CardTitle>Billing address</CardTitle>
+                <CardTitle>{{ $t('Billing address') }}</CardTitle>
             </CardHeader>
             <CardContent class="text-sm">
                 <p v-for="(line, index) in billingLines" :key="index">
@@ -231,12 +248,16 @@ const billingLines = computed(() => {
 
         <div class="flex flex-wrap items-center gap-2">
             <Button v-if="props.order.payUrl" as-child>
-                <a :href="props.order.payUrl">Pay now</a>
+                <a :href="props.order.payUrl">{{ $t('Pay now') }}</a>
             </Button>
             <Button v-if="props.order.documentUrl" as-child variant="secondary">
                 <a :href="props.order.documentUrl">
                     <FileText class="size-4" />
-                    {{ props.order.invoicePaid ? 'Invoice (paid)' : 'Invoice' }}
+                    {{
+                        props.order.invoicePaid
+                            ? $t('Invoice (paid)')
+                            : $t('Invoice')
+                    }}
                 </a>
             </Button>
             <!--
@@ -256,7 +277,11 @@ const billingLines = computed(() => {
                 >
                     <a :href="creditNote.documentUrl">
                         <FileText class="size-4" />
-                        Credit note {{ creditNote.number }}
+                        {{
+                            $t('Credit note :number', {
+                                number: creditNote.number,
+                            })
+                        }}
                     </a>
                 </Button>
                 <span
@@ -264,7 +289,11 @@ const billingLines = computed(() => {
                     class="inline-flex items-center gap-1.5 text-xs text-text-muted"
                 >
                     <FileText class="size-4" />
-                    Credit note {{ creditNote.number }}
+                    {{
+                        $t('Credit note :number', {
+                            number: creditNote.number,
+                        })
+                    }}
                 </span>
             </template>
         </div>

@@ -2,6 +2,7 @@
 import { Head, router } from '@inertiajs/vue3';
 import { Download } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import { h } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -28,7 +29,7 @@ import {
     index as ordersIndex,
     show as showOrder,
 } from '@/routes/admin/orders';
-import { columns as baseColumns, reversalColumn } from './columns';
+import { orderColumns, reversalColumn } from './columns';
 import type { OrderRow } from './columns';
 import { canBookPayment } from './reversals';
 
@@ -69,7 +70,7 @@ const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
 const filterDefs = computed<DataTableFilterDef[]>(() => [
     {
         name: 'brand',
-        label: 'Brands',
+        label: trans('Brands'),
         value: props.filters.brand,
         options: props.brands.map((brand) => ({
             value: brand.id,
@@ -83,17 +84,23 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
     // rather than a tab strip, because that is what this list already is.
     {
         name: 'view',
-        label: 'Orders',
+        label: trans('Orders'),
         value: props.filters.view,
-        options: [{ value: 'reversals', label: 'Reversals & unapplied money' }],
+        options: [
+            { value: 'reversals', label: trans('Reversals & unapplied money') },
+        ],
     },
 ]);
 
 /** The reversals view is a filter, so its empty state is its own sentence. */
 const emptyMessage = computed(() =>
     props.filters.view === 'reversals'
-        ? 'No reversals and no unapplied money — every payment sits where it belongs.'
-        : 'No orders yet — Commerce wakes up with the first paid registration.',
+        ? trans(
+              'No reversals and no unapplied money — every payment sits where it belongs.',
+          )
+        : trans(
+              'No orders yet — Commerce wakes up with the first paid registration.',
+          ),
 );
 
 const sorting = computed<SortingState>(() =>
@@ -142,10 +149,10 @@ function confirmBooking(): void {
  * dialog state and route helpers.
  */
 const columns = computed<ColumnDef<OrderRow>[]>(() => [
-    ...baseColumns,
+    ...orderColumns(),
     // Only the reversals view renders it: on the ordinary list every cell
     // would be empty, and the status column already names a reversed order.
-    ...(props.filters.view === 'reversals' ? [reversalColumn] : []),
+    ...(props.filters.view === 'reversals' ? [reversalColumn()] : []),
     {
         id: 'actions',
         header: '',
@@ -175,7 +182,7 @@ const columns = computed<ColumnDef<OrderRow>[]>(() => [
                             size: 'sm',
                             onClick: () => (bookingOrder.value = row.original),
                         },
-                        () => 'Book payment',
+                        () => trans('Book payment'),
                     ),
                 );
             }
@@ -191,19 +198,21 @@ const columns = computed<ColumnDef<OrderRow>[]>(() => [
 </script>
 
 <template>
-    <Head title="Orders" />
+    <Head :title="$t('Orders')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Orders"
-            description="Money owed and settled across registrations"
+            :title="$t('Orders')"
+            :description="$t('Money owed and settled across registrations')"
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
             :filters="filterDefs"
-            search-placeholder="Search by invoice number or registration…"
+            :search-placeholder="
+                $t('Search by invoice number or registration…')
+            "
             @update:search="setSearch"
             @update:per-page="setPerPage"
             @update:filter="setFilter"
@@ -215,7 +224,7 @@ const columns = computed<ColumnDef<OrderRow>[]>(() => [
             :data="props.orders.data"
             :sorting="sorting"
             :pagination="pagination"
-            items-label="orders"
+            :items-label="$t('orders')"
             :empty-message="emptyMessage"
             row-clickable
             @row-click="(row: OrderRow) => router.visit(showOrder(row.id))"
@@ -229,16 +238,19 @@ const columns = computed<ColumnDef<OrderRow>[]>(() => [
         >
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Book manual payment</DialogTitle>
+                    <DialogTitle>{{ $t('Book manual payment') }}</DialogTitle>
                     <DialogDescription>
-                        Mark
+                        {{ $t('Mark as paid by bank transfer:') }}
                         <span class="font-medium">{{
                             bookingOrder?.invoice?.number ?? bookingOrder?.id
                         }}</span>
                         ({{ bookingOrder?.totalGross }}
-                        {{ bookingOrder?.currency }}) as paid by bank transfer?
-                        Registration will be notified and an on-payment
-                        confirmation completes immediately.
+                        {{ bookingOrder?.currency }}).
+                        {{
+                            $t(
+                                'Registration will be notified and an on-payment confirmation completes immediately.',
+                            )
+                        }}
                     </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
@@ -247,10 +259,10 @@ const columns = computed<ColumnDef<OrderRow>[]>(() => [
                         :disabled="booking"
                         @click="bookingOrder = null"
                     >
-                        Cancel
+                        {{ $t('Cancel') }}
                     </Button>
                     <Button :disabled="booking" @click="confirmBooking">
-                        Book payment
+                        {{ $t('Book payment') }}
                     </Button>
                 </DialogFooter>
             </DialogContent>

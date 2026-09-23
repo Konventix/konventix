@@ -35,7 +35,9 @@ const props = defineProps<{
         class="flex flex-col gap-3"
         aria-labelledby="event-shop"
     >
-        <h2 id="event-shop" class="text-lg font-medium">Shop</h2>
+        <h2 id="event-shop" class="text-lg font-medium">
+            {{ $t('Shop') }}
+        </h2>
 
         <ul class="flex flex-col gap-3">
             <li v-for="product in props.products" :key="product.id">
@@ -51,7 +53,7 @@ const props = defineProps<{
                             v-if="product.soldOut"
                             class="text-sm text-danger"
                         >
-                            Sold out
+                            {{ $t('Sold out') }}
                         </span>
                     </span>
 

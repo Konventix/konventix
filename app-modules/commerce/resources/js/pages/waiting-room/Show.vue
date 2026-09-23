@@ -103,7 +103,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <Head title="Waiting room">
+    <Head :title="$t('Waiting room')">
         <noscript>
             <meta http-equiv="refresh" content="10" />
         </noscript>
@@ -114,30 +114,41 @@ onBeforeUnmount(() => {
     >
         <Heading
             as="h1"
-            title="You're in the queue"
-            description="This page updates on its own — there's no need to refresh."
+            :title="$t('You are in the queue')"
+            :description="
+                $t(
+                    'This page updates on its own — there is no need to refresh.',
+                )
+            "
         />
 
         <div
             class="flex w-full flex-col items-center gap-3 rounded-xl border border-border bg-surface-raised p-10"
         >
             <p class="text-lg text-text" aria-live="polite">
-                You are number
+                {{ $t('Your position in the queue:') }}
                 <span class="text-3xl font-semibold text-text tabular-nums">
                     {{ position }}
                 </span>
-                in line
             </p>
 
             <p class="text-sm text-text-muted">
-                Estimated wait: about {{ estimatedMinutes }}
-                {{ estimatedMinutes === 1 ? 'minute' : 'minutes' }}
+                {{
+                    $tChoice(
+                        '{1} Estimated wait: about :count minute|[2,*] Estimated wait: about :count minutes',
+                        estimatedMinutes,
+                    )
+                }}
             </p>
         </div>
 
         <p class="text-xs text-text-muted">
-            {{ depth }} {{ depth === 1 ? 'person is' : 'people are' }} currently
-            waiting.
+            {{
+                $tChoice(
+                    '{1} :count person is currently waiting.|[0,*] :count people are currently waiting.',
+                    depth,
+                )
+            }}
         </p>
     </div>
 </template>

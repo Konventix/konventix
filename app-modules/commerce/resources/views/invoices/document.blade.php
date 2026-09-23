@@ -13,10 +13,10 @@
     @var Konventix\Commerce\Models\Order $order
 --}}
 <!DOCTYPE html>
-<html lang="de">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="utf-8">
-    <title>Rechnung {{ $invoice->invoice_number }}</title>
+    <title>{{ __('Invoice :number', ['number' => $invoice->invoice_number]) }}</title>
     <style>
         body { font-family: DejaVu Sans, sans-serif; font-size: 10pt; color: #111; margin: 0; }
         .page { padding: 24pt 32pt; }
@@ -62,33 +62,33 @@
                 <strong>{{ $seller->legalName }}</strong><br>
                 {{ $seller->addressLine }}<br>
                 {{ $seller->postalCode }} {{ $seller->city }}<br>
-                @if ($seller->vatId)USt-IdNr.: {{ $seller->vatId }}<br>@endif
-                @if ($seller->taxNumber)Steuernummer: {{ $seller->taxNumber }}<br>@endif
+                @if ($seller->vatId){{ __('VAT ID: :id', ['id' => $seller->vatId]) }}<br>@endif
+                @if ($seller->taxNumber){{ __('Tax number: :number', ['number' => $seller->taxNumber]) }}<br>@endif
             </td>
         </tr>
     </table>
 
-    <h1>Rechnung {{ $invoice->invoice_number }}</h1>
+    <h1>{{ __('Invoice :number', ['number' => $invoice->invoice_number]) }}</h1>
     <div class="meta">
-        Rechnungsdatum: {{ $dates->date($invoice->issued_on) }} ·
-        Leistungsdatum entspricht Rechnungsdatum ·
+        {{ __('Invoice date: :date', ['date' => $dates->date($invoice->issued_on)]) }} ·
+        {{ __('Date of supply equals invoice date') }} ·
         @if ($invoice->isPaid())
-            Bezahlt am: {{ $dates->date($invoice->paid_at) }}
+            {{ __('Paid on: :date', ['date' => $dates->date($invoice->paid_at)]) }}
         @else
-            Fällig am: {{ $dates->date($invoice->due_on) }}
+            {{ __('Due on: :date', ['date' => $dates->date($invoice->due_on)]) }}
         @endif
-        @if ($party->vatId)<br>USt-IdNr. des Leistungsempfängers: {{ $party->vatId }}@endif
+        @if ($party->vatId)<br>{{ __('Recipient’s VAT ID: :id', ['id' => $party->vatId]) }}@endif
     </div>
 
     <table class="lines">
         <thead>
         <tr>
-            <th style="width: 6%;">Pos.</th>
-            <th>Bezeichnung</th>
-            <th class="num" style="width: 10%;">Menge</th>
-            <th class="num" style="width: 16%;">Einzelpreis (netto)</th>
-            <th class="num" style="width: 10%;">USt.</th>
-            <th class="num" style="width: 16%;">Gesamt (netto)</th>
+            <th style="width: 6%;">{{ __('No.') }}</th>
+            <th>{{ __('Item') }}</th>
+            <th class="num" style="width: 10%;">{{ __('Quantity') }}</th>
+            <th class="num" style="width: 16%;">{{ __('Unit price (net)') }}</th>
+            <th class="num" style="width: 10%;">{{ __('VAT') }}</th>
+            <th class="num" style="width: 16%;">{{ __('Total (net)') }}</th>
         </tr>
         </thead>
         <tbody>
@@ -107,44 +107,48 @@
 
     <table class="totals">
         <tr>
-            <td>Summe netto</td>
+            <td>{{ __('Net total') }}</td>
             <td class="num">{{ $fmt($invoice->total_net) }} €</td>
         </tr>
         @if ($invoice->tax_treatment === Konventix\Commerce\Enums\TaxTreatment::Standard)
             <tr>
-                <td>Umsatzsteuer</td>
+                <td>{{ __('Value added tax') }}</td>
                 <td class="num">{{ $fmt($invoice->total_tax) }} €</td>
             </tr>
         @endif
         <tr class="grand">
-            <td>Rechnungsbetrag</td>
+            <td>{{ __('Invoice total') }}</td>
             <td class="num">{{ $fmt($invoice->total_gross) }} €</td>
         </tr>
     </table>
 
     @if ($invoice->isPaid())
-        <p class="tax-note">Bezahlt am {{ $dates->date($invoice->paid_at) }} via {{ $invoice->paid_via }}.</p>
+        <p class="tax-note">{{ __('Paid on :date via :method.', ['date' => $dates->date($invoice->paid_at), 'method' => $invoice->paid_via]) }}</p>
     @endif
 
     @if ($invoice->tax_treatment === Konventix\Commerce\Enums\TaxTreatment::SmallBusiness)
-        <p class="tax-note">Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.</p>
+        <p class="tax-note">{{ __('No VAT is charged under § 19 UStG.') }}</p>
     @elseif ($invoice->tax_treatment === Konventix\Commerce\Enums\TaxTreatment::ReverseCharge)
         <p class="tax-note">
-            Steuerschuldnerschaft des Leistungsempfängers (Reverse-Charge-Verfahren, § 13b UStG).<br>
-            Reverse charge — VAT liability shifts to the recipient.
+            {{ __('Reverse charge: the recipient is liable for the VAT (§ 13b UStG).') }}
+            {{-- The English statement stays on every non-English document:
+                 a reverse-charge recipient is by definition abroad. --}}
+            @unless (str_starts_with(app()->getLocale(), 'en'))
+                <br>Reverse charge — VAT liability shifts to the recipient.
+            @endunless
         </p>
     @endif
 
     @unless ($invoice->isPaid())
         <p class="terms">
-            Zahlbar bis zum {{ $dates->date($invoice->due_on) }} unter Angabe der Rechnungsnummer.
+            {{ __('Payable by :date, quoting the invoice number.', ['date' => $dates->date($invoice->due_on)]) }}
         </p>
     @endunless
 
     <div class="footer">
         {{ $seller->legalName }} · {{ $seller->addressLine }} · {{ $seller->postalCode }} {{ $seller->city }}
-        @if ($seller->vatId) · USt-IdNr. {{ $seller->vatId }}@endif
-        @if ($seller->taxNumber) · St.-Nr. {{ $seller->taxNumber }}@endif
+        @if ($seller->vatId) · {{ __('VAT ID :id', ['id' => $seller->vatId]) }}@endif
+        @if ($seller->taxNumber) · {{ __('Tax no. :number', ['number' => $seller->taxNumber]) }}@endif
     </div>
 </div>
 </body>

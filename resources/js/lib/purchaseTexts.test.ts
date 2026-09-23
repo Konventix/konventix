@@ -1,22 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
-    NO_VAT_SMALL_BUSINESS,
-    ORDER_WITH_OBLIGATION_TO_PAY,
     displayUnitAmount,
     fulfilmentNote,
+    noVatSmallBusiness,
+    orderWithObligationToPay,
     taxNote,
 } from './purchaseTexts';
 
 /**
  * #75: the exact wording is the requirement, so it is pinned. A change to
  * any of these strings is a legal decision, and this test is where it has
- * to be made deliberately.
+ * to be made deliberately. No catalog is loaded here, so `trans()` answers
+ * the English key — the key is what is pinned; its German value lives in
+ * `app-modules/commerce/lang/de.json`.
  */
 describe('purchase path wording', () => {
     it('labels the order button with the obligation to pay (§312j (3) BGB)', () => {
-        expect(ORDER_WITH_OBLIGATION_TO_PAY).toBe(
-            'Order with obligation to pay',
-        );
+        expect(orderWithObligationToPay()).toBe('Order with obligation to pay');
     });
 
     it('names VAT inclusion for a gross display and exclusion for a net one', () => {
@@ -69,6 +69,6 @@ describe('taxNote under the small-business scheme', () => {
         // nothing about.
         expect(taxNote('gross')).toBe('incl. VAT');
         expect(taxNote('net')).toBe('excl. VAT');
-        expect(NO_VAT_SMALL_BUSINESS).toBe('no VAT charged (§ 19 UStG)');
+        expect(noVatSmallBusiness()).toBe('no VAT charged (§ 19 UStG)');
     });
 });

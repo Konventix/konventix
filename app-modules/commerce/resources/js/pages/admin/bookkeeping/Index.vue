@@ -76,28 +76,34 @@ function submit(): void {
 </script>
 
 <template>
-    <Head title="Bookkeeping export" />
+    <Head :title="$t('Bookkeeping export')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Bookkeeping export"
-            description="DATEV Buchungsstapel and readable journal, one export per operator and month"
+            :title="$t('Bookkeeping export')"
+            :description="
+                $t(
+                    'DATEV posting batch and readable journal, one export per operator and month',
+                )
+            "
         />
 
         <Card class="border-border bg-surface">
             <CardHeader>
-                <CardTitle>Monthly export</CardTitle>
+                <CardTitle>{{ $t('Monthly export') }}</CardTitle>
             </CardHeader>
             <CardContent class="flex flex-col gap-4">
                 <p class="max-w-2xl text-sm text-text-muted">
-                    One export per month, covering every brand of this operator:
-                    invoices and credit notes only — payments are booked by the
-                    advisor from the bank and provider statements.
+                    {{
+                        $t(
+                            'One export per month, covering every brand of this operator: invoices and credit notes only — payments are booked by the advisor from the bank and provider statements.',
+                        )
+                    }}
                 </p>
 
                 <div class="flex flex-wrap items-end gap-4">
                     <div class="flex flex-col gap-2">
-                        <Label for="month">Month</Label>
+                        <Label for="month">{{ $t('Month') }}</Label>
                         <Select v-model="month">
                             <SelectTrigger id="month" class="w-28">
                                 <SelectValue />
@@ -113,7 +119,7 @@ function submit(): void {
                         </Select>
                     </div>
                     <div class="flex flex-col gap-2">
-                        <Label for="year">Year</Label>
+                        <Label for="year">{{ $t('Year') }}</Label>
                         <Select v-model="year">
                             <SelectTrigger id="year" class="w-32">
                                 <SelectValue />
@@ -132,13 +138,13 @@ function submit(): void {
                     <Button as-child variant="default">
                         <a :href="datevUrl">
                             <Download class="size-4" />
-                            DATEV Buchungsstapel
+                            {{ $t('DATEV posting batch') }}
                         </a>
                     </Button>
                     <Button as-child variant="outline">
                         <a :href="journalUrl">
                             <Download class="size-4" />
-                            Journal (CSV)
+                            {{ $t('Journal (CSV)') }}
                         </a>
                     </Button>
                 </div>
@@ -147,7 +153,7 @@ function submit(): void {
 
         <Card class="border-border bg-surface">
             <CardHeader>
-                <CardTitle>DATEV settings</CardTitle>
+                <CardTitle>{{ $t('DATEV settings') }}</CardTitle>
             </CardHeader>
             <CardContent>
                 <form
@@ -156,7 +162,9 @@ function submit(): void {
                 >
                     <div class="grid grid-cols-2 gap-4">
                         <div class="flex flex-col gap-2">
-                            <Label for="consultant_number">Beraternummer</Label>
+                            <Label for="consultant_number">{{
+                                $t('Consultant number')
+                            }}</Label>
                             <Input
                                 id="consultant_number"
                                 v-model="form.consultant_number"
@@ -167,7 +175,9 @@ function submit(): void {
                             />
                         </div>
                         <div class="flex flex-col gap-2">
-                            <Label for="client_number">Mandantennummer</Label>
+                            <Label for="client_number">{{
+                                $t('Client number')
+                            }}</Label>
                             <Input
                                 id="client_number"
                                 v-model="form.client_number"
@@ -176,9 +186,9 @@ function submit(): void {
                             <InputError :message="form.errors.client_number" />
                         </div>
                         <div class="flex flex-col gap-2">
-                            <Label for="gl_account_length"
-                                >Sachkontenlänge</Label
-                            >
+                            <Label for="gl_account_length">{{
+                                $t('G/L account length')
+                            }}</Label>
                             <Input
                                 id="gl_account_length"
                                 v-model="form.gl_account_length"
@@ -191,7 +201,9 @@ function submit(): void {
                             />
                         </div>
                         <div class="flex flex-col gap-2">
-                            <Label for="debtor_account">Sammeldebitor</Label>
+                            <Label for="debtor_account">{{
+                                $t('Collective debtor account')
+                            }}</Label>
                             <Input
                                 id="debtor_account"
                                 v-model="form.debtor_account"
@@ -199,7 +211,9 @@ function submit(): void {
                             <InputError :message="form.errors.debtor_account" />
                         </div>
                         <div class="flex flex-col gap-2">
-                            <Label for="revenue_standard">Erlöse 19 %</Label>
+                            <Label for="revenue_standard">{{
+                                $t('Revenue 19 %')
+                            }}</Label>
                             <Input
                                 id="revenue_standard"
                                 v-model="form.revenue_standard"
@@ -209,7 +223,9 @@ function submit(): void {
                             />
                         </div>
                         <div class="flex flex-col gap-2">
-                            <Label for="revenue_reduced">Erlöse 7 %</Label>
+                            <Label for="revenue_reduced">{{
+                                $t('Revenue 7 %')
+                            }}</Label>
                             <Input
                                 id="revenue_reduced"
                                 v-model="form.revenue_reduced"
@@ -219,9 +235,9 @@ function submit(): void {
                             />
                         </div>
                         <div class="flex flex-col gap-2">
-                            <Label for="revenue_reverse_charge"
-                                >Erlöse Reverse Charge</Label
-                            >
+                            <Label for="revenue_reverse_charge">{{
+                                $t('Revenue reverse charge')
+                            }}</Label>
                             <Input
                                 id="revenue_reverse_charge"
                                 v-model="form.revenue_reverse_charge"
@@ -231,9 +247,9 @@ function submit(): void {
                             />
                         </div>
                         <div class="flex flex-col gap-2">
-                            <Label for="revenue_small_business"
-                                >Erlöse §19 UStG</Label
-                            >
+                            <Label for="revenue_small_business">{{
+                                $t('Revenue §19 UStG')
+                            }}</Label>
                             <Input
                                 id="revenue_small_business"
                                 v-model="form.revenue_small_business"
@@ -245,21 +261,23 @@ function submit(): void {
                     </div>
 
                     <p class="text-xs text-text-muted">
-                        Defaults are the SKR03 Automatikkonten (8400 / 8300 /
-                        8336 / 8195) — confirm with the tax advisor, or enter
-                        their SKR04 or custom accounts.
+                        {{
+                            $t(
+                                'Defaults are the SKR03 automatic accounts (8400 / 8300 / 8336 / 8195) — confirm with the tax advisor, or enter their SKR04 or custom accounts.',
+                            )
+                        }}
                     </p>
 
                     <div class="flex items-center gap-3">
-                        <Button type="submit" :disabled="form.processing"
-                            >Save settings</Button
-                        >
+                        <Button type="submit" :disabled="form.processing">{{
+                            $t('Save settings')
+                        }}</Button>
                         <span
                             v-if="form.isDirty"
                             role="status"
                             class="text-sm text-warning"
                         >
-                            Unsaved changes
+                            {{ $t('Unsaved changes') }}
                         </span>
                     </div>
                 </form>

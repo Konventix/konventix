@@ -2,6 +2,7 @@
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { Plus } from '@lucide/vue';
 import type { SortingState } from '@tanstack/vue-table';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
@@ -30,7 +31,7 @@ import {
     index as productsIndex,
     store as createProduct,
 } from '@/routes/admin/products';
-import { columns } from './columns';
+import { productColumns } from './columns';
 import type { ProductRow } from './columns';
 
 interface PaginatedProducts {
@@ -65,7 +66,7 @@ const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
 const filterDefs = computed<DataTableFilterDef[]>(() => [
     {
         name: 'brand',
-        label: 'Brand',
+        label: trans('Brand'),
         value: props.filters.brand,
         options: props.brands.map((brand) => ({
             value: brand.id,
@@ -92,6 +93,8 @@ const pagination = computed(() => ({
     from: props.products.from,
     to: props.products.to,
 }));
+
+const columns = productColumns();
 
 const open = ref(false);
 
@@ -147,19 +150,21 @@ const brandError = computed(
 </script>
 
 <template>
-    <Head title="Products" />
+    <Head :title="$t('Products')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Products"
-            description="A brand's shop catalogue, with stock per variant"
+            :title="$t('Products')"
+            :description="
+                $t('A brand’s shop catalogue, with stock per variant')
+            "
         />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
             :filters="filterDefs"
-            search-placeholder="Search name or slug…"
+            :search-placeholder="$t('Search name or slug…')"
             @update:search="setSearch"
             @update:per-page="setPerPage"
             @update:filter="setFilter"
@@ -179,15 +184,20 @@ const brandError = computed(
                     <DialogTrigger as-child>
                         <Button :disabled="!selection?.brandId">
                             <Plus class="size-4" />
-                            New product
+                            {{ $t('New product') }}
                         </Button>
                     </DialogTrigger>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Create product</DialogTitle>
+                            <DialogTitle>{{
+                                $t('Create product')
+                            }}</DialogTitle>
                             <DialogDescription>
-                                Image, event, tax class and variants are set on
-                                the next screen.
+                                {{
+                                    $t(
+                                        'Image, event, tax class and variants are set on the next screen.',
+                                    )
+                                }}
                             </DialogDescription>
                         </DialogHeader>
                         <form
@@ -196,17 +206,23 @@ const brandError = computed(
                         >
                             <InputError :message="brandError" />
                             <div class="grid gap-2">
-                                <Label for="product-name">Name</Label>
+                                <Label for="product-name">{{
+                                    $t('Name')
+                                }}</Label>
                                 <Input id="product-name" v-model="form.name" />
                                 <InputError :message="form.errors.name" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="product-slug">Slug</Label>
+                                <Label for="product-slug">{{
+                                    $t('Slug')
+                                }}</Label>
                                 <Input id="product-slug" v-model="form.slug" />
                                 <InputError :message="form.errors.slug" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="product-price">Price (net)</Label>
+                                <Label for="product-price">{{
+                                    $t('Price (net)')
+                                }}</Label>
                                 <Input
                                     id="product-price"
                                     v-model="form.unitAmountNet"
@@ -217,9 +233,9 @@ const brandError = computed(
                                 />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="product-stock"
-                                    >Stock capacity</Label
-                                >
+                                <Label for="product-stock">{{
+                                    $t('Stock capacity')
+                                }}</Label>
                                 <Input
                                     id="product-stock"
                                     v-model.number="form.stockCapacity"
@@ -235,14 +251,14 @@ const brandError = computed(
                                     type="submit"
                                     :disabled="form.processing"
                                 >
-                                    Create
+                                    {{ $t('Create') }}
                                 </Button>
                                 <span
                                     v-if="form.isDirty"
                                     role="status"
                                     class="text-sm text-warning"
                                 >
-                                    Unsaved changes
+                                    {{ $t('Unsaved changes') }}
                                 </span>
                             </div>
                         </form>
@@ -256,7 +272,7 @@ const brandError = computed(
             class="text-sm text-text-muted"
             role="status"
         >
-            Pick a brand in the console shell to add a product.
+            {{ $t('Pick a brand in the console shell to add a product.') }}
         </p>
 
         <DataTable
@@ -267,8 +283,8 @@ const brandError = computed(
             :row-count="products.total"
             :pagination="pagination"
             :get-row-id="(row: ProductRow) => row.id"
-            items-label="products"
-            empty-message="No products found."
+            :items-label="$t('products')"
+            :empty-message="$t('No products found.')"
             row-clickable
             @row-click="(row: ProductRow) => router.visit(editProduct(row.id))"
             @update:sorting="onSortingChange"

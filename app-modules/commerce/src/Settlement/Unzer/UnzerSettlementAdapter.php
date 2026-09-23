@@ -146,7 +146,7 @@ final class UnzerSettlementAdapter implements ProvidesHostedCheckout, Settlement
 
     public function defaultCheckoutLabel(): string
     {
-        return 'Cards, PayPal, SEPA';
+        return __('Cards, PayPal, SEPA');
     }
 
     private function privateKeyOf(SettlementAccount $account): string

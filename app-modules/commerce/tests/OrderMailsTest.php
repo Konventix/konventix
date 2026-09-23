@@ -149,10 +149,10 @@ it('greets by name when one is known, and plainly when it is not', function (): 
     $brand = $this->withBrand();
 
     expect(orderMailsConfirmationBody('Max Mustermann', $brand->id))
-        ->toContain('<p>Guten Tag Max Mustermann,</p>');
+        ->toContain('<p>Hallo Max Mustermann,</p>');
 
     expect(orderMailsConfirmationBody(null, $brand->id))
-        ->toContain('<p>Guten Tag,</p>');
+        ->toContain('<p>Hallo,</p>');
 });
 
 it('honours the payer\'s own locale instead of hard-coding German', function (): void {

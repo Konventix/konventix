@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
-import { ORDER_WITH_OBLIGATION_TO_PAY, taxNote } from '@/lib/purchaseTexts';
+import { orderWithObligationToPay, taxNote } from '@/lib/purchaseTexts';
 import { consentListSignature } from './confirmation';
 import type { ConfirmationSlot } from './confirmation';
 
@@ -107,16 +107,16 @@ function pay(): void {
 </script>
 
 <template>
-    <Head title="Confirm your order" />
+    <Head :title="$t('Confirm your order')" />
 
     <div
         class="mx-auto flex w-full max-w-xl flex-col gap-6 p-6 text-text lg:p-8"
     >
-        <h1 class="text-2xl font-semibold">Confirm your order</h1>
+        <h1 class="text-2xl font-semibold">{{ $t('Confirm your order') }}</h1>
 
         <Card class="border-border bg-surface">
             <CardHeader>
-                <CardTitle>Order summary</CardTitle>
+                <CardTitle>{{ $t('Order summary') }}</CardTitle>
             </CardHeader>
             <CardContent class="flex flex-col gap-2 text-sm">
                 <div
@@ -142,7 +142,7 @@ function pay(): void {
                 <div
                     class="mt-2 flex items-center justify-between border-t border-border pt-2 font-semibold"
                 >
-                    <span>Total</span>
+                    <span>{{ $t('Total') }}</span>
                     <span
                         >{{ props.order.totalGross }} {{ props.order.currency }}
                         {{
@@ -151,11 +151,16 @@ function pay(): void {
                     >
                 </div>
                 <p class="text-xs text-text-muted">
-                    includes {{ props.order.totalTax }}
-                    {{ props.order.currency }} tax
+                    {{
+                        $t('includes :amount :currency tax', {
+                            amount: props.order.totalTax,
+                            currency: props.order.currency,
+                        })
+                    }}
                 </p>
                 <p class="mt-2 border-t border-border pt-2">
-                    Paying with <strong>{{ props.account.label }}</strong>
+                    {{ $t('Paying with') }}
+                    <strong>{{ props.account.label }}</strong>
                 </p>
             </CardContent>
         </Card>
@@ -165,7 +170,7 @@ function pay(): void {
             role="status"
             class="rounded-md border border-border bg-surface p-4 text-sm text-danger"
         >
-            The last payment attempt did not go through.
+            {{ $t('The last payment attempt did not go through.') }}
         </p>
 
         <p
@@ -173,7 +178,7 @@ function pay(): void {
             role="status"
             class="text-sm text-text-muted"
         >
-            This payment was reversed and is owed back until
+            {{ $t('This payment was reversed and is owed back until') }}
             <time :datetime="props.repayDueOn">{{
                 formatCalendarDate(props.repayDueOn)
             }}</time
@@ -181,8 +186,12 @@ function pay(): void {
         </p>
 
         <p v-if="holdUntilLabel" role="status" class="text-sm text-text-muted">
-            Your place is held until {{ holdUntilLabel }}. After that the order
-            is released and the place goes back on sale.
+            {{
+                $t(
+                    'Your place is held until :time. After that the order is released and the place goes back on sale.',
+                    { time: holdUntilLabel },
+                )
+            }}
         </p>
 
         <template v-for="slot in props.consentSlots" :key="slot.component">
@@ -198,11 +207,11 @@ function pay(): void {
         <div class="flex flex-col items-start gap-2">
             <Button :disabled="starting || !canPay" @click="pay()">
                 <CreditCard class="size-4" />
-                {{ ORDER_WITH_OBLIGATION_TO_PAY }}
+                {{ orderWithObligationToPay() }}
             </Button>
 
             <p v-if="!canPay" role="status" class="text-sm text-text-muted">
-                Confirm the documents above to pay.
+                {{ $t('Confirm the documents above to pay.') }}
             </p>
 
             <div id="pay-confirm-account-error">
@@ -215,7 +224,7 @@ function pay(): void {
                 class="flex items-center gap-1 text-sm underline underline-offset-4"
             >
                 <ArrowLeft class="size-4" />
-                Choose a different payment option
+                {{ $t('Choose a different payment option') }}
             </Link>
         </div>
     </div>

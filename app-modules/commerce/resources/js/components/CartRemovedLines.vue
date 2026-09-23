@@ -61,12 +61,14 @@ function restore(line: RemovedLine): void {
     >
         <div class="flex flex-col gap-1">
             <p class="text-sm font-medium text-text">
-                Removed from your cart — you can still put it back.
+                {{ $t('Removed from your cart — you can still put it back.') }}
             </p>
             <p class="text-sm text-text-muted">
-                Nothing has been cancelled yet. If you leave it out, the
-                registration behind it is given up when your cart expires, and
-                we will email you about it.
+                {{
+                    $t(
+                        'Nothing has been cancelled yet. If you leave it out, the registration behind it is given up when your cart expires, and we will email you about it.',
+                    )
+                }}
             </p>
         </div>
 
@@ -88,7 +90,11 @@ function restore(line: RemovedLine): void {
                         {{ line.label }}
                     </span>
                     <span class="text-sm text-text-muted">
-                        Qty {{ line.quantity }}
+                        {{
+                            $t('Qty :quantity', {
+                                quantity: String(line.quantity),
+                            })
+                        }}
                     </span>
                 </div>
 
@@ -96,11 +102,13 @@ function restore(line: RemovedLine): void {
                     type="button"
                     class="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm text-text transition hover:bg-surface-muted disabled:pointer-events-none disabled:opacity-50"
                     :disabled="restoringLineId === line.id"
-                    :aria-label="`Put ${line.label} back in your cart`"
+                    :aria-label="
+                        $t('Put :item back in your cart', { item: line.label })
+                    "
                     @click="restore(line)"
                 >
                     <Undo2 class="size-4" />
-                    Put it back
+                    {{ $t('Put it back') }}
                 </button>
             </li>
         </ul>

@@ -77,10 +77,11 @@ function paidInvoicePayment(Order $order, string $provider = 'stripe'): Payment
     ]);
 }
 
-it('labels the null provider Testzahlung, matching what LocalHostedCheckoutAdapter actually stamps', function (): void {
+it('labels the null provider as a test payment, matching what LocalHostedCheckoutAdapter actually stamps', function (): void {
     // SettlementAccount::PROVIDER_NULL — every dev/demo payment through
     // the no-PSP-connected adapter goes through this key, not 'local'.
-    expect(ProviderLabels::labelFor('null'))->toBe('Testzahlung');
+    // The English catalog key; `de` reads "Testzahlung" (ADR-0068).
+    expect(ProviderLabels::labelFor('null'))->toBe('Test payment');
 });
 
 it('draws exactly one invoice number when IssueInvoice is called twice for the same order', function (): void {
@@ -333,7 +334,7 @@ it('pins payment means 58 (SEPA credit transfer) for a manual bank-transfer paym
 
     $invoice = Invoice::query()->where('order_id', $order->id)->sole();
     expect($invoice->paid_provider)->toBe('manual')
-        ->and($invoice->paid_via)->toBe('Überweisung / manuell');
+        ->and($invoice->paid_via)->toBe('Bank transfer / manual');
 
     (new GenerateInvoiceDocument($invoice->id, $brand->id))
         ->handle(app(InvoiceDocumentRenderer::class), app(SendInvoiceMail::class));
@@ -357,7 +358,7 @@ it('pins payment means 58 (SEPA credit transfer) for a manual bank-transfer paym
     );
 
     expect($typeCode)->toBe('58')
-        ->and($information)->toBe('Überweisung / manuell');
+        ->and($information)->toBe('Bank transfer / manual');
 });
 
 it('shows invoicePaid true on /my/orders once the invoice carries a payment snapshot', function (): void {

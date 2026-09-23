@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { GripVertical, Plus, Trash2 } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { useId } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import MediaPicker from '@/components/admin/MediaPicker.vue';
@@ -18,6 +19,7 @@ import {
     index as productsIndex,
     update as updateProduct,
 } from '@/routes/admin/products';
+import { priceDisplayLabel, taxClassLabel } from '../../../lib/labels';
 
 type Product = Konventix.Commerce.Data.ProductData;
 type Variant = Konventix.Commerce.Data.ProductVariantData;
@@ -118,7 +120,13 @@ function submit(): void {
 }
 
 function remove(): void {
-    if (confirm(`Delete "${props.product.name}"? This cannot be undone.`)) {
+    if (
+        confirm(
+            trans('Delete “:name”? This cannot be undone.', {
+                name: props.product.name,
+            }),
+        )
+    ) {
         router.delete(destroyProduct(props.product.id).url);
     }
 }
@@ -130,30 +138,36 @@ function remove(): void {
     <div class="flex flex-col gap-6">
         <AdminPageHeader
             :title="props.product.name"
-            :description="`Product of ${props.product.brandName}`"
+            :description="
+                $t('Product of :brand', { brand: props.product.brandName })
+            "
         >
             <Button variant="ghost" @click="remove">
                 <Trash2 class="size-4 text-danger" />
-                Delete
+                {{ $t('Delete') }}
             </Button>
         </AdminPageHeader>
 
         <form class="flex flex-col gap-6" @submit.prevent="submit">
             <Card>
-                <CardHeader><CardTitle>Product</CardTitle></CardHeader>
+                <CardHeader>
+                    <CardTitle>{{ $t('Product') }}</CardTitle>
+                </CardHeader>
                 <CardContent class="grid gap-4 sm:grid-cols-2">
                     <div class="grid gap-2">
-                        <Label for="product-name">Name</Label>
+                        <Label for="product-name">{{ $t('Name') }}</Label>
                         <Input id="product-name" v-model="form.name" />
                         <InputError :message="form.errors.name" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="product-slug">Slug</Label>
+                        <Label for="product-slug">{{ $t('Slug') }}</Label>
                         <Input id="product-slug" v-model="form.slug" />
                         <InputError :message="form.errors.slug" />
                     </div>
                     <div class="grid gap-2 sm:col-span-2">
-                        <Label for="product-description">Description</Label>
+                        <Label for="product-description">{{
+                            $t('Description')
+                        }}</Label>
                         <textarea
                             id="product-description"
                             v-model="form.description"
@@ -163,13 +177,13 @@ function remove(): void {
                         <InputError :message="form.errors.description" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="product-event">Event</Label>
+                        <Label for="product-event">{{ $t('Event') }}</Label>
                         <select
                             id="product-event"
                             v-model="form.eventId"
                             class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                         >
-                            <option :value="null">No event</option>
+                            <option :value="null">{{ $t('No event') }}</option>
                             <option
                                 v-for="event in props.events"
                                 :key="event.id"
@@ -179,15 +193,18 @@ function remove(): void {
                             </option>
                         </select>
                         <p class="text-xs text-text-muted">
-                            Optional — ties this product to one edition, for
-                            display only.
+                            {{
+                                $t(
+                                    'Optional — ties this product to one edition, for display only.',
+                                )
+                            }}
                         </p>
                         <InputError :message="form.errors.eventId" />
                     </div>
                     <div class="grid gap-2">
                         <MediaPicker
                             v-model="form.imageMediaId"
-                            label="Image"
+                            :label="$t('Image')"
                             :media="props.media"
                             :brand-id="props.product.brandId"
                             :can-upload="canManageMedia"
@@ -195,7 +212,9 @@ function remove(): void {
                         <InputError :message="form.errors.imageMediaId" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="product-tax-class">Tax class</Label>
+                        <Label for="product-tax-class">{{
+                            $t('Tax class')
+                        }}</Label>
                         <select
                             id="product-tax-class"
                             v-model="form.taxClass"
@@ -206,14 +225,14 @@ function remove(): void {
                                 :key="taxClass"
                                 :value="taxClass"
                             >
-                                {{ taxClass }}
+                                {{ taxClassLabel(taxClass) }}
                             </option>
                         </select>
                         <InputError :message="form.errors.taxClass" />
                     </div>
                     <div class="grid gap-2">
                         <Label for="product-price-display">
-                            Price display
+                            {{ $t('Price display') }}
                         </Label>
                         <select
                             id="product-price-display"
@@ -225,25 +244,33 @@ function remove(): void {
                                 :key="priceDisplay"
                                 :value="priceDisplay"
                             >
-                                {{ priceDisplay }}
+                                {{ priceDisplayLabel(priceDisplay) }}
                             </option>
                         </select>
                         <InputError :message="form.errors.priceDisplay" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="product-price">Price (net)</Label>
+                        <Label for="product-price">{{
+                            $t('Price (net)')
+                        }}</Label>
                         <Input
                             id="product-price"
                             v-model="form.unitAmountNet"
                             inputmode="decimal"
                         />
                         <p class="text-xs text-text-muted">
-                            The default price; a variant may override it.
+                            {{
+                                $t(
+                                    'The default price; a variant may override it.',
+                                )
+                            }}
                         </p>
                         <InputError :message="form.errors.unitAmountNet" />
                     </div>
                     <div v-if="form.variants.length === 0" class="grid gap-2">
-                        <Label for="product-stock">Stock capacity</Label>
+                        <Label for="product-stock">{{
+                            $t('Stock capacity')
+                        }}</Label>
                         <Input
                             id="product-stock"
                             v-model.number="form.stockCapacity"
@@ -251,7 +278,11 @@ function remove(): void {
                             min="0"
                         />
                         <p class="text-xs text-text-muted">
-                            No variants below — this capacity applies directly.
+                            {{
+                                $t(
+                                    'No variants below — this capacity applies directly.',
+                                )
+                            }}
                         </p>
                         <InputError :message="form.errors.stockCapacity" />
                     </div>
@@ -265,26 +296,34 @@ function remove(): void {
                             "
                         />
                         <Label for="product-published" class="font-normal">
-                            Published
+                            {{ $t('Published') }}
                         </Label>
                     </div>
                 </CardContent>
             </Card>
 
             <Card>
-                <CardHeader><CardTitle>Variants</CardTitle></CardHeader>
+                <CardHeader>
+                    <CardTitle>{{ $t('Variants') }}</CardTitle>
+                </CardHeader>
                 <CardContent class="flex flex-col gap-4">
                     <p :id="reorderHintId" class="sr-only">
-                        Drag a variant to reorder it, or focus its reorder
-                        handle and press the up or down arrow key.
+                        {{
+                            $t(
+                                'Drag a variant to reorder it, or focus its reorder handle and press the up or down arrow key.',
+                            )
+                        }}
                     </p>
 
                     <p
                         v-if="form.variants.length === 0"
                         class="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-text-muted"
                     >
-                        No separate variants — the stock capacity above applies
-                        directly to the product.
+                        {{
+                            $t(
+                                'No separate variants — the stock capacity above applies directly to the product.',
+                            )
+                        }}
                     </p>
 
                     <div
@@ -308,26 +347,49 @@ function remove(): void {
                             >
                                 <GripVertical class="size-4" />
                                 <span class="sr-only">
-                                    Reorder variant
-                                    {{ variant.label ?? index + 1 }}, position
-                                    {{ index + 1 }} of
-                                    {{ form.variants.length }}
+                                    {{
+                                        $t(
+                                            'Reorder variant :variant, position :position of :total',
+                                            {
+                                                variant:
+                                                    variant.label ??
+                                                    String(index + 1),
+                                                position: String(index + 1),
+                                                total: String(
+                                                    form.variants.length,
+                                                ),
+                                            },
+                                        )
+                                    }}
                                 </span>
                             </button>
                             <span class="flex-1 text-sm font-medium">
-                                {{ variant.label ?? `Variant ${index + 1}` }}
+                                {{
+                                    variant.label ??
+                                    $t('Variant :number', {
+                                        number: String(index + 1),
+                                    })
+                                }}
                             </span>
                             <span
                                 v-if="variant.id"
                                 class="text-xs text-text-muted"
                             >
-                                {{ variant.remaining }} remaining
+                                {{
+                                    $t(':count remaining', {
+                                        count: String(variant.remaining),
+                                    })
+                                }}
                             </span>
                             <Button
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                :aria-label="`Remove variant ${index + 1}`"
+                                :aria-label="
+                                    $t('Remove variant :number', {
+                                        number: String(index + 1),
+                                    })
+                                "
                                 @click="removeVariant(index)"
                             >
                                 <Trash2 class="size-4" />
@@ -336,7 +398,7 @@ function remove(): void {
                         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                             <div class="grid gap-2">
                                 <Label :for="`variant-${index}-label`">
-                                    Label
+                                    {{ $t('Label') }}
                                 </Label>
                                 <Input
                                     :id="`variant-${index}-label`"
@@ -348,7 +410,7 @@ function remove(): void {
                             </div>
                             <div class="grid gap-2">
                                 <Label :for="`variant-${index}-sku`">
-                                    SKU
+                                    {{ $t('SKU') }}
                                 </Label>
                                 <Input
                                     :id="`variant-${index}-sku`"
@@ -358,13 +420,13 @@ function remove(): void {
                             </div>
                             <div class="grid gap-2">
                                 <Label :for="`variant-${index}-price`">
-                                    Price override
+                                    {{ $t('Price override') }}
                                 </Label>
                                 <Input
                                     :id="`variant-${index}-price`"
                                     v-model="variant.unitAmountNet"
                                     inputmode="decimal"
-                                    placeholder="Use product price"
+                                    :placeholder="$t('Use product price')"
                                 />
                                 <InputError
                                     :message="errorFor(index, 'unitAmountNet')"
@@ -372,7 +434,7 @@ function remove(): void {
                             </div>
                             <div class="grid gap-2">
                                 <Label :for="`variant-${index}-capacity`">
-                                    Stock capacity
+                                    {{ $t('Stock capacity') }}
                                 </Label>
                                 <Input
                                     :id="`variant-${index}-capacity`"
@@ -397,25 +459,25 @@ function remove(): void {
                         @click="addVariant"
                     >
                         <Plus class="size-4" />
-                        Add variant
+                        {{ $t('Add variant') }}
                     </Button>
                 </CardContent>
             </Card>
 
             <div class="flex items-center gap-3">
                 <Button type="submit" :disabled="form.processing">
-                    Save product
+                    {{ $t('Save product') }}
                 </Button>
                 <span
                     v-if="form.isDirty"
                     role="status"
                     class="text-sm text-warning"
-                    >Unsaved changes</span
+                    >{{ $t('Unsaved changes') }}</span
                 >
                 <Link
                     :href="productsIndex().url"
                     class="text-sm text-text-muted hover:text-text"
-                    >Back to products</Link
+                    >{{ $t('Back to products') }}</Link
                 >
             </div>
         </form>

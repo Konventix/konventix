@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/datetime';
 import { show as showOrder } from '@/routes/commerce/mine';
 import { show as showRegistration } from '@/routes/registration/mine';
+import { orderStatusLabel } from '../../../lib/labels';
 
 /**
  * "What do I owe" — the payer's own list (ADR-0044). The per-registration
@@ -34,17 +35,19 @@ function formatPlacedOn(value: string): string {
 </script>
 
 <template>
-    <Head title="My orders" />
+    <Head :title="$t('My orders')" />
 
     <div class="mx-auto w-full max-w-3xl px-4 py-6">
         <Heading
             as="h1"
-            title="My orders"
-            description="Everything you have been charged for with this brand"
+            :title="$t('My orders')"
+            :description="
+                $t('Everything you have been charged for with this brand')
+            "
         />
 
         <p v-if="props.orders.length === 0" class="text-sm text-text-muted">
-            You have no orders on this brand yet.
+            {{ $t('You have no orders on this brand yet.') }}
         </p>
 
         <ul v-else class="flex flex-col gap-3">
@@ -67,7 +70,12 @@ function formatPlacedOn(value: string): string {
                     <span class="text-sm text-text-muted">
                         {{ formatPlacedOn(order.placedAt) }}
                         <template v-if="order.invoiceNumber">
-                            · Invoice {{ order.invoiceNumber }}
+                            ·
+                            {{
+                                $t('Invoice :number', {
+                                    number: order.invoiceNumber,
+                                })
+                            }}
                         </template>
                     </span>
                     <span class="flex flex-wrap items-center gap-2 pt-1">
@@ -78,7 +86,7 @@ function formatPlacedOn(value: string): string {
                                 'bg-subtle text-text'
                             "
                         >
-                            {{ order.status }}
+                            {{ orderStatusLabel(order.status) }}
                         </span>
                         <span class="text-sm font-medium text-text">
                             {{ order.totalGross }} {{ order.currency }}
@@ -134,10 +142,12 @@ function formatPlacedOn(value: string): string {
                         (.ai/rules/js.md).
                     -->
                     <Button as-child variant="outline" size="sm">
-                        <Link :href="showOrder(order.id).url">Details</Link>
+                        <Link :href="showOrder(order.id).url">{{
+                            $t('Details')
+                        }}</Link>
                     </Button>
                     <Button v-if="order.payUrl" as-child size="sm">
-                        <a :href="order.payUrl">Pay now</a>
+                        <a :href="order.payUrl">{{ $t('Pay now') }}</a>
                     </Button>
                     <Button
                         v-if="order.documentUrl"
@@ -148,7 +158,9 @@ function formatPlacedOn(value: string): string {
                         <a :href="order.documentUrl">
                             <FileText class="size-4" />
                             {{
-                                order.invoicePaid ? 'Invoice (paid)' : 'Invoice'
+                                order.invoicePaid
+                                    ? $t('Invoice (paid)')
+                                    : $t('Invoice')
                             }}
                         </a>
                     </Button>
@@ -171,7 +183,11 @@ function formatPlacedOn(value: string): string {
                         >
                             <a :href="creditNote.documentUrl">
                                 <FileText class="size-4" />
-                                Credit note {{ creditNote.number }}
+                                {{
+                                    $t('Credit note :number', {
+                                        number: creditNote.number,
+                                    })
+                                }}
                             </a>
                         </Button>
                         <span
@@ -179,7 +195,11 @@ function formatPlacedOn(value: string): string {
                             class="inline-flex items-center gap-1.5 text-xs text-text-muted"
                         >
                             <FileText class="size-4" />
-                            Credit note {{ creditNote.number }}
+                            {{
+                                $t('Credit note :number', {
+                                    number: creditNote.number,
+                                })
+                            }}
                         </span>
                     </template>
                 </div>

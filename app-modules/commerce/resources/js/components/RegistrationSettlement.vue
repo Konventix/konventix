@@ -3,6 +3,7 @@ import { Link } from '@inertiajs/vue3';
 import { CreditCard, FileText, ShoppingCart } from '@lucide/vue';
 import { computed } from 'vue';
 import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
+import { orderStatusLabel } from '../lib/labels';
 
 /**
  * Commerce's contribution to Registration's account page: what this
@@ -80,7 +81,7 @@ const reversed = computed(
         aria-labelledby="registration-cart-settlement"
     >
         <h2 id="registration-cart-settlement" class="text-lg font-medium">
-            Payment
+            {{ $t('Payment') }}
         </h2>
 
         <div
@@ -91,30 +92,44 @@ const reversed = computed(
             </span>
 
             <p
-                v-if="props.cart.status === 'in_cart'"
+                v-if="
+                    props.cart.status === 'in_cart' &&
+                    props.cart.expiresAt &&
+                    cartExpiresLabel
+                "
                 class="text-sm text-text-muted"
                 role="status"
             >
-                Waiting in your cart<template
-                    v-if="props.cart.expiresAt && cartExpiresLabel"
-                >
-                    — reserved until
-                    <time :datetime="props.cart.expiresAt">{{
-                        cartExpiresLabel
-                    }}</time></template
+                {{ $t('Waiting in your cart — reserved until') }}
+                <time :datetime="props.cart.expiresAt">{{
+                    cartExpiresLabel
+                }}</time
                 >.
+            </p>
+            <p
+                v-else-if="props.cart.status === 'in_cart'"
+                class="text-sm text-text-muted"
+                role="status"
+            >
+                {{ $t('Waiting in your cart.') }}
             </p>
             <p
                 v-else-if="props.cart.status === 'checkout_started'"
                 class="text-sm text-text-muted"
                 role="status"
             >
-                Checkout started — finish it from your
-                {{ props.cart.orderUrl ? 'order' : 'orders' }}.
+                {{
+                    props.cart.orderUrl
+                        ? $t('Checkout started — finish it from your order.')
+                        : $t('Checkout started — finish it from your orders.')
+                }}
             </p>
             <p v-else class="text-sm text-text-muted" role="status">
-                Your cart reservation ran out before this registration was paid,
-                so it was released. Register again to take the spot.
+                {{
+                    $t(
+                        'Your cart reservation ran out before this registration was paid, so it was released. Register again to take the spot.',
+                    )
+                }}
             </p>
 
             <span class="flex-1" />
@@ -125,7 +140,7 @@ const reversed = computed(
                 class="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent hover:bg-accent/90"
             >
                 <ShoppingCart class="size-4" />
-                Pay now in the cart
+                {{ $t('Pay now in the cart') }}
             </Link>
             <Link
                 v-else-if="props.cart.orderUrl"
@@ -133,7 +148,7 @@ const reversed = computed(
                 class="inline-flex items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-subtle"
             >
                 <CreditCard class="size-4" />
-                Go to your order
+                {{ $t('Go to your order') }}
             </Link>
             <Link
                 v-else-if="props.cart.ordersUrl"
@@ -141,7 +156,7 @@ const reversed = computed(
                 class="inline-flex items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-subtle"
             >
                 <CreditCard class="size-4" />
-                Go to your orders
+                {{ $t('Go to your orders') }}
             </Link>
         </div>
     </section>
@@ -152,7 +167,7 @@ const reversed = computed(
         aria-labelledby="registration-settlement"
     >
         <h2 id="registration-settlement" class="text-lg font-medium">
-            Payment
+            {{ $t('Payment') }}
         </h2>
 
         <!--
@@ -161,15 +176,19 @@ const reversed = computed(
             it shares a line with the status badge and pushes "Pay now" off
             the end.
         -->
-        <p v-if="reversed" role="status" class="text-sm text-danger">
-            Payment reversed — this amount is owed again<template
-                v-if="props.settlement.repayDueOn"
-            >
-                until
-                <time :datetime="props.settlement.repayDueOn">{{
-                    formatCalendarDate(props.settlement.repayDueOn)
-                }}</time></template
+        <p
+            v-if="reversed && props.settlement.repayDueOn"
+            role="status"
+            class="text-sm text-danger"
+        >
+            {{ $t('Payment reversed — this amount is owed again until') }}
+            <time :datetime="props.settlement.repayDueOn">{{
+                formatCalendarDate(props.settlement.repayDueOn)
+            }}</time
             >.
+        </p>
+        <p v-else-if="reversed" role="status" class="text-sm text-danger">
+            {{ $t('Payment reversed — this amount is owed again.') }}
         </p>
 
         <div
@@ -185,14 +204,14 @@ const reversed = computed(
                     statusTone[props.settlement.status] ?? 'bg-subtle text-text'
                 "
             >
-                {{ props.settlement.status.replace('_', ' ') }}
+                {{ orderStatusLabel(props.settlement.status) }}
             </span>
             <Link
                 v-if="props.settlement.orderUrl"
                 :href="props.settlement.orderUrl"
                 class="text-sm text-text-muted underline underline-offset-4 hover:text-text"
             >
-                Order details
+                {{ $t('Order details') }}
             </Link>
 
             <span class="flex-1" />
@@ -203,7 +222,7 @@ const reversed = computed(
                 class="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent hover:bg-accent/90"
             >
                 <CreditCard class="size-4" />
-                Pay now
+                {{ $t('Pay now') }}
             </Link>
         </div>
 
@@ -211,7 +230,7 @@ const reversed = computed(
             v-if="props.settlement.invoiceNumber"
             class="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[10rem_1fr]"
         >
-            <dt class="text-text-muted">Invoice</dt>
+            <dt class="text-text-muted">{{ $t('Invoice') }}</dt>
             <dd>
                 <Link
                     v-if="props.settlement.orderUrl"
@@ -222,9 +241,9 @@ const reversed = computed(
                 </Link>
                 <template v-else>{{ props.settlement.invoiceNumber }}</template>
             </dd>
-            <dt class="text-text-muted">Issued</dt>
+            <dt class="text-text-muted">{{ $t('Issued') }}</dt>
             <dd>{{ formatCalendarDate(props.settlement.issuedOn) }}</dd>
-            <dt class="text-text-muted">Due</dt>
+            <dt class="text-text-muted">{{ $t('Due') }}</dt>
             <dd>{{ formatCalendarDate(props.settlement.dueOn) }}</dd>
         </dl>
 
@@ -238,7 +257,7 @@ const reversed = computed(
             class="inline-flex w-fit items-center gap-2 text-sm text-text-muted underline underline-offset-4 hover:text-text"
         >
             <FileText class="size-4" />
-            Download invoice (PDF)
+            {{ $t('Download invoice (PDF)') }}
         </a>
     </section>
 </template>

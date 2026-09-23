@@ -41,19 +41,22 @@ function submit(): void {
 <template>
     <Card>
         <CardHeader>
-            <CardTitle>Waiting room</CardTitle>
+            <CardTitle>{{ $t('Waiting room') }}</CardTitle>
         </CardHeader>
         <CardContent>
             <form class="flex flex-col gap-4" @submit.prevent="submit">
                 <p class="text-sm text-text-muted">
-                    How many arrivals are admitted at once, and how long an
-                    admitted ticket keeps its place before it must queue again.
+                    {{
+                        $t(
+                            'How many arrivals are admitted at once, and how long an admitted ticket keeps its place before it must queue again.',
+                        )
+                    }}
                 </p>
 
                 <div class="grid gap-4 sm:grid-cols-2">
                     <div class="grid gap-2">
                         <Label for="waiting-room-admit-per-interval">
-                            Admitted per batch
+                            {{ $t('Admitted per batch') }}
                         </Label>
                         <Input
                             id="waiting-room-admit-per-interval"
@@ -66,7 +69,7 @@ function submit(): void {
                     </div>
                     <div class="grid gap-2">
                         <Label for="waiting-room-admission-ttl">
-                            Admission window (minutes)
+                            {{ $t('Admission window (minutes)') }}
                         </Label>
                         <Input
                             id="waiting-room-admission-ttl"
@@ -87,14 +90,14 @@ function submit(): void {
                         variant="outline"
                         :disabled="form.processing"
                     >
-                        Save waiting room
+                        {{ $t('Save waiting room') }}
                     </Button>
                     <span
                         v-if="form.isDirty"
                         role="status"
                         class="text-sm text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
             </form>

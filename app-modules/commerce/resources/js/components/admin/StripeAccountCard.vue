@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { router, useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
@@ -61,18 +62,20 @@ async function copyToClipboard(what: string, value: string): Promise<void> {
  */
 const missingHalf = computed(() => {
     if (!props.setup.secretKeySet && !props.setup.webhookSecretSet) {
-        return 'neither the Secret Key nor the Webhook Signing Secret is set';
+        return trans(
+            'neither the Secret Key nor the Webhook Signing Secret is set',
+        );
     }
 
     return props.setup.secretKeySet
-        ? 'the Webhook Signing Secret is missing'
-        : 'the Secret Key is missing';
+        ? trans('the Webhook Signing Secret is missing')
+        : trans('the Secret Key is missing');
 });
 
 const sourceLabels: Record<string, string> = {
-    database: 'entered in this console',
-    environment: 'from the environment',
-    none: 'not configured',
+    database: trans('entered in this console'),
+    environment: trans('from the environment'),
+    none: trans('not configured'),
 };
 
 function submit(): void {
@@ -89,7 +92,9 @@ function submit(): void {
 function clear(): void {
     if (
         confirm(
-            'Clear the Stripe keys entered here? Payments then run on STRIPE_SECRET from the environment, or stop until a new key is entered.',
+            trans(
+                'Clear the Stripe keys entered here? Payments then run on STRIPE_SECRET from the environment, or stop until a new key is entered.',
+            ),
         )
     ) {
         router.delete(clearStripeSettings().url, { preserveScroll: true });
@@ -100,18 +105,17 @@ function clear(): void {
 <template>
     <Card class="border-border bg-surface">
         <CardHeader>
-            <CardTitle>Stripe account</CardTitle>
+            <CardTitle>{{ $t('Stripe account') }}</CardTitle>
         </CardHeader>
 
         <CardContent class="flex flex-col gap-4">
             <p class="max-w-2xl text-sm text-text-muted">
-                Konventix settles into one Stripe account — this instance's own.
-                Enter its Secret Key and Webhook Signing Secret here and they
-                are stored encrypted and used instead of
-                <code>STRIPE_SECRET</code> / <code>STRIPE_WEBHOOK_SECRET</code>
-                from the environment. Every brand below that sells through
-                Stripe is settled on this one account and told apart by the
-                metadata each payment carries.
+                {{
+                    $t(
+                        'Konventix settles into one Stripe account — this instance’s own. Every brand below that sells through Stripe is settled on this one account and told apart by the metadata each payment carries. Enter the account’s Secret Key and Webhook Signing Secret here: they are stored encrypted and take precedence over the environment variables',
+                    )
+                }}
+                <code>STRIPE_SECRET</code> / <code>STRIPE_WEBHOOK_SECRET</code>.
             </p>
 
             <div class="flex flex-wrap items-center gap-3">
@@ -122,8 +126,8 @@ function clear(): void {
                 >
                     {{
                         props.setup.secretKeySet
-                            ? 'Secret key set'
-                            : 'No secret key'
+                            ? $t('Secret key set')
+                            : $t('No secret key')
                     }}
                 </Badge>
                 <Badge
@@ -133,19 +137,21 @@ function clear(): void {
                 >
                     {{
                         props.setup.webhookSecretSet
-                            ? 'Signing secret set'
-                            : 'No signing secret'
+                            ? $t('Signing secret set')
+                            : $t('No signing secret')
                     }}
                 </Badge>
                 <Badge v-if="props.setup.mode" variant="secondary">
                     {{
-                        props.setup.mode === 'live' ? 'Live mode' : 'Test mode'
+                        props.setup.mode === 'live'
+                            ? $t('Live mode')
+                            : $t('Test mode')
                     }}
                 </Badge>
                 <span class="text-xs text-text-muted">
                     {{ sourceLabels[props.setup.source] ?? props.setup.source }}
                     <template v-if="props.setup.lastFour">
-                        — key ending
+                        — {{ $t('key ending') }}
                         <code>{{ props.setup.lastFour }}</code>
                     </template>
                 </span>
@@ -153,7 +159,7 @@ function clear(): void {
                     v-if="props.setup.publishableKeySet"
                     class="text-xs text-text-muted"
                 >
-                    publishable key set (unused by hosted Checkout)
+                    {{ $t('publishable key set (unused by hosted Checkout)') }}
                 </span>
             </div>
 
@@ -169,11 +175,14 @@ function clear(): void {
                 role="status"
                 class="rounded-md border border-border p-3 text-sm text-text-muted"
             >
-                Stripe is not offered at checkout yet:
+                {{ $t('Stripe is not offered at checkout yet:') }}
                 <strong>{{ missingHalf }}</strong
-                >. Both are needed — a checkout started without a signing secret
-                would take the payer's money and never settle the order, because
-                the webhook could not be verified.
+                >.
+                {{
+                    $t(
+                        'Both are needed — a checkout started without a signing secret would take the payer’s money and never settle the order, because the webhook could not be verified.',
+                    )
+                }}
             </p>
 
             <!--
@@ -185,15 +194,19 @@ function clear(): void {
                 role="alert"
                 class="rounded-md border border-danger p-3 text-sm font-medium text-danger"
             >
-                This is not a production instance, and the key installed here is
-                a live key (<code>sk_live_</code>). Any checkout started here
-                moves real money. Replace it with the sandbox key unless that is
-                deliberate.
+                <code>sk_live_</code>:
+                {{
+                    $t(
+                        'This is not a production instance, and the key installed here is a live key. Any checkout started here moves real money. Replace it with the sandbox key unless that is deliberate.',
+                    )
+                }}
             </p>
 
             <form class="flex max-w-md flex-col gap-4" @submit.prevent="submit">
                 <div class="flex flex-col gap-2">
-                    <Label for="stripe_secret_key">Secret Key</Label>
+                    <Label for="stripe_secret_key">{{
+                        $t('Secret Key')
+                    }}</Label>
                     <Input
                         id="stripe_secret_key"
                         v-model="form.secretKey"
@@ -214,9 +227,9 @@ function clear(): void {
                 </div>
 
                 <div class="flex flex-col gap-2">
-                    <Label for="stripe_webhook_secret"
-                        >Webhook Signing Secret</Label
-                    >
+                    <Label for="stripe_webhook_secret">{{
+                        $t('Webhook Signing Secret')
+                    }}</Label>
                     <Input
                         id="stripe_webhook_secret"
                         v-model="form.webhookSecret"
@@ -239,9 +252,9 @@ function clear(): void {
                 </div>
 
                 <div class="flex flex-col gap-2">
-                    <Label for="stripe_publishable_key"
-                        >Publishable Key (optional)</Label
-                    >
+                    <Label for="stripe_publishable_key">{{
+                        $t('Publishable Key (optional)')
+                    }}</Label>
                     <Input
                         id="stripe_publishable_key"
                         v-model="form.publishableKey"
@@ -262,8 +275,11 @@ function clear(): void {
                         :message="form.errors.publishableKey"
                     />
                     <p class="text-xs text-text-muted">
-                        Never needed: no card field renders on a Konventix page.
-                        Stored for completeness only.
+                        {{
+                            $t(
+                                'Never needed: no card field renders on a Konventix page. Stored for completeness only.',
+                            )
+                        }}
                     </p>
                 </div>
 
@@ -271,8 +287,8 @@ function clear(): void {
                     <Button type="submit" :disabled="form.processing">
                         {{
                             props.setup.source === 'database'
-                                ? 'Replace keys'
-                                : 'Save keys'
+                                ? $t('Replace keys')
+                                : $t('Save keys')
                         }}
                     </Button>
                     <Button
@@ -281,14 +297,14 @@ function clear(): void {
                         variant="outline"
                         @click="clear"
                     >
-                        Clear keys
+                        {{ $t('Clear keys') }}
                     </Button>
                     <span
                         v-if="form.isDirty"
                         role="status"
                         class="text-sm text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
             </form>
@@ -306,19 +322,19 @@ function clear(): void {
                     id="stripe_setup_heading"
                     class="text-sm font-semibold text-text"
                 >
-                    Setting the account up at Stripe
+                    {{ $t('Setting the account up at Stripe') }}
                 </h3>
 
                 <p class="text-xs text-text-muted">
                     {{ props.setup.secretGroupHint }}
-                    See "Stripe credentials per environment" in
+                    {{ $t('See “Stripe credentials per environment” in') }}
                     <code>docs/helm-chart-requirements.md</code>.
                 </p>
 
                 <div class="flex flex-col gap-2">
-                    <Label for="stripe_webhook_url"
-                        >Webhook endpoint for this instance</Label
-                    >
+                    <Label for="stripe_webhook_url">{{
+                        $t('Webhook endpoint for this instance')
+                    }}</Label>
                     <div class="flex items-center gap-2">
                         <Input
                             id="stripe_webhook_url"
@@ -332,14 +348,15 @@ function clear(): void {
                             size="sm"
                             @click="
                                 copyToClipboard(
-                                    'Webhook endpoint',
+                                    $t('Webhook endpoint'),
                                     props.setup.webhookUrl,
                                 )
                             "
                         >
-                            Copy<span class="sr-only">
-                                the webhook endpoint URL</span
-                            >
+                            <span aria-hidden="true">{{ $t('Copy') }}</span>
+                            <span class="sr-only">{{
+                                $t('Copy the webhook endpoint URL')
+                            }}</span>
                         </Button>
                     </div>
                 </div>
@@ -349,7 +366,7 @@ function clear(): void {
                         id="stripe_events_heading"
                         class="text-sm font-medium text-text"
                     >
-                        Events this endpoint must receive
+                        {{ $t('Events this endpoint must receive') }}
                     </p>
                     <ul
                         aria-labelledby="stripe_events_heading"
@@ -366,41 +383,41 @@ function clear(): void {
                         class="self-start"
                         @click="
                             copyToClipboard(
-                                'Event list',
+                                $t('Event list'),
                                 props.setup.events.join(','),
                             )
                         "
                     >
-                        Copy all<span class="sr-only">
-                            event names, comma-separated for the Stripe
-                            dashboard or the CLI</span
-                        >
+                        <span aria-hidden="true">{{ $t('Copy all') }}</span>
+                        <span class="sr-only">{{
+                            $t(
+                                'Copy all event names, comma-separated for the Stripe dashboard or the CLI',
+                            )
+                        }}</span>
                     </Button>
                 </div>
 
                 <p role="status" class="text-xs text-success">
-                    <template v-if="copied !== null"
-                        >{{ copied }} copied to the clipboard.</template
-                    >
+                    <template v-if="copied !== null">{{
+                        $t(':what copied to the clipboard.', { what: copied })
+                    }}</template>
                 </p>
 
                 <p class="text-xs text-text-muted">
-                    Create that endpoint in the Stripe dashboard under
-                    Developers → Webhooks as an ordinary endpoint on this
-                    account — leave "Listen to events on connected accounts"
-                    off, nothing here happens on a connected account. The
-                    endpoint's own signing secret, revealed on its detail page,
-                    is the Webhook Signing Secret above; every environment has
-                    its own endpoint and therefore its own secret.
+                    {{
+                        $t(
+                            'Create that endpoint in the Stripe dashboard under Developers → Webhooks as an ordinary endpoint on this account — leave “Listen to events on connected accounts” off, nothing here happens on a connected account. The endpoint’s own signing secret, revealed on its detail page, is the Webhook Signing Secret above; every environment has its own endpoint and therefore its own secret.',
+                        )
+                    }}
                 </p>
 
                 <p class="text-xs text-text-muted">
-                    The Secret Key is this account's standard key under
-                    Developers → API keys: the sandbox key for development and
-                    staging, the live key for production. Local development
-                    needs no endpoint at all —
-                    <code>contrib/stripe-listen.sh</code> tunnels the same
-                    events and prints the signing secret to use instead.
+                    {{
+                        $t(
+                            'The Secret Key is this account’s standard key under Developers → API keys: the sandbox key for development and staging, the live key for production. Local development needs no endpoint at all; this script tunnels the same events and prints the signing secret to use instead:',
+                        )
+                    }}
+                    <code>contrib/stripe-listen.sh</code>
                 </p>
             </section>
         </CardContent>

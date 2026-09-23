@@ -14,6 +14,10 @@ namespace Konventix\Commerce\Settlement;
  * `Payment` in `local`/`testing` (a demo brand with no PSP connected, see
  * that class's own docblock) — is a real, exercised case here, not a
  * hypothetical: every dev/demo payment goes through it.
+ *
+ * Translated in the locale of whoever asks (ADR-0068). Where the label is
+ * snapshotted — `invoices.paid_via` — it is frozen in the locale the invoice
+ * was issued in, like the rest of the document.
  */
 final class ProviderLabels
 {
@@ -23,8 +27,8 @@ final class ProviderLabels
             'stripe' => 'Stripe',
             'mollie' => 'Mollie',
             'unzer' => 'Unzer',
-            'manual' => 'Überweisung / manuell',
-            'null' => 'Testzahlung',
+            'manual' => __('Bank transfer / manual'),
+            'null' => __('Test payment'),
             default => ucfirst($provider),
         };
     }

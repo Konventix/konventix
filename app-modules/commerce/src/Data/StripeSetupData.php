@@ -66,10 +66,9 @@ final class StripeSetupData extends Data
             lastFour: $credentials->lastFour(),
             publishableKeySet: $credentials->publishableKeySet(),
             liveKeyOffProduction: $credentials->liveKeyOffProduction(),
-            secretGroupHint: 'Entered here they are stored encrypted and win over the environment; '
-                .'otherwise STRIPE_SECRET and STRIPE_WEBHOOK_SECRET in this deployment\'s environment '
-                .'(the `secrets.payments` group on a chart deployment) are used. '
-                .'A cached config does not follow a changed environment: run `artisan config:clear` after setting them.',
+            // One literal, not a concatenation: the catalog key is the whole
+            // sentence (ADR-0068), and a split key is one no tool can find.
+            secretGroupHint: __('Entered here they are stored encrypted and win over the environment; otherwise STRIPE_SECRET and STRIPE_WEBHOOK_SECRET in this deployment’s environment (the `secrets.payments` group on a chart deployment) are used. A cached config does not follow a changed environment: run `artisan config:clear` after setting them.'),
         );
     }
 }

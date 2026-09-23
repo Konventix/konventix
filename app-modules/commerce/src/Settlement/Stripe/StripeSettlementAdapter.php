@@ -352,7 +352,7 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
 
     public function defaultCheckoutLabel(): string
     {
-        return 'Card, Apple Pay, Google Pay';
+        return __('Card, Apple Pay, Google Pay');
     }
 
     /**

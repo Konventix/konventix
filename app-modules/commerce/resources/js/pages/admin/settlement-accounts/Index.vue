@@ -122,12 +122,12 @@ function submitConnect(): void {
 </script>
 
 <template>
-    <Head title="Settlement accounts" />
+    <Head :title="$t('Settlement accounts')" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            title="Settlement accounts"
-            description="Each brand's own payment-provider connections"
+            :title="$t('Settlement accounts')"
+            :description="$t('Each brand’s own payment-provider connections')"
         />
 
         <template
@@ -142,11 +142,11 @@ function submitConnect(): void {
         </template>
 
         <p class="max-w-2xl text-sm text-text-muted">
-            Money flows directly from the participant into the operator's own
-            provider account — the platform never holds funds. A brand may
-            connect several providers at once; the payer picks which one settles
-            their order at checkout. A brand with no connected account settles
-            manually.
+            {{
+                $t(
+                    'Money flows directly from the participant into the operator’s own provider account — the platform never holds funds. A brand may connect several providers at once; the payer picks which one settles their order at checkout. A brand with no connected account settles manually.',
+                )
+            }}
         </p>
 
         <!--
@@ -170,7 +170,11 @@ function submitConnect(): void {
                     v-if="brand.accounts.length === 0"
                     class="text-sm text-text-muted"
                 >
-                    No connected account — this brand settles manually.
+                    {{
+                        $t(
+                            'No connected account — this brand settles manually.',
+                        )
+                    }}
                 </p>
 
                 <SettlementAccountCard
@@ -201,7 +205,9 @@ function submitConnect(): void {
                             </p>
 
                             <div class="flex flex-col gap-2">
-                                <Label for="provider">Provider</Label>
+                                <Label for="provider">{{
+                                    $t('Provider')
+                                }}</Label>
                                 <Select v-model="form.provider">
                                     <SelectTrigger
                                         id="provider"
@@ -241,22 +247,25 @@ function submitConnect(): void {
                             -->
                             <template v-if="form.provider === 'stripe'">
                                 <p class="text-sm text-text-muted">
-                                    This brand will settle through the Stripe
-                                    account set above — no separate account, no
-                                    onboarding. Enable it and the button appears
-                                    at checkout as soon as a key is configured.
+                                    {{
+                                        $t(
+                                            'This brand will settle through the Stripe account set above — no separate account, no onboarding. Enable it and the button appears at checkout as soon as a key is configured.',
+                                        )
+                                    }}
                                 </p>
 
                                 <div class="flex flex-col gap-2">
-                                    <Label for="checkout_label"
-                                        >Checkout button label (optional)</Label
-                                    >
+                                    <Label for="checkout_label">{{
+                                        $t('Checkout button label (optional)')
+                                    }}</Label>
                                     <Input
                                         id="checkout_label"
                                         v-model="form.checkout_label"
                                         type="text"
                                         autocomplete="off"
-                                        placeholder="Card, Apple Pay, Google Pay"
+                                        :placeholder="
+                                            $t('Card, Apple Pay, Google Pay')
+                                        "
                                         :aria-invalid="
                                             form.errors.checkout_label
                                                 ? true
@@ -275,10 +284,11 @@ function submitConnect(): void {
                                 </div>
 
                                 <div class="flex flex-col gap-2">
-                                    <Label for="statement_descriptor_suffix"
-                                        >Statement descriptor suffix
-                                        (optional)</Label
-                                    >
+                                    <Label for="statement_descriptor_suffix">{{
+                                        $t(
+                                            'Statement descriptor suffix (optional)',
+                                        )
+                                    }}</Label>
                                     <Input
                                         id="statement_descriptor_suffix"
                                         v-model="
@@ -309,16 +319,11 @@ function submitConnect(): void {
                                         "
                                     />
                                     <p class="text-xs text-text-muted">
-                                        What the payer reads on their card
-                                        statement, so it names this brand rather
-                                        than the operator. Stripe prepends the
-                                        account's own prefix and caps the two
-                                        together at 22 characters, refusing the
-                                        payment if they overflow — so ten
-                                        characters is what fits beside the
-                                        longest prefix Stripe allows. Shorten
-                                        the prefix in the Stripe dashboard if
-                                        you need more room here.
+                                        {{
+                                            $t(
+                                                'What the payer reads on their card statement, so it names this brand rather than the operator. Stripe prepends the account’s own prefix and caps the two together at 22 characters, refusing the payment if they overflow — so ten characters is what fits beside the longest prefix Stripe allows. Shorten the prefix in the Stripe dashboard if you need more room here.',
+                                            )
+                                        }}
                                     </p>
                                 </div>
                             </template>
@@ -327,7 +332,9 @@ function submitConnect(): void {
                                 v-if="form.provider === 'mollie'"
                                 class="flex flex-col gap-2"
                             >
-                                <Label for="api_key">Mollie API key</Label>
+                                <Label for="api_key">{{
+                                    $t('Mollie API key')
+                                }}</Label>
                                 <Input
                                     id="api_key"
                                     v-model="form.api_key"
@@ -352,9 +359,9 @@ function submitConnect(): void {
                                 v-if="form.provider === 'unzer'"
                                 class="flex flex-col gap-2"
                             >
-                                <Label for="private_key"
-                                    >Unzer private key</Label
-                                >
+                                <Label for="private_key">{{
+                                    $t('Unzer private key')
+                                }}</Label>
                                 <Input
                                     id="private_key"
                                     v-model="form.private_key"
@@ -383,8 +390,8 @@ function submitConnect(): void {
                                     :disabled="form.processing"
                                     >{{
                                         form.provider === 'stripe'
-                                            ? 'Enable Stripe'
-                                            : 'Connect'
+                                            ? $t('Enable Stripe')
+                                            : $t('Connect')
                                     }}</Button
                                 >
                                 <Button
@@ -392,14 +399,14 @@ function submitConnect(): void {
                                     variant="ghost"
                                     @click="connectingBrandId = null"
                                 >
-                                    Cancel
+                                    {{ $t('Cancel') }}
                                 </Button>
                                 <span
                                     v-if="form.isDirty"
                                     role="status"
                                     class="text-sm text-warning"
                                 >
-                                    Unsaved changes
+                                    {{ $t('Unsaved changes') }}
                                 </span>
                             </div>
                         </form>
@@ -411,7 +418,7 @@ function submitConnect(): void {
                         size="sm"
                         @click="beginConnect(brand)"
                     >
-                        Connect a provider
+                        {{ $t('Connect a provider') }}
                     </Button>
                 </template>
 

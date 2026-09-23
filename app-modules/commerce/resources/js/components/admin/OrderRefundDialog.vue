@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import { refund } from '@/routes/admin/orders';
+import { refundReasonLabels } from '../../lib/labels';
 
 /**
  * The console's refund form (#73, ADR-0037) and, since D-0.8.2-1, its
@@ -82,19 +83,10 @@ const emit = defineEmits<{ 'update:open': [boolean] }>();
  * type, and not a hand-kept copy of it (ADR-0009, whole-branch review
  * finding 10): a `Record` keyed by that type is exhaustive — adding,
  * renaming or removing a case fails `npm run types:check` here rather than
- * reaching an operator as a form error.
+ * reaching an operator as a form error. The `Record` lives in
+ * `lib/labels.ts` since the order page prints a credit note's reason too.
  */
-const refundReasonLabels: Record<
-    Konventix.Commerce.Enums.RefundReason,
-    string
-> = {
-    'customer-request': 'The customer asked for it',
-    'event-cancelled': 'The event was cancelled',
-    'duplicate-payment': 'Paid twice',
-    goodwill: 'Goodwill',
-};
-
-const refundReasons = Object.entries(refundReasonLabels).map(
+const refundReasons = Object.entries(refundReasonLabels()).map(
     ([value, label]) => ({
         value: value as Konventix.Commerce.Enums.RefundReason,
         label,
@@ -281,21 +273,25 @@ function returnFocus(): void {
         <DialogContent>
             <DialogHeader>
                 <DialogTitle>{{
-                    unapplied ? 'Refund unapplied payment' : 'Refund order'
+                    unapplied
+                        ? $t('Refund unapplied payment')
+                        : $t('Refund order')
                 }}</DialogTitle>
                 <DialogDescription>
-                    Send money back through the account that took it. Where an
-                    invoice exists it is credited. The reason and the note below
-                    are recorded against this order for you and the next
-                    operator — they are not printed on the credit note the payer
-                    receives. This cannot be undone here.
+                    {{
+                        $t(
+                            'Send money back through the account that took it. Where an invoice exists it is credited. The reason and the note below are recorded against this order for you and the next operator — they are not printed on the credit note the payer receives. This cannot be undone here.',
+                        )
+                    }}
                 </DialogDescription>
             </DialogHeader>
             <form class="flex flex-col gap-4" @submit.prevent="submit">
                 <InputError :message="refusal" />
 
                 <fieldset v-if="canPickLines" class="grid gap-2">
-                    <legend class="text-sm font-medium">What goes back</legend>
+                    <legend class="text-sm font-medium">
+                        {{ $t('What goes back') }}
+                    </legend>
                     <label class="flex items-center gap-2 text-sm">
                         <input
                             v-model="scope"
@@ -303,8 +299,12 @@ function returnFocus(): void {
                             name="refund-scope"
                             value="whole"
                         />
-                        The whole order ({{ order.totalGross }}
-                        {{ order.currency }})
+                        {{
+                            $t('The whole order (:amount :currency)', {
+                                amount: order.totalGross,
+                                currency: order.currency,
+                            })
+                        }}
                     </label>
                     <label class="flex items-center gap-2 text-sm">
                         <input
@@ -313,16 +313,18 @@ function returnFocus(): void {
                             name="refund-scope"
                             value="lines"
                         />
-                        Selected lines only
+                        {{ $t('Selected lines only') }}
                     </label>
                 </fieldset>
 
                 <div v-if="scope === 'lines'" class="grid gap-3">
                     <InputError :message="selectionError" />
                     <p class="text-sm text-text-muted">
-                        Pick whole units. The net amount, the VAT and the total
-                        are computed per line at the rate each line was charged
-                        at, and the credit note lists exactly what went back.
+                        {{
+                            $t(
+                                'Pick whole units. The net amount, the VAT and the total are computed per line at the rate each line was charged at, and the credit note lists exactly what went back.',
+                            )
+                        }}
                     </p>
                     <div
                         v-for="line in lines"
@@ -347,16 +349,29 @@ function returnFocus(): void {
                                 {{ line.label }}
                             </Label>
                             <p class="text-sm text-text-muted">
-                                {{ line.quantity }} ×
-                                {{ line.unitAmountNet }}
-                                {{ order.currency }} net · {{ line.taxRate }} %
-                                VAT
+                                {{
+                                    $t(
+                                        ':quantity × :amount :currency net · :rate % VAT',
+                                        {
+                                            quantity: String(line.quantity),
+                                            amount: line.unitAmountNet,
+                                            currency: order.currency,
+                                            rate: line.taxRate,
+                                        },
+                                    )
+                                }}
                                 <template v-if="line.creditedQuantity > 0">
-                                    · {{ line.creditedQuantity }} already
-                                    credited
+                                    ·
+                                    {{
+                                        $t(':count already credited', {
+                                            count: String(
+                                                line.creditedQuantity,
+                                            ),
+                                        })
+                                    }}
                                 </template>
                                 <template v-if="line.remainingQuantity === 0">
-                                    · nothing left to credit
+                                    · {{ $t('nothing left to credit') }}
                                 </template>
                             </p>
                         </div>
@@ -368,7 +383,11 @@ function returnFocus(): void {
                                 :for="`refund-quantity-${line.id}`"
                                 class="sr-only"
                             >
-                                Units of {{ line.label }} to credit
+                                {{
+                                    $t('Units of :item to credit', {
+                                        item: line.label,
+                                    })
+                                }}
                             </Label>
                             <Input
                                 :id="`refund-quantity-${line.id}`"
@@ -388,15 +407,17 @@ function returnFocus(): void {
                                         )
                                 "
                             />
-                            <span class="text-xs text-text-muted"
-                                >of {{ line.remainingQuantity }}</span
-                            >
+                            <span class="text-xs text-text-muted">{{
+                                $t('of :count', {
+                                    count: String(line.remainingQuantity),
+                                })
+                            }}</span>
                         </div>
                     </div>
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="refund-reason">Reason</Label>
+                    <Label for="refund-reason">{{ $t('Reason') }}</Label>
                     <select
                         id="refund-reason"
                         v-model="form.reasonCode"
@@ -413,7 +434,9 @@ function returnFocus(): void {
                         <!-- Disabled, so it can be read but not chosen: the
                              operator picks a reason or the server refuses
                              the refund. -->
-                        <option :value="null" disabled>Choose a reason</option>
+                        <option :value="null" disabled>
+                            {{ $t('Choose a reason') }}
+                        </option>
                         <option
                             v-for="reason in refundReasons"
                             :key="reason.value"
@@ -428,7 +451,7 @@ function returnFocus(): void {
                     />
                 </div>
                 <div class="grid gap-2">
-                    <Label for="refund-note">Note (optional)</Label>
+                    <Label for="refund-note">{{ $t('Note (optional)') }}</Label>
                     <textarea
                         id="refund-note"
                         v-model="form.reasonNote"
@@ -455,7 +478,7 @@ function returnFocus(): void {
                         :disabled="form.processing"
                         @click="emit('update:open', false)"
                     >
-                        Cancel
+                        {{ $t('Cancel') }}
                     </Button>
                     <Button
                         type="submit"
@@ -463,10 +486,15 @@ function returnFocus(): void {
                         :disabled="form.processing || nothingPicked"
                     >
                         <template v-if="scope === 'lines'">
-                            Refund the selected lines
+                            {{ $t('Refund the selected lines') }}
                         </template>
                         <template v-else>
-                            Refund {{ order.totalGross }} {{ order.currency }}
+                            {{
+                                $t('Refund :amount :currency', {
+                                    amount: order.totalGross,
+                                    currency: order.currency,
+                                })
+                            }}
                         </template>
                     </Button>
                     <span
@@ -474,7 +502,7 @@ function returnFocus(): void {
                         role="status"
                         class="text-sm text-warning"
                     >
-                        Unsaved changes
+                        {{ $t('Unsaved changes') }}
                     </span>
                 </div>
             </form>

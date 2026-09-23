@@ -4,12 +4,16 @@
  * in one place because two pages have to say the same thing and because a
  * formal mistake here is what gets an operator an Abmahnung.
  *
- * The purchase path is hard English today (#132 owns making it
- * translatable); these are the English equivalents of the German phrases
- * the law names, not translations chosen for tone. In particular
- * `ORDER_WITH_OBLIGATION_TO_PAY` is "zahlungspflichtig bestellen" —
- * §312j (3) BGB demands the button say the order obliges payment and
- * nothing vaguer, so "Pay" or "Buy now" is not enough.
+ * The English strings are the catalog keys (ADR-0068); the German the law
+ * names sits in `app-modules/commerce/lang/de.json`, which is the wording
+ * that binds. The English is its equivalent, not a translation chosen for
+ * tone. In particular `orderWithObligationToPay()` is "zahlungspflichtig
+ * bestellen" — §312j (3) BGB demands the button say the order obliges
+ * payment and nothing vaguer, so "Pay" or "Buy now" is not enough.
+ *
+ * Functions, never module-level constants: a `trans()` evaluated at import
+ * time runs before `installI18n()` has the catalog and would freeze the
+ * English.
  *
  * Plain functions rather than a component: they are the only part of the
  * purchase path a unit test can pin (there is no Vue component runner
@@ -25,11 +29,17 @@
  * the same line for the same reason.
  */
 
+import { trans } from 'laravel-vue-i18n';
+
 /** §312j (3) BGB: the label of the button that concludes the contract. */
-export const ORDER_WITH_OBLIGATION_TO_PAY = 'Order with obligation to pay';
+export function orderWithObligationToPay(): string {
+    return trans('Order with obligation to pay');
+}
 
 /** §19 (1) sentence 4 UStG: the absence of VAT, stated. */
-export const NO_VAT_SMALL_BUSINESS = 'no VAT charged (§ 19 UStG)';
+export function noVatSmallBusiness(): string {
+    return trans('no VAT charged (§ 19 UStG)');
+}
 
 /**
  * PAngV: a consumer price is the end price, and it has to say so. The
@@ -59,10 +69,10 @@ export function taxNote(
     smallBusinessScheme = false,
 ): string {
     if (smallBusinessScheme) {
-        return NO_VAT_SMALL_BUSINESS;
+        return noVatSmallBusiness();
     }
 
-    return priceDisplay === 'gross' ? 'incl. VAT' : 'excl. VAT';
+    return priceDisplay === 'gross' ? trans('incl. VAT') : trans('excl. VAT');
 }
 
 /**
@@ -73,8 +83,12 @@ export function taxNote(
  */
 export function fulfilmentNote(settlesInstantly: boolean): string {
     return settlesInstantly
-        ? 'Delivery is by email: your order confirmation, and your ticket where the order contains one, are sent to your email address as soon as the payment is confirmed — usually within a few minutes.'
-        : 'Delivery is by email: this organizer settles by bank transfer, so the payment details arrive with your order confirmation, and your ticket follows once the transfer has been received.';
+        ? trans(
+              'Delivery is by email: your order confirmation, and your ticket where the order contains one, are sent to your email address as soon as the payment is confirmed — usually within a few minutes.',
+          )
+        : trans(
+              'Delivery is by email: this organizer settles by bank transfer, so the payment details arrive with your order confirmation, and your ticket follows once the transfer has been received.',
+          );
 }
 
 /**

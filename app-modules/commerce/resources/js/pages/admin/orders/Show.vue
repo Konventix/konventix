@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { AlertCircle, FileText, Landmark, Undo2, XCircle } from '@lucide/vue';
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
@@ -20,10 +21,17 @@ import {
     cancelReversed,
 } from '@/routes/admin/orders';
 import OrderRefundDialog from '../../../components/admin/OrderRefundDialog.vue';
+import {
+    orderStatusLabel,
+    paymentStatusLabel,
+    refundReasonLabel,
+    reversalStatusLabel,
+    settlesTypeLabel,
+    taxTreatmentLabel,
+} from '../../../lib/labels';
 import type { OrderReversal, UnappliedPayment } from './reversals';
 import {
     canBookPayment,
-    orderStatusLabel,
     repaymentDeadline,
     reversalKindLabel,
 } from './reversals';
@@ -196,7 +204,9 @@ function submitBillingAddress(): void {
 function submitCancelReversed(): void {
     if (
         confirm(
-            'Cancel this order? Where an invoice exists it will be credited, and the reversed payment will no longer be chased.',
+            trans(
+                'Cancel this order? Where an invoice exists it will be credited, and the reversed payment will no longer be chased.',
+            ),
         )
     ) {
         router.post(
@@ -227,12 +237,22 @@ const refundOpen = ref(false);
 </script>
 
 <template>
-    <Head :title="`Order ${order.id}`" />
+    <Head :title="$t('Order :id', { id: order.id })" />
 
     <div class="flex flex-col gap-6">
         <AdminPageHeader
-            :title="`Order · ${order.settlesType} ${order.settlesId}`"
-            :description="`${order.brand} — created ${formatDateTime(order.createdAt) || 'unknown'}`"
+            :title="
+                $t('Order · :type :id', {
+                    type: settlesTypeLabel(order.settlesType),
+                    id: order.settlesId,
+                })
+            "
+            :description="
+                $t(':brand — created :time', {
+                    brand: order.brand,
+                    time: formatDateTime(order.createdAt) || $t('unknown'),
+                })
+            "
         >
             <Badge :variant="statusVariant(order.status)">{{
                 orderStatusLabel(order.status)
@@ -241,7 +261,7 @@ const refundOpen = ref(false);
                 v-if="order.status === 'payment_reversed' && deadline"
                 class="text-sm text-text-muted"
             >
-                — owed again until {{ deadline }}
+                {{ $t('— owed again until :date', { date: deadline }) }}
             </span>
             <Button
                 v-if="canBookPayment(order.status)"
@@ -249,7 +269,7 @@ const refundOpen = ref(false);
                 @click="submitBookPayment"
             >
                 <Landmark class="size-4" />
-                Book bank transfer
+                {{ $t('Book bank transfer') }}
             </Button>
             <Button
                 v-if="canRefund"
@@ -259,8 +279,8 @@ const refundOpen = ref(false);
                 <Undo2 class="size-4 text-danger" />
                 {{
                     unappliedPayment
-                        ? 'Refund unapplied payment'
-                        : 'Refund order'
+                        ? $t('Refund unapplied payment')
+                        : $t('Refund order')
                 }}
             </Button>
             <Button
@@ -269,7 +289,7 @@ const refundOpen = ref(false);
                 @click="submitCancelReversed"
             >
                 <XCircle class="size-4 text-danger" />
-                Cancel order
+                {{ $t('Cancel order') }}
             </Button>
         </AdminPageHeader>
 
@@ -289,18 +309,35 @@ const refundOpen = ref(false);
 
         <Alert v-if="unappliedPayment">
             <AlertCircle class="size-4" />
-            <AlertTitle>Unapplied payment</AlertTitle>
+            <AlertTitle>{{ $t('Unapplied payment') }}</AlertTitle>
             <AlertDescription>
-                {{ unappliedPayment.provider }} reported
-                {{ unappliedPayment.amount }} {{ unappliedPayment.currency }}
-                received
                 {{
-                    formatDateTime(unappliedPayment.receivedAt) ||
-                    'at an unknown time'
-                }}, and this order is not paid. The money moved; what happens to
-                it is yours to decide — "Refund unapplied payment" sends it back
-                through the account it came from, without a credit note, since a
-                cancelled order has no document to correct.
+                    unappliedPayment.receivedAt
+                        ? $t(
+                              ':provider reported :amount :currency received :time, and this order is not paid.',
+                              {
+                                  provider: unappliedPayment.provider,
+                                  amount: unappliedPayment.amount,
+                                  currency: unappliedPayment.currency,
+                                  time: formatDateTime(
+                                      unappliedPayment.receivedAt,
+                                  ),
+                              },
+                          )
+                        : $t(
+                              ':provider reported :amount :currency received at an unknown time, and this order is not paid.',
+                              {
+                                  provider: unappliedPayment.provider,
+                                  amount: unappliedPayment.amount,
+                                  currency: unappliedPayment.currency,
+                              },
+                          )
+                }}
+                {{
+                    $t(
+                        'The money moved; what happens to it is yours to decide — “Refund unapplied payment” sends it back through the account it came from, without a credit note, since a cancelled order has no document to correct.',
+                    )
+                }}
                 <span
                     v-if="unappliedPayment.externalId"
                     class="font-mono text-xs"
@@ -313,7 +350,7 @@ const refundOpen = ref(false);
         <div class="grid gap-6 xl:grid-cols-3">
             <Card class="xl:col-span-2">
                 <CardHeader>
-                    <CardTitle>Lines</CardTitle>
+                    <CardTitle>{{ $t('Lines') }}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div
@@ -325,31 +362,31 @@ const refundOpen = ref(false);
                                     class="border-b border-border text-left text-text-muted"
                                 >
                                     <th scope="col" class="p-3 font-medium">
-                                        Item
+                                        {{ $t('Item') }}
                                     </th>
                                     <th
                                         scope="col"
                                         class="p-3 text-right font-medium"
                                     >
-                                        Qty
+                                        {{ $t('Qty') }}
                                     </th>
                                     <th
                                         scope="col"
                                         class="p-3 text-right font-medium"
                                     >
-                                        Unit net
+                                        {{ $t('Unit net') }}
                                     </th>
                                     <th
                                         scope="col"
                                         class="p-3 text-right font-medium"
                                     >
-                                        Tax %
+                                        {{ $t('Tax %') }}
                                     </th>
                                     <th
                                         scope="col"
                                         class="p-3 text-right font-medium"
                                     >
-                                        Gross
+                                        {{ $t('Gross') }}
                                     </th>
                                 </tr>
                             </thead>
@@ -376,9 +413,15 @@ const refundOpen = ref(false);
                             </tbody>
                             <tfoot>
                                 <tr class="border-t border-border font-medium">
-                                    <td class="p-3" colspan="3">Total</td>
+                                    <td class="p-3" colspan="3">
+                                        {{ $t('Total') }}
+                                    </td>
                                     <td class="p-3 text-right text-text-muted">
-                                        + {{ order.totalTax }} tax
+                                        {{
+                                            $t('+ :amount tax', {
+                                                amount: order.totalTax,
+                                            })
+                                        }}
                                     </td>
                                     <td class="p-3 text-right">
                                         {{ order.totalGross }}
@@ -389,12 +432,28 @@ const refundOpen = ref(false);
                         </table>
                     </div>
                     <p class="mt-2 text-xs text-text-muted">
-                        Tax treatment: {{ order.taxTreatment }}
+                        {{
+                            $t('Tax treatment: :treatment', {
+                                treatment: taxTreatmentLabel(
+                                    order.taxTreatment,
+                                ),
+                            })
+                        }}
                         <template v-if="order.paidAt">
-                            · paid {{ formatDateTime(order.paidAt) }}
+                            ·
+                            {{
+                                $t('paid :time', {
+                                    time: formatDateTime(order.paidAt),
+                                })
+                            }}
                         </template>
                         <template v-if="order.provider">
-                            · via {{ order.provider }}
+                            ·
+                            {{
+                                $t('via :provider', {
+                                    provider: order.provider,
+                                })
+                            }}
                         </template>
                     </p>
                 </CardContent>
@@ -403,7 +462,7 @@ const refundOpen = ref(false);
             <div class="flex flex-col gap-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Invoice</CardTitle>
+                        <CardTitle>{{ $t('Invoice') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-3 text-sm">
                         <template v-if="invoice">
@@ -424,15 +483,15 @@ const refundOpen = ref(false);
                                 </Button>
                             </div>
                             <dl class="grid grid-cols-2 gap-1 text-text-muted">
-                                <dt>Issued</dt>
+                                <dt>{{ $t('Issued') }}</dt>
                                 <dd class="text-right text-text">
                                     {{ formatCalendarDate(invoice.issuedOn) }}
                                 </dd>
-                                <dt>Due</dt>
+                                <dt>{{ $t('Due') }}</dt>
                                 <dd class="text-right text-text">
                                     {{ formatCalendarDate(invoice.dueOn) }}
                                 </dd>
-                                <dt>Amount</dt>
+                                <dt>{{ $t('Amount') }}</dt>
                                 <dd class="text-right text-text">
                                     {{ invoice.totalGross }}
                                     {{ order.currency }}
@@ -442,7 +501,7 @@ const refundOpen = ref(false);
                                 <span
                                     class="text-xs font-medium text-text-muted"
                                 >
-                                    Billing party
+                                    {{ $t('Billing party') }}
                                 </span>
                                 <p>{{ invoice.billingParty.name }}</p>
                                 <p class="text-text-muted">
@@ -462,12 +521,20 @@ const refundOpen = ref(false);
                                     v-if="invoice.billingParty.vatId"
                                     class="text-text-muted"
                                 >
-                                    VAT {{ invoice.billingParty.vatId }}
+                                    {{
+                                        $t('VAT ID :id', {
+                                            id: invoice.billingParty.vatId,
+                                        })
+                                    }}
                                 </p>
                             </div>
                         </template>
                         <p v-else class="text-text-muted">
-                            No invoice — this order settles without one.
+                            {{
+                                $t(
+                                    'No invoice — this order settles without one.',
+                                )
+                            }}
                         </p>
                     </CardContent>
                 </Card>
@@ -483,17 +550,21 @@ const refundOpen = ref(false);
                 -->
                 <Card v-if="order.billingAddressRequired">
                     <CardHeader>
-                        <CardTitle>Billing address</CardTitle>
+                        <CardTitle>{{ $t('Billing address') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-3 text-sm">
                         <template v-if="showBillingAddressForm">
                             <Alert>
                                 <AlertCircle class="size-4" />
-                                <AlertTitle>Address needed</AlertTitle>
+                                <AlertTitle>{{
+                                    $t('Address needed')
+                                }}</AlertTitle>
                                 <AlertDescription>
-                                    This order is over 250 € and has no billing
-                                    address, so no invoice has been issued yet.
-                                    Complete it below to produce the invoice.
+                                    {{
+                                        $t(
+                                            'This order is over 250 € and has no billing address, so no invoice has been issued yet. Complete it below to produce the invoice.',
+                                        )
+                                    }}
                                 </AlertDescription>
                             </Alert>
                             <form
@@ -501,15 +572,15 @@ const refundOpen = ref(false);
                                 @submit.prevent="submitBillingAddress"
                             >
                                 <div class="grid gap-2">
-                                    <Label for="billing-recipient"
-                                        >Recipient or organization</Label
-                                    >
+                                    <Label for="billing-recipient">{{
+                                        $t('Recipient or organization')
+                                    }}</Label>
                                     <Input
                                         id="billing-recipient"
                                         v-model="
                                             billingAddressForm.recipientName
                                         "
-                                        placeholder="Recipient name"
+                                        :placeholder="$t('Recipient name')"
                                         :aria-invalid="
                                             billingAddressForm.errors
                                                 .recipientName
@@ -522,7 +593,9 @@ const refundOpen = ref(false);
                                         v-model="
                                             billingAddressForm.organizationName
                                         "
-                                        placeholder="Organization (optional)"
+                                        :placeholder="
+                                            $t('Organization (optional)')
+                                        "
                                     />
                                     <InputError
                                         :message="
@@ -532,9 +605,9 @@ const refundOpen = ref(false);
                                     />
                                 </div>
                                 <div class="grid gap-2">
-                                    <Label for="billing-address-line"
-                                        >Street and number</Label
-                                    >
+                                    <Label for="billing-address-line">{{
+                                        $t('Street and number')
+                                    }}</Label>
                                     <Input
                                         id="billing-address-line"
                                         v-model="billingAddressForm.addressLine"
@@ -554,9 +627,9 @@ const refundOpen = ref(false);
                                 </div>
                                 <div class="grid grid-cols-3 gap-2">
                                     <div class="grid gap-2">
-                                        <Label for="billing-postal-code"
-                                            >Postal code</Label
-                                        >
+                                        <Label for="billing-postal-code">{{
+                                            $t('Postal code')
+                                        }}</Label>
                                         <Input
                                             id="billing-postal-code"
                                             v-model="
@@ -577,7 +650,9 @@ const refundOpen = ref(false);
                                         />
                                     </div>
                                     <div class="col-span-2 grid gap-2">
-                                        <Label for="billing-city">City</Label>
+                                        <Label for="billing-city">{{
+                                            $t('City')
+                                        }}</Label>
                                         <Input
                                             id="billing-city"
                                             v-model="billingAddressForm.city"
@@ -596,9 +671,9 @@ const refundOpen = ref(false);
                                 </div>
                                 <div class="grid grid-cols-2 gap-2">
                                     <div class="grid gap-2">
-                                        <Label for="billing-country-code"
-                                            >Country code</Label
-                                        >
+                                        <Label for="billing-country-code">{{
+                                            $t('Country code')
+                                        }}</Label>
                                         <Input
                                             id="billing-country-code"
                                             v-model="
@@ -621,9 +696,9 @@ const refundOpen = ref(false);
                                         />
                                     </div>
                                     <div class="grid gap-2">
-                                        <Label for="billing-vat-id"
-                                            >VAT ID (optional)</Label
-                                        >
+                                        <Label for="billing-vat-id">{{
+                                            $t('VAT ID (optional)')
+                                        }}</Label>
                                         <Input
                                             id="billing-vat-id"
                                             v-model="billingAddressForm.vatId"
@@ -642,14 +717,14 @@ const refundOpen = ref(false);
                                             billingAddressForm.processing
                                         "
                                     >
-                                        Save billing address
+                                        {{ $t('Save billing address') }}
                                     </Button>
                                     <span
                                         v-if="billingAddressForm.isDirty"
                                         role="status"
                                         class="text-sm text-warning"
                                     >
-                                        Unsaved changes
+                                        {{ $t('Unsaved changes') }}
                                     </span>
                                 </div>
                             </form>
@@ -680,14 +755,14 @@ const refundOpen = ref(false);
                             </p>
                         </template>
                         <p v-else class="text-text-muted">
-                            No billing party on this order.
+                            {{ $t('No billing party on this order.') }}
                         </p>
                     </CardContent>
                 </Card>
 
                 <Card v-if="creditNotes.length">
                     <CardHeader>
-                        <CardTitle>Credit notes</CardTitle>
+                        <CardTitle>{{ $t('Credit notes') }}</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-2 text-sm">
                         <div
@@ -698,7 +773,7 @@ const refundOpen = ref(false);
                             <div>
                                 <p class="font-medium">{{ note.number }}</p>
                                 <p class="text-xs text-text-muted">
-                                    {{ note.reasonCode }} ·
+                                    {{ refundReasonLabel(note.reasonCode) }} ·
                                     {{ formatCalendarDate(note.issuedOn) }}
                                 </p>
                             </div>
@@ -730,11 +805,11 @@ const refundOpen = ref(false);
 
         <Card>
             <CardHeader>
-                <CardTitle>Payments</CardTitle>
+                <CardTitle>{{ $t('Payments') }}</CardTitle>
             </CardHeader>
             <CardContent>
                 <p v-if="payments.length === 0" class="text-sm text-text-muted">
-                    No payment attempts yet.
+                    {{ $t('No payment attempts yet.') }}
                 </p>
                 <div
                     v-else
@@ -746,22 +821,22 @@ const refundOpen = ref(false);
                                 class="border-b border-border text-left text-text-muted"
                             >
                                 <th scope="col" class="p-3 font-medium">
-                                    Provider
+                                    {{ $t('Provider') }}
                                 </th>
                                 <th scope="col" class="p-3 font-medium">
-                                    Status
+                                    {{ $t('Status') }}
                                 </th>
                                 <th
                                     scope="col"
                                     class="p-3 text-right font-medium"
                                 >
-                                    Amount
+                                    {{ $t('Amount') }}
                                 </th>
                                 <th scope="col" class="p-3 font-medium">
-                                    Reference
+                                    {{ $t('Reference') }}
                                 </th>
                                 <th scope="col" class="p-3 font-medium">
-                                    When
+                                    {{ $t('When') }}
                                 </th>
                             </tr>
                         </thead>
@@ -778,7 +853,7 @@ const refundOpen = ref(false);
                                             paymentVariant(payment.status)
                                         "
                                     >
-                                        {{ payment.status }}
+                                        {{ paymentStatusLabel(payment.status) }}
                                     </Badge>
                                     <p
                                         v-if="payment.failureReason"
@@ -810,46 +885,50 @@ const refundOpen = ref(false);
 
         <Card v-if="reversals.length">
             <CardHeader>
-                <CardTitle>Reversals</CardTitle>
+                <CardTitle>{{ $t('Reversals') }}</CardTitle>
             </CardHeader>
             <CardContent class="flex flex-col gap-3">
                 <p class="text-sm text-text-muted">
-                    Money that left again after it had settled (ADR-0057). The
-                    sale stands and the invoice is unchanged; a final reversal
-                    revives the receivable until the deadline below.
+                    {{
+                        $t(
+                            'Money that left again after it had settled (ADR-0057). The sale stands and the invoice is unchanged; a final reversal revives the receivable until the deadline below.',
+                        )
+                    }}
                 </p>
                 <div class="overflow-x-auto rounded-md border border-border">
                     <table class="w-full text-sm">
                         <caption class="sr-only">
-                            Reversals recorded against this order
+                            {{
+                                $t('Reversals recorded against this order')
+                            }}
                         </caption>
                         <thead>
                             <tr
                                 class="border-b border-border text-left text-text-muted"
                             >
                                 <th scope="col" class="p-3 font-medium">
-                                    Kind
+                                    {{ $t('Kind') }}
                                 </th>
                                 <th scope="col" class="p-3 font-medium">
-                                    Status
+                                    {{ $t('Status') }}
                                 </th>
                                 <th
                                     scope="col"
                                     class="p-3 text-right font-medium"
                                 >
-                                    Amount
+                                    {{ $t('Amount') }}
                                 </th>
                                 <th scope="col" class="p-3 font-medium">
-                                    Reference
+                                    {{ $t('Reference') }}
                                 </th>
                                 <th scope="col" class="p-3 font-medium">
-                                    Reason
+                                    {{ $t('Reason') }}
                                 </th>
                                 <th scope="col" class="p-3 font-medium">
-                                    Owed again until
+                                    {{ $t('Owed again until') }}
                                 </th>
                                 <th scope="col" class="p-3 font-medium">
-                                    When
+                                    {{ $t('When') }}
                                 </th>
                             </tr>
                         </thead>
@@ -873,7 +952,9 @@ const refundOpen = ref(false);
                                                 : 'secondary'
                                         "
                                     >
-                                        {{ reversal.status }}
+                                        {{
+                                            reversalStatusLabel(reversal.status)
+                                        }}
                                     </Badge>
                                 </td>
                                 <td class="p-3 text-right">
@@ -887,8 +968,12 @@ const refundOpen = ref(false);
                                         v-if="reversal.feeAmount"
                                         class="text-xs text-text-muted"
                                     >
-                                        + {{ reversal.feeAmount }}
-                                        {{ reversal.currency }} fee
+                                        {{
+                                            $t('+ :amount :currency fee', {
+                                                amount: reversal.feeAmount,
+                                                currency: reversal.currency,
+                                            })
+                                        }}
                                     </p>
                                 </td>
                                 <td

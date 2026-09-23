@@ -42,14 +42,15 @@ function submit(): void {
 <template>
     <form class="flex flex-col gap-3" @submit.prevent="submit">
         <p class="text-sm text-text-muted">
-            How many days a payer has to put back money that was reversed — a
-            Rücklastschrift or a lost chargeback — before the order is
-            cancelled. An order whose admission was already used is never
-            cancelled; it becomes an open receivable instead.
+            {{
+                $t(
+                    'How many days a payer has to put back money that was reversed — a returned direct debit or a lost chargeback — before the order is cancelled. An order whose admission was already used is never cancelled; it becomes an open receivable instead.',
+                )
+            }}
         </p>
 
         <div class="grid max-w-xs gap-2">
-            <Label :for="fieldId">Repayment window (days)</Label>
+            <Label :for="fieldId">{{ $t('Repayment window (days)') }}</Label>
             <Input
                 :id="fieldId"
                 v-model.number="form.reversalRepaymentDays"
@@ -71,14 +72,14 @@ function submit(): void {
 
         <div class="flex items-center gap-3">
             <Button type="submit" variant="outline" :disabled="form.processing">
-                Save repayment window
+                {{ $t('Save repayment window') }}
             </Button>
             <span
                 v-if="form.isDirty"
                 role="status"
                 class="text-sm text-warning"
             >
-                Unsaved changes
+                {{ $t('Unsaved changes') }}
             </span>
         </div>
     </form>

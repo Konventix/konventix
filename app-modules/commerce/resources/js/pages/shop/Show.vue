@@ -92,7 +92,7 @@ function addToCart(): void {
                     v-if="props.product.soldOut"
                     class="rounded-full bg-danger/15 px-2 py-0.5 text-xs font-medium text-danger"
                 >
-                    Sold out
+                    {{ $t('Sold out') }}
                 </span>
             </div>
 
@@ -120,7 +120,7 @@ function addToCart(): void {
             class="flex flex-col gap-4 rounded-xl border border-border bg-surface-raised p-4"
         >
             <div class="grid gap-2">
-                <Label for="shop-variant">Variant</Label>
+                <Label for="shop-variant">{{ $t('Variant') }}</Label>
                 <select
                     id="shop-variant"
                     v-model="selectedVariantId"
@@ -135,7 +135,7 @@ function addToCart(): void {
                     >
                         {{ variant.label ?? props.product.name }}
                         <template v-if="variant.remaining === 0">
-                            — sold out
+                            — {{ $t('sold out') }}
                         </template>
                         <template v-else>
                             — {{ variantAmount(variant) }}
@@ -152,7 +152,7 @@ function addToCart(): void {
             </div>
 
             <div class="grid gap-2">
-                <Label for="shop-quantity">Quantity</Label>
+                <Label for="shop-quantity">{{ $t('Quantity') }}</Label>
                 <Input
                     id="shop-quantity"
                     v-model.number="quantity"
@@ -165,7 +165,7 @@ function addToCart(): void {
             </div>
 
             <Button v-if="isGuest" as-child class="w-fit">
-                <Link :href="login()">Sign in to buy</Link>
+                <Link :href="login()">{{ $t('Sign in to buy') }}</Link>
             </Button>
             <template v-else>
                 <Button
@@ -174,7 +174,7 @@ function addToCart(): void {
                     class="w-fit"
                     @click="addToCart"
                 >
-                    Add to cart
+                    {{ $t('Add to cart') }}
                 </Button>
                 <InputError :message="quantityError" />
             </template>
