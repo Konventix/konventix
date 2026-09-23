@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Konventix\Competition\Http\Controllers\Admin\Concerns;
 
+use Konventix\Competition\Providers\CompetitionServiceProvider;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Operators\OperatorContext;
 
 /**
@@ -22,11 +24,24 @@ use Konventix\Platform\Operators\OperatorContext;
  * reads 403 whatever it asks for. Same shape as Platform's
  * `BrandMenuAdminController`, Community's `ModerationController` and
  * Agenda's `AgendaAdminController`.
+ *
+ * **It is also the console's module gate** (design §9: every screen "honours
+ * the module gate", ADR-0003). The admin host resolves no brand, so
+ * `ensure-module:competition` cannot be route middleware here. The brand a row
+ * belongs to is known, though, and a brand with `competition` switched off
+ * counts as a stranger's: its rows answer 404, the lists leave it out, and the
+ * brand pickers do not offer it. That is Agenda's reading
+ * (`ModuleGate::isActiveForBrand()` in `AgendaAdminController`), applied in
+ * the one place every console controller of this module already asks. The
+ * console's navigation entries stay, filtered by capability only, because
+ * Platform's admin area has no brand to gate an entry on (ADR-0029). With the
+ * module off for every brand they lead to empty lists (design §14).
  */
 trait ScopesToOperator
 {
     /**
-     * 404 unless the brand belongs to the operator whose admin host this is.
+     * 404 unless the brand belongs to the operator whose admin host this is
+     * and runs Competition.
      */
     private function ensureOperatorOwns(string $brandId): void
     {
@@ -34,9 +49,14 @@ trait ScopesToOperator
     }
 
     /**
-     * The brands of the admin host's operator. A console request without a
-     * resolved operator cannot reach here past `EnsureOperatorHost`, so its
-     * absence is a 404 like any other stranger's request.
+     * The brands of the admin host's operator that have `competition` switched
+     * on. A console request without a resolved operator cannot reach here
+     * past `EnsureOperatorHost`, so its absence is a 404 like any other
+     * stranger's request.
+     *
+     * The gate is asked per brand through `isActiveForBrand()`, which never
+     * touches the ambient brand context. An operator has a handful of brands,
+     * so this costs a handful of Pennant lookups per console request.
      *
      * Asked afresh on every call and never kept on `$this`: a controller
      * instance can outlive its request under Octane, and an operator's
@@ -47,15 +67,20 @@ trait ScopesToOperator
     private function operatorBrandIds(): array
     {
         $operator = app(OperatorContext::class)->current() ?? abort(404);
+        $gate = app(ModuleGate::class);
 
-        return array_values(array_map(
-            strval(...),
-            Brand::query()->where('operator_id', $operator->getKey())->pluck('id')->all(),
+        return array_values(array_filter(
+            array_map(
+                strval(...),
+                Brand::query()->where('operator_id', $operator->getKey())->pluck('id')->all(),
+            ),
+            static fn (string $brandId): bool => $gate->isActiveForBrand(CompetitionServiceProvider::moduleName(), $brandId),
         ));
     }
 
     /**
-     * The brand picker, narrowed to the operator's own brands.
+     * The brand picker, narrowed to the operator's own brands that run
+     * Competition.
      *
      * @return list<array{id: string, name: string}>
      */

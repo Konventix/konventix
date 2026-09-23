@@ -19,9 +19,11 @@ use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
+use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Operators\ConsoleEventSources;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationSubmitted;
+use Laravel\Pennant\Feature;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
@@ -48,6 +50,12 @@ use Spatie\Permission\PermissionRegistrar;
  * another operator (`ScopesToOperator`). Pass `$operator` and a distinct
  * `$host` for somebody else's installation: `operators.admin_host` is unique.
  *
+ * **The console honours the module gate** (design §9, `ScopesToOperator`): a
+ * brand with `competition` off counts as a stranger's and its rows answer
+ * 404. So this switches the module on for every brand the operator already
+ * has, which is every brand a console test made before calling it. Pass
+ * `activateCompetition: false` for a test about the gate itself.
+ *
  * @param  list<string>  $permissions
  * @return array{0: Operator, 1: User}
  */
@@ -56,10 +64,18 @@ function competitionOperator(array $permissions = [
     'competition.view-competitions',
     'competition.manage-competitions',
     'competition.manage-disciplines',
-], ?Operator $operator = null, string $host = 'admin.tournaments.test'): array
+], ?Operator $operator = null, string $host = 'admin.tournaments.test', bool $activateCompetition = true): array
 {
     $operator ??= Operator::query()->orderBy('created_at')->orderBy('id')->first() ?? Operator::factory()->create();
     $operator->forceFill(['admin_host' => $host])->save();
+
+    if ($activateCompetition) {
+        $feature = app(ModuleGate::class)->featureName('competition');
+
+        foreach (Brand::query()->where('operator_id', $operator->getKey())->get() as $brand) {
+            Feature::for($brand)->activate($feature);
+        }
+    }
 
     $registrar = app(PermissionRegistrar::class);
     $registrar->setPermissionsTeamId($operator->getKey());
