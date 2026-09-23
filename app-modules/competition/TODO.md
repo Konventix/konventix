@@ -161,6 +161,10 @@ Found on the way and not built. Each one is still true as of #302.
       competition once `signup_closes_at` passes (`CloseSignup`) and
       announces `SignupOpened` once per window (`AnnounceSignupOpened`,
       `competitions.signup_opened_at`), gated per brand (design §14).
+- [x] **Eligibility unlearns a refund** (final review fix wave B, part 2,
+      I1): `RegistrationCancelled` and `RegistrationRejected` clear the
+      confirmation, and `registration:announce-standing` is the backfill for
+      registrations written without events (design §14).
 - [ ] **`CompetitionUnpublished`** before Agenda's competition half ships
       (design §14; Agenda's `TODO.md` names it as its precondition).
 - [x] **Two notices §12 names** (fix round): `competition.match-disputed`

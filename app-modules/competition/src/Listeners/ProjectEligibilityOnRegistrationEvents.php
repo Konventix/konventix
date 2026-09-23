@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Konventix\Competition\Listeners;
 
 use Konventix\Competition\Actions\ProjectEligibleRegistration;
+use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
+use Konventix\Registration\Events\RegistrationRejected;
+use Konventix\Registration\Events\RegistrationStandingAnnounced;
 use Konventix\Registration\Events\RegistrationSubmitted;
 
 /**
@@ -13,7 +16,10 @@ use Konventix\Registration\Events\RegistrationSubmitted;
  *
  * Both Registration events are needed: submission carries who the registrant
  * is, confirmation carries that they are entitled. Neither alone answers "may
- * this person enter".
+ * this person enter". A cancellation or a rejection takes the entitlement
+ * back (final review, part 2, I1: the refund console cancels, and a refunded
+ * guest must not keep entering), and `RegistrationStandingAnnounced` restates
+ * a registration whole for the backfill, `registration:announce-standing`.
  *
  * Deliberately **not** short-circuited on the Pennant gate, unlike an Action
  * that creates something: a brand that switches Competition on mid-event must
@@ -47,6 +53,27 @@ final class ProjectEligibilityOnRegistrationEvents
             registrationId: $event->registrationId,
             eventId: $event->eventId,
             brandId: $event->brandId,
+        );
+    }
+
+    public function handleCancelled(RegistrationCancelled $event): void
+    {
+        $this->action->withdrawn($event->registrationId);
+    }
+
+    public function handleRejected(RegistrationRejected $event): void
+    {
+        $this->action->withdrawn($event->registrationId);
+    }
+
+    public function handleStandingAnnounced(RegistrationStandingAnnounced $event): void
+    {
+        $this->action->announced(
+            registrationId: $event->registrationId,
+            eventId: $event->eventId,
+            brandId: $event->brandId,
+            userId: $event->registrantUserId,
+            confirmed: $event->confirmed,
         );
     }
 }

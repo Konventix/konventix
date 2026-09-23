@@ -78,7 +78,10 @@ use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Permissions\DefaultRole;
+use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
+use Konventix\Registration\Events\RegistrationRejected;
+use Konventix\Registration\Events\RegistrationStandingAnnounced;
 use Konventix\Registration\Events\RegistrationSubmitted;
 use Spatie\Prometheus\Facades\Prometheus;
 
@@ -325,6 +328,14 @@ class CompetitionServiceProvider extends ModuleServiceProvider
             RegistrationConfirmed::class,
             [ProjectEligibilityOnRegistrationEvents::class, 'handleConfirmed'],
         );
+
+        // …and takes it back (final review, part 2, I1). Neither event
+        // carries a brand, so the listener finds the row by registration
+        // alone, as Resources does. `registration:announce-standing` is the
+        // backfill, for registrations that never emitted their events.
+        Event::listen(RegistrationCancelled::class, [ProjectEligibilityOnRegistrationEvents::class, 'handleCancelled']);
+        Event::listen(RegistrationRejected::class, [ProjectEligibilityOnRegistrationEvents::class, 'handleRejected']);
+        Event::listen(RegistrationStandingAnnounced::class, [ProjectEligibilityOnRegistrationEvents::class, 'handleStandingAnnounced']);
 
         // Names for every participant and public page (design §10). Not
         // gated either, and for the same reason as the eligibility

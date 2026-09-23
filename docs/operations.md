@@ -294,9 +294,19 @@ Unlinking and re-linking there also repairs a single account.
 
 Competition reads other modules only through its own read models (ADR-0004),
 so a brand that switches `competition` on, or a deploy that brings one of
-those tables, finds them empty for everything that happened before. Four of
-the post-rollout backfills fill them. All four are safe to re-run, and only a
+those tables, finds them empty for everything that happened before. Five of
+the post-rollout backfills fill them. All five are safe to re-run, and only a
 projection listens to what they emit:
+
+- `registration:announce-standing` fills `competition_eligible_registrations`,
+  the §5.1 gate: who holds a confirmed registration for the event. The
+  projection is not gated and hears every submit, confirm, cancel and reject,
+  so a registration that went through the Actions is already there. Run it
+  **after any import that writes registrations directly**, which includes the
+  hand-run Eventula migration, and once after the 0.9.0 deploy: until it has
+  run, a registrant the projection never heard of cannot enter, join a team,
+  put their name on an interest list or be added by the desk, and a
+  registration cancelled before 0.9.0 still counts as confirmed.
 
 - `event:replay-details --with-state` fills `competition_event_summaries`:
   each event's slug and name, and its lifecycle state. The state comes only

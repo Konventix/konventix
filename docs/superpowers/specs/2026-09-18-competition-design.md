@@ -1605,3 +1605,30 @@ two ticks is never announced as open. A reopen over a passed close date lasts
 until the next tick. The organizer moves the date on the same screen, and
 `docs/operations.md` says so.
 
+### §5.1, 2026-09-23 (final review fix wave B) — the gate hears a refund, and has a backfill
+
+The eligibility projection listened to `RegistrationSubmitted` and
+`RegistrationConfirmed` only, so `is_confirmed` never went back to false. A
+guest whose ticket was cancelled or refunded (the refund console cancels
+since 0.5.0) or whose registration was rejected could still enter, join,
+register interest, be filled in by the desk and be found by the person
+search (final review, part 2, I1).
+
+It now also listens to `RegistrationCancelled` and `RegistrationRejected`.
+Neither carries a brand or an event, so the row is found by
+`registration_id` alone, outside the brand scope, which is what Resources
+does. The row keeps its registrant and loses its confirmation. A person with
+a second confirmed registration for the event stays eligible through it. An
+entrant already in a competition stays entered: the gate is asked at the
+door of each act, and taking a team out is the desk's call (§5.5).
+
+A registration written without its events is invisible to the projection:
+the hand-run Eventula migration writes rows directly, and rows older than
+the projection were never seen. Registration now has
+`registration:announce-standing`, which emits the narrow, non-auditable
+`RegistrationStandingAnnounced` (registration, event, brand, registrant,
+and whether its status is `confirmed` now). It follows the pattern of
+`identity:announce-social-identities`. The projection upserts from it, so a
+replay brings every row to the registration's current state.
+`docs/operations.md` lists it among the Competition backfills.
+
