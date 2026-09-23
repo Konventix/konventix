@@ -6,6 +6,7 @@ import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { store as joinStore } from '@/routes/competition/my/join';
 import { edit as editLinkedAccounts } from '@/routes/linked-accounts';
 
 /**
@@ -47,7 +48,7 @@ function normalize(value: string): string {
 
 function submit(): void {
     form.code = normalize(form.code);
-    form.post('/my/tournaments/join', { preserveScroll: true });
+    form.post(joinStore().url, { preserveScroll: true });
 }
 </script>
 

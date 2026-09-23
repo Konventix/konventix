@@ -5,6 +5,12 @@ import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { page as matchPage } from '@/routes/competition/match';
+import { join } from '@/routes/competition/my';
+import {
+    checkIn as checkInEntry,
+    withdraw as withdrawEntry,
+} from '@/routes/competition/my/entries';
+import { inviteCode, leave as leaveTeam } from '@/routes/competition/my/teams';
 import ConfirmDialog from '../../../components/confirm/ConfirmDialog.vue';
 import { useConfirmation } from '../../../components/confirm/useConfirmation';
 import { formatEventDateTime } from '../../../components/public/eventTime';
@@ -171,18 +177,14 @@ function leave(team: Team): void {
         confirmLabel: 'Team verlassen',
         cancelLabel: 'Abbrechen',
         run: () =>
-            router.delete(`/my/tournaments/teams/${team.id}/members/me`, {
+            router.delete(leaveTeam(team.id).url, {
                 preserveScroll: true,
             }),
     });
 }
 
 function regenerate(team: Team): void {
-    router.post(
-        `/my/tournaments/teams/${team.id}/invite-code`,
-        {},
-        { preserveScroll: true },
-    );
+    router.post(inviteCode(team.id).url, {}, { preserveScroll: true });
 }
 
 function withdraw(entry: Entry): void {
@@ -195,7 +197,7 @@ function withdraw(entry: Entry): void {
         run: () => {
             refusals.value = { ...refusals.value, [entry.id]: undefined };
 
-            router.delete(`/my/tournaments/entries/${entry.id}`, {
+            router.delete(withdrawEntry(entry.id).url, {
                 preserveScroll: true,
                 // The controller answers a refused withdrawal on `entrant`
                 // (the competition started meanwhile); it lands on the
@@ -215,7 +217,7 @@ function checkIn(entry: Entry): void {
     refusals.value = { ...refusals.value, [entry.id]: undefined };
 
     router.post(
-        `/my/tournaments/entries/${entry.id}/check-in`,
+        checkInEntry(entry.id).url,
         {},
         {
             preserveScroll: true,
@@ -277,9 +279,7 @@ function canWithdraw(entry: Entry): boolean {
 
         <p class="text-sm text-text-muted">
             Du hast einen Code bekommen?
-            <Link
-                href="/my/tournaments/join"
-                class="underline underline-offset-4"
+            <Link :href="join().url" class="underline underline-offset-4"
                 >Hier beitreten</Link
             >.
         </p>
