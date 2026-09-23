@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Event\Data;
 
+use Illuminate\Support\Str;
 use Konventix\Event\Enums\AttendeeListVisibility;
 use Konventix\Event\Enums\EventVisibility;
 use Konventix\Event\Enums\ReentryPolicy;
@@ -66,11 +67,31 @@ final class EventData extends Data
          * #309: the slug an older system published this event under;
          * `/events/{legacySlug}` answers 301 onto the canonical `slug`.
          * Null for none. The Actions refuse a collision with any event's
-         * `slug` or another event's `legacySlug` in the brand.
+         * `slug` or another event's `legacySlug` in the brand. Lowercased
+         * before validation (`prepareForPipeline()`), so an old link pasted
+         * with capitals is stored the way the redirect looks it up.
          */
         #[Nullable, StringType, Max(255), Regex('/^[a-z0-9]+(-[a-z0-9]+)*$/')]
         public readonly ?string $legacySlug = null,
     ) {}
+
+    /**
+     * #309: a legacy slug is stored lowercase, because the redirect matches
+     * an incoming segment lowercased — an old system's links may carry
+     * capitals (`/events/SXLAN-2026`). Runs before the validation pipe, so
+     * the lowercase-only `Regex` above judges the value that is stored.
+     *
+     * @param  array<array-key, mixed>  $properties
+     * @return array<array-key, mixed>
+     */
+    public static function prepareForPipeline(array $properties): array
+    {
+        if (is_string($properties['legacySlug'] ?? null)) {
+            $properties['legacySlug'] = Str::lower($properties['legacySlug']);
+        }
+
+        return $properties;
+    }
 
     /**
      * @return array<string, array<int, string>>

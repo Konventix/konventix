@@ -38,7 +38,10 @@
       slug nobody carries 301s onto the canonical URL through the route's
       `missing()` hook (query string kept, hidden events still 404). Edit
       form field "Legacy slug (redirect)". Only the landing route; the old
-      system's other paths are not redirected.
+      system's other paths are not redirected. Case-insensitive: the legacy
+      slug is stored lowercase (`EventData::prepareForPipeline()`) and the
+      redirect lowercases the incoming segment, so `/events/SXLAN-2026`
+      301s too; the canonical binding stays exact.
 
 - [x] The live hub's per-event half (0.9.0 sub-project A, design 2026-09-22,
       tasks 1, 11 and 12). `event_days.day_ends_at` (`HH:MM`, nullable,

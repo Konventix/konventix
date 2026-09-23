@@ -8,6 +8,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Event\Models\Event;
@@ -96,10 +97,14 @@ final class EventLandingController
      * 404s here too, so the redirect never reveals a slug `show()` would
      * not render. Brand scoping is the ambient `BrandScope`, as for the
      * binding itself; the query string rides along.
+     *
+     * The segment is lowercased for this lookup only: legacy slugs are
+     * stored lowercase (`EventData::prepareForPipeline()`), and an older
+     * system's links may carry capitals. The canonical binding stays exact.
      */
     public function redirectLegacySlug(Request $request): RedirectResponse
     {
-        $event = Event::query()->where('legacy_slug', (string) $request->route('event'))->first();
+        $event = Event::query()->where('legacy_slug', Str::lower((string) $request->route('event')))->first();
 
         abort_if($event === null || ! $event->isVisibleOnLanding(), 404);
 

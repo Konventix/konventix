@@ -335,6 +335,20 @@ it('saves a legacy slug and hands it back to the editor', function (): void {
         ->assertInertia(fn (AssertableInertia $page) => $page->where('event.legacySlug', 'sxlan-2026'));
 });
 
+// The fix round's other half: an old link pasted with capitals is stored
+// lowercase, the form the redirect looks up — not refused by the
+// lowercase-only regex, and not stored as typed where no lookup would find it.
+it('stores a legacy slug typed with capitals in lowercase', function (): void {
+    [$admin, $event, $payload] = eventsAdminEditable();
+
+    $this->actingAs($admin)
+        ->put("http://admin.eventsadmin.test/admin/events/{$event->id}", [...$payload, 'legacySlug' => 'SXLAN-2026'])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect($event->fresh()->legacy_slug)->toBe('sxlan-2026');
+});
+
 it("refuses a legacy slug equal to another event's slug", function (): void {
     [$admin, $event, $payload] = eventsAdminEditable();
     Event::factory()->create(['slug' => 'sxlan-26']);

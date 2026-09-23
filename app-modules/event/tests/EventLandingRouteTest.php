@@ -133,3 +133,21 @@ it('404s a legacy slug whose event the landing page would not show, and one of a
     $this->get('/events/draft-2026')->assertNotFound();
     $this->get('http://other-legacy.test/events/sxlan-2026')->assertNotFound();
 });
+
+// #309 fix round: an older system's links may carry capitals. The legacy
+// lookup lowercases the segment (legacy slugs are stored lowercase), so the
+// capitalised link lands where the lowercase one does; before, the exact
+// match found nothing and it 404ed.
+it('answers a capitalised old link with the same 301', function (): void {
+    $this->withBrand();
+
+    Event::factory()->published()->create(['slug' => 'sxlan-26', 'legacy_slug' => 'sxlan-2026']);
+
+    $this->get('/events/SXLAN-2026')
+        ->assertStatus(301)
+        ->assertRedirect('/events/sxlan-26');
+
+    $this->get('/events/SxLan-2026?utm_source=forum')
+        ->assertStatus(301)
+        ->assertRedirect('/events/sxlan-26?utm_source=forum');
+});

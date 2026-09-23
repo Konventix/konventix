@@ -22,6 +22,7 @@ models (lessons-from-lancore #1); this one imports none.
   timeframe other modules ask about. An optional `legacy_slug` (#309) keeps
   the slug an older system published the event under: `GET /events/{legacy}`
   answers 301 onto the canonical `slug`, which stays the only one rendered.
+  The legacy match ignores case; the canonical one does not.
 - **Event lifecycle** as explicit states with transitions modelled as Actions:
   draft, announced, published, running, concluded, archived — plus cancellation
   as a first-class transition with a reason, not a soft delete.
