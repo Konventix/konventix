@@ -222,6 +222,118 @@ in a running bracket forfeits its pending matches (each recorded as a
 forfeit result through `RecordMatchResult`, so the bracket advances the
 normal way).
 
+### 5.6 Linked-account requirement (addendum, 2026-09-23)
+
+**Where it comes from.** The operator's release scoping of 2026-09-22
+(event-hub design §13, row B) puts "the Steam-linked-account signup rule on
+`Discipline` (`requires_linked_provider`)" into Competition for 0.9.0. It is
+an eligibility default of the discipline, which ADR-0062 point 1 already
+counts among the discipline's fields ("default eligibility"). ADR-0062
+point 3 gave "the Steam-linked eligibility check" to the GameOps
+integration (#115). This addendum narrows that sentence. The **signup rule**
+is the discipline's, and GameOps may later *suggest* a value for it through
+its catalogue event, as it suggests `team_size`. It never sets the value.
+What GameOps keeps is `PlayerGameAccount`, the account ids a match handler
+needs. Competition stores no provider account id.
+
+**The field.** `disciplines.requires_linked_provider` is a nullable string
+holding the provider key Identity uses: `steam` is the only one today, from
+`Identity\Social\SteamProvider::KEY`. Null means there is no requirement. In
+Competition the key is the `LinkedProvider` enum (`Steam = 'steam'`), so
+validation and the generated TypeScript are closed sets. The console's
+discipline form offers a select, *None* or *Steam*. Unlike `team_size`, the
+field does not freeze when a competition already runs the discipline,
+because switching it changes nothing that exists (see *Not retroactive*
+below).
+
+**The read model.** `competition_linked_identities`: `id` (ULID),
+`user_id`, `provider`, `linked_at`, timestamps, and a unique index on
+`(user_id, provider)`. Competition may not read Identity's
+`social_identities` table (ADR-0004), so it projects the fact from Identity's
+contract events. The table holds only the fact. It has **no
+`provider_user_id`**: a SteamID64 identifies a person, and the question
+"has this person linked Steam?" does not need the id. The table is **not
+brand-owned**. A linked Steam account is a fact about the person. Accounts
+are operator-wide (ADR-0016), and `ParticipantProfile` is kept global for
+the same reason.
+
+| Source event | What the projection does |
+|---|---|
+| `SocialIdentityLinked` (Identity) | Upserts the `(user_id, provider)` row. `linked_at` is the time the event was heard, because the event carries no timestamp. |
+| `SocialIdentityUnlinked` (Identity) | Deletes the row. |
+| `SocialIdentityAnnounced` (Identity, **new**) | Upserts the row with the `linked_at` Identity has stored. This is the backfill (see below). |
+| `AccountsMerged` (Identity) | Moves the closed account's rows to the surviving account. Identity's merge moves the `SocialIdentity` rows by an update and emits no `SocialIdentityLinked`, so without this handler the survivor would lose a Steam link Identity still holds. |
+
+Every handler is an upsert or a delete keyed on `(user_id, provider)`, so
+each one is idempotent and a replay converges on the same rows (ADR-0004).
+
+**The gate (ADR-0003).** None of these events carries a brand, so there is
+no single brand to ask about. The Linked, Announced and Merged handlers
+short-circuit when `competition` is active for **no brand at all** on the
+deployment. A deployment that runs no tournaments then stores none of this.
+The Unlinked handler always deletes, because removing a row never stores
+anything and a stale "linked" row is the worse failure. The cost is the same
+one ADR-0003 always has: links made while the module was off everywhere are
+missing when the first brand switches it on, and the backfill command below
+recovers them.
+
+**The backfill.** `identity:announce-social-identities` is a new, minimal
+Identity command. For every `social_identities` row it re-emits the narrow
+`SocialIdentityAnnounced(userId, provider, linkedAt)`. It deliberately does
+not replay `SocialIdentityLinked`, because that event is an
+`AuditableEvent`. A replay would write one false "a Steam account was
+linked" entry per identity into Compliance's audit trail, and that trail is
+where an account holder looks for a key they did not add.
+`AdmissionOwnershipAnnounced` and `RegistrationOwnershipAnnounced` follow the
+same pattern: only a projection may listen to the event. Run it once after
+the deploy that brings the table, and again whenever the first brand
+switches `competition` on. It is the fourth post-rollout backfill in
+`docs/operations.md`.
+
+**Enforcement.** The rule is checked in two places, and never on a page
+alone:
+
+- **Entering** (`EnterCompetition`). Every member of the roster that enters
+  must hold the provider the competition's discipline requires. This covers
+  the existing members and anyone the call puts on the team. The refusal
+  names the members who are missing it.
+- **Joining a roster** (`MaintainsTeamRoster::addRosterMember()`). This path
+  covers join-by-code, the organizer's *add member*, the fill-up at signup
+  close (§5.4) and a move between teams. The person joining must hold every
+  provider required by the disciplines of the competitions the team
+  currently holds a slot in. This is the same set of competitions the
+  roster bound (§5.2) is measured against. The refusal is for that person
+  only: the rest of the team is not asked again, because they were checked
+  when the team entered or when they joined. A team that has entered
+  nothing has no requirement yet, so a squad can gather first and enter
+  later, as it does for the roster bound.
+
+The join check runs **after** §5.1 and the roster bound. The join form
+answers every other refusal with one sentence, so that it cannot tell a
+guesser whether a code exists. Its separate "link your Steam account"
+sentence therefore reaches only a person the code would otherwise have let
+in. That person learns nothing they could not learn by linking Steam and
+trying again.
+
+**Copy.** Participant copy is German. The competition page's entry panel
+says that the competition needs a linked Steam account and whether the
+viewer has one, with a link to the account's *Verknüpfte Konten* page
+(`/settings/linked-accounts`). The entry refusal names the teammates who
+still have to link one. The join page shows the same link beside its
+refusal. Console copy is English.
+
+**Not retroactive.** Switching the requirement on while entrants exist
+changes nothing about them. No entrant is withdrawn, marked incomplete or
+flagged, and no roster member is removed. The rule applies at the next entry
+and the next join. **Unlinking later removes nobody** from a roster in
+0.9.0, and check-in (§6) does not ask for the link either. A competition
+that must be sure at match time is the desk's call until GameOps (0.10+)
+needs the account for provisioning.
+
+**GDPR (§13).** `CompetitionGdprHandler` exports the rows as provider and
+`linked_at`, and deletes them on erasure. They are a projection of Identity's
+data, and nothing about a finished competition depends on them.
+
 ---
 
 ## 6. Check-in (D-CMP-18)
