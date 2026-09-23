@@ -408,10 +408,15 @@ final class TournamentPages
     }
 
     /**
+     * Matches of one competition as the pages draw them: sides with team
+     * names, scores, and whether an empty slot still waits on an undecided
+     * match. Public for the hub's *Nächste Spiele* (§10a), which must name
+     * the same opponent the match page does.
+     *
      * @param  Collection<int, CompetitionMatch>  $matches
      * @return list<BracketMatchData>
      */
-    private function bracketMatches(Competition $competition, Collection $matches): array
+    public function bracketMatches(Competition $competition, Collection $matches): array
     {
         $slots = MatchSlot::query()
             ->whereIn('competition_match_id', $matches->modelKeys())
@@ -627,31 +632,15 @@ final class TournamentPages
         $own = $reports->first(fn (MatchResultReport $report): bool => $report->entrant_id === $side->id);
         $opposing = $reports->first(fn (MatchResultReport $report): bool => $report->entrant_id !== $side->id);
 
-        $participants = $competition->result_submission_mode === ResultSubmissionMode::Participants;
-        $open = in_array($match->state, [MatchState::Pending, MatchState::Scheduled, MatchState::Live], true)
-            && ! in_array($competition->status, [CompetitionStatus::Finished, CompetitionStatus::Cancelled], true);
-        // Every side is there: no slot waits on an undecided match. A bye has
-        // nobody to report against, so it is the desk's to settle.
-        $everySide = count(array_filter($data->sides, fn (BracketSideData $slot): bool => $slot->entrantId !== null)) >= 2
-            && ! collect($data->sides)->contains(fn (BracketSideData $slot): bool => $slot->awaiting);
+        $powers = MatchPowers::of($competition, $match, $data, $own, $opposing);
 
         return new MatchViewerData(
             position: $position,
             ownReport: $own?->normalisedScores(),
             opposingReport: $opposing?->normalisedScores(),
-            // Carry ruling: no upload control while proofs are readable by
-            // ULID (#322). Where a proof is required, a report without one
-            // would only be refused, so the page says the desk collects it.
-            canReport: $participants && $open && $everySide && ! $match->isDisputed()
-                && $competition->proof_policy !== ProofPolicy::Required,
-            canConfirm: $participants && $open && ! $match->isDisputed() && $opposing !== null && $own === null,
-            // A dispute is the one thing a side may still raise once a result
-            // stands (§8.4) — against the other side's claim, or against the
-            // recorded result. Never a second one while the desk has the first.
-            canDispute: ! $match->isDisputed()
-                && $match->state !== MatchState::Cancelled
-                && ! in_array($competition->status, [CompetitionStatus::Finished, CompetitionStatus::Cancelled], true)
-                && ($opposing !== null || $match->state === MatchState::Finished),
+            canReport: $powers->canReport,
+            canConfirm: $powers->canConfirm,
+            canDispute: $powers->canDispute,
         );
     }
 

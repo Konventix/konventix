@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Competition\Providers;
 
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Event;
 use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Admission\Events\AdmissionHolderAssigned;
@@ -17,8 +18,12 @@ use Konventix\Competition\Brackets\Formats\GroupStageGenerator;
 use Konventix\Competition\Brackets\Formats\RoundRobinGenerator;
 use Konventix\Competition\Brackets\Formats\SingleEliminationGenerator;
 use Konventix\Competition\Brackets\Formats\SwissGenerator;
+use Konventix\Competition\Data\MyCompetitionsCardData;
+use Konventix\Competition\Data\NextGamesCardData;
 use Konventix\Competition\Enums\Permission;
 use Konventix\Competition\Gdpr\CompetitionGdprHandler;
+use Konventix\Competition\Hub\MyCompetitionsCard;
+use Konventix\Competition\Hub\NextGamesCard;
 use Konventix\Competition\Listeners\ProjectAdmissionPresence;
 use Konventix\Competition\Listeners\ProjectEligibilityOnRegistrationEvents;
 use Konventix\Competition\Listeners\ProjectEventSummary;
@@ -39,6 +44,9 @@ use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
+use Konventix\Platform\Data\ActiveEventData;
+use Konventix\Platform\Hub\HubCard;
+use Konventix\Platform\Hub\HubRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
@@ -148,6 +156,40 @@ class CompetitionServiceProvider extends ModuleServiceProvider
                 order: 51,
                 permission: Permission::ManageDisciplines->value,
                 area: NavigationItem::AREA_ADMIN,
+            ),
+        );
+    }
+
+    /**
+     * The two hub cards of design §10a (hub design §8, D-HUB-07): the
+     * viewer's next matches with a nudge each, and their entries at the
+     * running event. Registered at boot for every brand and hidden by the
+     * registry wherever `competition` is off (ADR-0003); no capability,
+     * because the hub is already only for admitted participants.
+     *
+     * The closures resolve their builders per request, so the singleton
+     * registry captures nothing of one (`.ai/rules/providers.md`). Orders
+     * 40 and 41 put them after Agenda's *Jetzt / Gleich* (20) and
+     * Community's *Shoutbox* (30).
+     */
+    protected function registerHub(): void
+    {
+        $this->app->make(HubRegistry::class)->add(
+            new HubCard(
+                module: 'competition',
+                key: 'competition.next-games',
+                label: 'Nächste Spiele',
+                component: 'competition/hub/NextGamesCard',
+                payload: static fn (ActiveEventData $event, Authenticatable $user): NextGamesCardData => app(NextGamesCard::class)($event, $user),
+                order: 40,
+            ),
+            new HubCard(
+                module: 'competition',
+                key: 'competition.my-competitions',
+                label: 'Meine Competitions',
+                component: 'competition/hub/MyCompetitionsCard',
+                payload: static fn (ActiveEventData $event, Authenticatable $user): MyCompetitionsCardData => app(MyCompetitionsCard::class)($event, $user),
+                order: 41,
             ),
         );
     }

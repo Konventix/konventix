@@ -921,6 +921,19 @@ declare namespace Konventix {
                 readonly canConfirm: boolean;
                 readonly canDispute: boolean;
             };
+            export type MyCompetitionEntryData = {
+                readonly competitionName: string;
+                readonly status: Konventix.Competition.Enums.CompetitionStatus;
+                readonly checkInRequired: boolean;
+                readonly checkedIn: boolean;
+                readonly competitionUrl: string;
+            };
+            export type MyCompetitionsCardData = {
+                readonly entries: Konventix.Competition.Data.MyCompetitionEntryData[];
+                readonly hasMore: boolean;
+                readonly myTournamentsUrl: string;
+                readonly tournamentsUrl: string;
+            };
             export type MyScoreEntryData = {
                 readonly competitionName: string;
                 readonly teamName: string;
@@ -928,6 +941,23 @@ declare namespace Konventix {
                 readonly value: number;
                 readonly state: string;
                 readonly rejectionNote: string | null;
+            };
+            export type NextGameData = {
+                readonly matchId: string;
+                readonly competitionName: string;
+                readonly bracket: string | null;
+                readonly round: number;
+                readonly opponentName: string | null;
+                readonly awaitingOpponent: boolean;
+                readonly scheduledAt: string | null;
+                readonly nudge: Konventix.Competition.Enums.NextGameNudge | null;
+                readonly matchUrl: string;
+            };
+            export type NextGamesCardData = {
+                readonly games: Konventix.Competition.Data.NextGameData[];
+                readonly hasMore: boolean;
+                readonly myTournamentsUrl: string;
+                readonly pollSeconds: number | null;
             };
             export type PendingConfirmationData = {
                 readonly eventSlug: string | null;
@@ -1023,6 +1053,12 @@ declare namespace Konventix {
                 | 'session_failed';
             export type MatchState =
                 'pending' | 'scheduled' | 'live' | 'finished' | 'cancelled';
+            export type NextGameNudge =
+                | 'disputed'
+                | 'confirm'
+                | 'awaiting_confirmation'
+                | 'due'
+                | 'report';
             export type Permission =
                 | 'competition.view-competitions'
                 | 'competition.manage-disciplines'

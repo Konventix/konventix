@@ -109,6 +109,16 @@ ADR-0062). The build order for #32, each item its own merge request:
       anywhere until #322 — a `required` competition says the desk collects
       the proof; the refusal causes are still English (#302); the hub cards
       are 0.9.0's next two tasks.
+- [x] Hub cards (§10a, D-HUB-07): *Nächste Spiele* — the viewer's open
+      matches at the running event, soonest first, five at most, each with
+      one nudge (Streitfall offen / Ergebnis bestätigen / Wartet auf
+      Bestätigung / Jetzt dran / Ergebnis melden) from `Pages\MatchPowers`,
+      the rule the match page's buttons now read too — and *Meine
+      Competitions*, the viewer's entries with status and check-in. Left:
+      the card reloads Platform's whole `hub` prop every 60 s while one of
+      the viewer's competitions runs, because `HubPage` has no per-card prop
+      key; a per-card partial reload needs Platform to expose one. Match
+      times show in the reader's zone, not the event's (§10a "Time").
 - [ ] Capabilities and roles (D-CMP-23): `ViewEntrantContacts`; Tournament
       Desk as a second default role. (`CheckInEntrants` and
       `ManageSchedule` landed with the desk actions they gate.)
