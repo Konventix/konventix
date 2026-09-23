@@ -23,6 +23,8 @@ use Konventix\Messaging\Models\Recipient;
 use Konventix\Messaging\Models\Suppression;
 use Konventix\Messaging\Topics\TopicRegistry;
 use Konventix\Platform\Brands\BrandContext;
+use Konventix\Platform\Locales\LocaleResolver;
+use Konventix\Platform\Models\Brand;
 use RuntimeException;
 
 /**
@@ -57,6 +59,7 @@ final class SendMessage
         private readonly ChannelMap $channels,
         private readonly HoldPolicy $holds,
         private readonly MailQuota $quota,
+        private readonly LocaleResolver $localeResolver,
     ) {}
 
     /**
@@ -72,8 +75,13 @@ final class SendMessage
             : Recipient::query()->find($request->recipientId);
 
         $email = $request->recipientEmail ?? $recipient?->email;
-        $locale = $request->recipientLocale
-            ?? ($recipient === null ? (string) config('app.locale') : $recipient->locale);
+        // ADR-0068 §5: the caller's explicit locale, else the effective one
+        // for this person on this brand — never the raw column, which is
+        // null for everyone who follows the brand. An address-only send has
+        // no person, so the brand's locale speaks.
+        $locale = $request->recipientLocale ?? ($request->recipientId === null
+            ? $this->localeResolver->forBrand(Brand::query()->withoutGlobalScopes()->whereKey($brandId)->first())
+            : $this->localeResolver->forUserId($request->recipientId, $brandId));
 
         if ($email === null) {
             throw new RuntimeException(sprintf(

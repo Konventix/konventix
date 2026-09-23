@@ -18,7 +18,9 @@ final readonly class UserRegistered
         public string $email,
         public string $displayName,
         public string $username,
-        public string $locale,
+        // ADR-0068 §4: null follows the brand; a consumer resolves the
+        // effective locale when it needs one, never stores a guess.
+        public ?string $locale,
         public string $registeredAt,
     ) {}
 }

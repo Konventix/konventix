@@ -33,7 +33,9 @@ final class SendTestMail
                 date: $this->dates->date(now(), $this->brandTimezone->handle($brand->getKey())),
             ),
             recipientEmail: $toEmail,
-            recipientLocale: 'de',
+            // The operator reads the test mail in the language they are
+            // using the console in (ADR-0068 §5).
+            recipientLocale: app()->getLocale(),
             brandId: $brand->getKey(),
         ));
     }

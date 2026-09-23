@@ -105,7 +105,9 @@ it('renders identity.welcome without a shop paragraph when shopUrl is null, in b
 
 it('sends an actual identity.verify-email mail end to end on registration', function (): void {
     $this->skipUnlessFortifyHas(Features::registration());
-    $this->withBrand();
+    // ADR-0068 §4–5: the new account has no locale of its own, so the mail
+    // speaks the brand's — resolved by SendMessage at send time.
+    $this->withBrand()->forceFill(['locale' => 'de'])->save();
     Mail::fake();
 
     $this->post(route('register.store'), [

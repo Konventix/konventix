@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
+use Konventix\Identity\Models\User;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Messaging\Jobs\SendQueuedMessage;
@@ -72,11 +73,30 @@ it('re-projects UserProfileUpdated over an existing row', function (): void {
         ->and($recipient->locale)->toBe('en');
 });
 
-it('resolves email and locale from the read model when the caller passes only the recipient id', function (): void {
+it('projects a null locale as null — the recipient follows the brand', function (): void {
+    $brand = $this->withBrand();
+    $userId = (string) Str::ulid();
+
+    event(new UserRegistered(
+        userId: $userId,
+        brandId: $brand->getKey(),
+        email: 'ada@example.test',
+        displayName: 'Ada Lovelace',
+        username: 'ada-lovelace',
+        locale: null,
+        registeredAt: now()->toIso8601String(),
+    ));
+
+    expect(Recipient::query()->findOrFail($userId)->locale)->toBeNull();
+});
+
+it('resolves the email from the read model and the locale from the account when the caller passes only the recipient id', function (): void {
     $brand = $this->withBrand();
     Queue::fake();
 
-    $userId = (string) Str::ulid();
+    // ADR-0068 §5: the locale is the person's effective one, resolved at
+    // send time from the account — the read model's copy is not consulted.
+    $userId = User::factory()->create(['locale' => 'de'])->id;
     event(registeredEventFor($userId, $brand->getKey(), 'resolved@example.test'));
 
     [$message] = app(SendMessage::class)->handle(new SendMessageRequest(

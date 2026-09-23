@@ -85,7 +85,8 @@ final class CreateNewUser implements CreatesNewUsers
                     'email' => $data->email,
                     'password' => $data->password,
                     'username' => $data->username,
-                    'locale' => $this->resolveLocale(),
+                    // ADR-0068 §4: a new account follows the brand until the person chooses.
+                    'locale' => null,
                 ]);
 
                 // Identity's own contract event (SPEC.md), distinct from
@@ -109,15 +110,5 @@ final class CreateNewUser implements CreatesNewUsers
                 return $user;
             });
         }, self::TIMEBOX_MICROSECONDS);
-    }
-
-    /**
-     * The request's negotiated language if it sent one, otherwise the app
-     * default. No brand- or user-facing locale switcher exists yet (SPEC.md
-     * open questions), so this is the only signal available today.
-     */
-    private function resolveLocale(): string
-    {
-        return request()->getPreferredLanguage() ?? (string) config('app.locale');
     }
 }

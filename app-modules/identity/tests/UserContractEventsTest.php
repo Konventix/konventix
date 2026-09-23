@@ -30,7 +30,9 @@ it('emits UserRegistered with scalar account data when an account is created', f
         && $event->brandId === $brand->getKey()
         && $event->email === 'ada@example.test'
         && $event->displayName === 'Ada Lovelace'
-        && $event->locale === $user->locale);
+        // ADR-0068 §4: a new account follows the brand until the person chooses.
+        && $event->locale === null
+        && $user->locale === null);
 });
 
 it('emits UserRegistered with the account\'s username', function (): void {

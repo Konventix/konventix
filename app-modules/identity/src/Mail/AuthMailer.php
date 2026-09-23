@@ -251,7 +251,9 @@ final class AuthMailer
                 templateKey: $templateKey,
                 payload: $payload,
                 recipientEmail: $user->email,
-                recipientLocale: $user->locale,
+                // ADR-0068 §5: SendMessage resolves the effective locale
+                // (the person's, else the brand's) at send time.
+                recipientLocale: null,
                 brandId: $brandId,
                 topicKey: $topicKey,
             ));

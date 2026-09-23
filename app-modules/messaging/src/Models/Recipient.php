@@ -21,7 +21,7 @@ use Illuminate\Support\Carbon;
  * @property string $id
  * @property string $email
  * @property string $display_name
- * @property string $locale
+ * @property string|null $locale null follows the brand (ADR-0068 §4)
  * @property string|null $timezone
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at

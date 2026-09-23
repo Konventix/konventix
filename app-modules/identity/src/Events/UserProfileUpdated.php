@@ -31,7 +31,8 @@ final readonly class UserProfileUpdated
         public array $socialLinks,
         public string $visibility,
         public bool $listedInAttendees,
-        public string $locale,
+        // ADR-0068 §4: null follows the brand.
+        public ?string $locale,
         public string $updatedAt,
     ) {}
 }

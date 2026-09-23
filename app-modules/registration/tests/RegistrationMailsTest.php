@@ -68,7 +68,7 @@ function regMailsRecipient(string $brandId): User
         email: $user->email,
         displayName: $user->name,
         username: $user->username,
-        locale: $user->locale ?? 'en',
+        locale: $user->locale,
         registeredAt: now()->toIso8601String(),
     ));
 
@@ -389,10 +389,10 @@ it('greets by holder name when one is known, and plainly when it is not', functi
     );
 
     expect(regMailsRender('registration.confirmed', $confirmed('Max Mustermann')))
-        ->toContain('<p>Guten Tag Max Mustermann,</p>');
+        ->toContain('<p>Hallo Max Mustermann,</p>');
 
     expect(regMailsRender('registration.confirmed', $confirmed(null)))
-        ->toContain('<p>Guten Tag,</p>');
+        ->toContain('<p>Hallo,</p>');
 
     expect(regMailsRender('registration.confirmed', $confirmed('Max Mustermann'), 'en'))
         ->toContain('<p>Hello Max Mustermann,</p>');
@@ -406,7 +406,7 @@ it('renders the nextStep=pay sentence in registration.submitted, in both locales
     );
 
     expect(regMailsRender('registration.submitted', $payload))
-        ->toContain('Bitte schließen Sie die Zahlung ab');
+        ->toContain('Bitte schließ die Zahlung ab');
 
     expect(regMailsRender('registration.submitted', $payload, 'en'))
         ->toContain('Please complete the payment');
@@ -421,10 +421,10 @@ it('renders every nextStep branch in registration.approved', function (string $n
 
     expect(regMailsRender('registration.approved', $payload))->toContain($expected);
 })->with([
-    'approval' => ['approval', 'Wir prüfen Ihre Anmeldung und melden uns.'],
-    'pay' => ['pay', 'Bitte schließen Sie die Zahlung ab'],
-    'invoice' => ['invoice', 'Sie erhalten eine Rechnung per E-Mail.'],
-    'confirmed' => ['confirmed', 'Ihre Anmeldung ist bestätigt.'],
+    'approval' => ['approval', 'Wir prüfen deine Anmeldung und melden uns.'],
+    'pay' => ['pay', 'Bitte schließ die Zahlung ab'],
+    'invoice' => ['invoice', 'Du bekommst eine Rechnung per E-Mail.'],
+    'confirmed' => ['confirmed', 'Deine Anmeldung ist bestätigt.'],
 ]);
 
 it('maps a known rejection reason and falls back to the raw code for one it does not know, in both locales', function (): void {
@@ -457,7 +457,7 @@ it('renders the cart_expired cancellation sentence, in both locales', function (
     );
 
     expect(regMailsRender('registration.cancelled', $payload))
-        ->toContain('Ihre Reservierung ist abgelaufen, bevor die Zahlung einging.');
+        ->toContain('Deine Reservierung ist abgelaufen, bevor die Zahlung einging.');
 
     expect(regMailsRender('registration.cancelled', $payload, 'en'))
         ->toContain('Your reservation expired before payment was received.');
@@ -471,7 +471,7 @@ it('renders the removal cancellation sentence rather than the expiry one, in bot
     );
 
     expect(regMailsRender('registration.cancelled', $payload))
-        ->toContain('Sie haben diese Anmeldung aus Ihrem Warenkorb entfernt.')
+        ->toContain('Du hast diese Anmeldung aus deinem Warenkorb entfernt.')
         ->not->toContain('abgelaufen');
 
     expect(regMailsRender('registration.cancelled', $payload, 'en'))
@@ -493,7 +493,7 @@ it('renders the registrant-vs-operator cancellation phrasing and the refund sent
     );
 
     expect(regMailsRender('registration.cancelled', $byRegistrant))
-        ->toContain('auf Ihren Wunsch')
+        ->toContain('auf deinen Wunsch')
         ->not->toContain('Gutschrift');
 
     expect(regMailsRender('registration.cancelled', $byOperatorPaid))

@@ -74,7 +74,8 @@ final class CompleteSocialSignup
                     'email' => $data->email,
                     'password' => null,
                     'username' => $data->username,
-                    'locale' => request()->getPreferredLanguage() ?? (string) config('app.locale'),
+                    // ADR-0068 §4: a new account follows the brand until the person chooses.
+                    'locale' => null,
                 ]);
 
                 $this->link->handle($user, $identity);
