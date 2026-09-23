@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { formatScore } from './scoreValue';
 
 /**
  * The stage's table on the public page (design §10): placements as
@@ -54,7 +55,7 @@ const grouped = computed(() =>
                     <td class="py-1 pr-3">{{ row.placement ?? '—' }}</td>
                     <td class="py-1 pr-3">{{ row.teamName }}</td>
                     <td v-if="props.unit !== null" class="py-1">
-                        {{ row.tiebreaker ?? '—' }} {{ props.unit }}
+                        {{ formatScore(row.tiebreaker, props.unit) }}
                     </td>
                     <template v-else>
                         <td v-if="grouped" class="py-1 pr-3">

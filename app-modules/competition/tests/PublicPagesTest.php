@@ -382,9 +382,10 @@ it('sends no bracket before one is drawn, and a leaderboard its standings instea
 });
 
 it('shows no value, not "0 s", for a team on the public leaderboard that has not scored', function (): void {
-    // Final review, part 1, I6: `Standings.vue` prints `tiebreaker ?? '—'`.
-    // A zero was printed as "0 s" — on a `lower` board, the best time in the
-    // field beside a last place.
+    // Final review, part 1, I6: `Standings.vue` prints a null tiebreaker as
+    // a bare "—" (`formatScore()`, fix wave B: no unit behind it). A zero was
+    // printed as "0 s" — on a `lower` board, the best time in the field
+    // beside a last place.
     $brand = $this->withBrand();
     $this->activateModule('competition', $brand);
     $eventId = publicPagesEvent($brand);
