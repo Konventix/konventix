@@ -113,6 +113,37 @@ it('refuses two tracks or two places with the same name in one submit', function
 });
 
 /**
+ * `position` on both tables is `unsignedSmallInteger`, a signed `smallint`
+ * on Postgres (it has no unsigned form): 2^15 - 1 = 32767 is the largest
+ * value it stores. 32768 must come back as a field error on the offending
+ * row, not reach the insert as a 500.
+ */
+it('refuses a track or place position past the column\'s range as a field error', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('agenda');
+    $event = agendaPublishedEvent($brand);
+    [$operator, $admin] = agendaAdminOperator($brand);
+
+    $this->actingAs($admin)
+        ->put("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda", [
+            'tracks' => [
+                // The ceiling itself passes; one past it does not.
+                ['id' => null, 'name' => 'Bühne', 'position' => 32767],
+                ['id' => null, 'name' => 'Arena', 'position' => 32768],
+            ],
+            'locations' => [
+                ['id' => null, 'name' => 'Halle 3', 'venueId' => null, 'position' => 32768],
+            ],
+        ])
+        ->assertRedirect()
+        ->assertSessionHasErrors(['tracks.1.position', 'locations.0.position'])
+        ->assertSessionDoesntHaveErrors(['tracks.0.position']);
+
+    expect(Track::withoutBrandScope()->where('event_id', $event->getKey())->count())->toBe(0)
+        ->and(Location::withoutBrandScope()->where('event_id', $event->getKey())->count())->toBe(0);
+});
+
+/**
  * An item is written through its own endpoint, because publishing and
  * calling off are separate acts with separate announcements behind them
  * (design §7) — `AgendaItemData` deliberately carries no `state`.

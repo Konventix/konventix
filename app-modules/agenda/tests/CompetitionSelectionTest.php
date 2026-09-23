@@ -177,6 +177,57 @@ it('refuses a track of another event', function (): void {
 });
 
 /**
+ * `agenda_competition_entries` is unique on (event_id, competition_id), so a
+ * competition posted twice would reach the insert as a unique violation — a
+ * 500. `distinct` in `CompetitionEntryData::rules()` is the only thing
+ * standing in front of it, and it answers on the repeated row's own key.
+ */
+it('refuses the same competition twice in one save as a field error, not a 500', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('agenda');
+    $event = agendaPublishedEvent($brand);
+    $cs2 = agendaPublishedCompetition($brand, $event->getKey(), ['name' => 'CS2 5v5', 'slug' => 'cs2-5v5']);
+    [$operator, $admin] = agendaAdminOperator($brand);
+
+    $this->actingAs($admin)
+        ->put("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda/competitions", ['competitions' => [
+            ['competitionId' => $cs2, 'trackId' => null, 'position' => 0],
+            ['competitionId' => $cs2, 'trackId' => null, 'position' => 1],
+        ]])
+        ->assertRedirect()
+        ->assertSessionHasErrors(['competitions.1.competitionId']);
+
+    expect(agendaSelectionOf($event->getKey()))->toBe([]);
+});
+
+/**
+ * `position` is an `unsignedSmallInteger`, which Postgres stores as a plain
+ * `smallint` — it has no unsigned form — so the largest value the column
+ * takes is 2^15 - 1 = 32767. One past it must come back as a field error;
+ * without the rule's `max` it reached the insert and answered a 500.
+ */
+it('refuses a position past the column\'s range as a field error, not a 500', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('agenda');
+    $event = agendaPublishedEvent($brand);
+    $cs2 = agendaPublishedCompetition($brand, $event->getKey(), ['name' => 'CS2 5v5', 'slug' => 'cs2-5v5']);
+    $mario = agendaPublishedCompetition($brand, $event->getKey(), ['name' => 'Mario Kart', 'slug' => 'mario-kart']);
+    [$operator, $admin] = agendaAdminOperator($brand);
+
+    $this->actingAs($admin)
+        ->put("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda/competitions", ['competitions' => [
+            // 32767 is the ceiling itself and passes; 32768 is one past it.
+            ['competitionId' => $cs2, 'trackId' => null, 'position' => 32767],
+            ['competitionId' => $mario, 'trackId' => null, 'position' => 32768],
+        ]])
+        ->assertRedirect()
+        ->assertSessionHasErrors(['competitions.1.position'])
+        ->assertSessionDoesntHaveErrors(['competitions.0.position']);
+
+    expect(agendaSelectionOf($event->getKey()))->toBe([]);
+});
+
+/**
  * Task 3, decision 2: unpublishing deletes the read-model row and keeps the
  * organizer's entry. The editor shows that entry as withdrawn and posts it
  * back with every save — which the Action must accept, though Agenda no

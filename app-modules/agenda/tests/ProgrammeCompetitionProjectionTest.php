@@ -59,7 +59,12 @@ it('projects a published competition without a start as an unscheduled block', f
 
     $competitionId = agendaPublishedCompetition($brand, (string) Str::ulid(), ['startsAt' => null]);
 
-    expect(agendaProjectedCompetition($competitionId)?->starts_at)->toBeNull();
+    $row = agendaProjectedCompetition($competitionId);
+
+    // The row first: without it the null start below would also hold with
+    // the listener unregistered, where `?->` turns a missing row into null.
+    expect($row)->not->toBeNull()
+        ->and($row?->starts_at)->toBeNull();
 });
 
 it('moves the block when Competition reschedules it, and ignores a reschedule it never saw published', function (): void {
@@ -358,8 +363,10 @@ it('writes from the operator admin host, where the brand scope is empty', functi
     $brand = $this->withBrand();
     $eventId = (string) Str::ulid();
 
-    // The admin host's request context (ADR-0029): an operator and no brand,
-    // which is where a console action emitting these events runs.
+    // An admin-host request, e.g. an operator console action (ADR-0029): an
+    // operator and no brand, so `BrandScope` hardens to 1 = 0. A plain
+    // console (artisan, a queued job) is a different case — no brand and no
+    // operator, where the scope is unconstrained rather than empty.
     app(BrandContext::class)->forget();
     app(OperatorContext::class)->set(Operator::query()->findOrFail($brand->operator_id));
 

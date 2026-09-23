@@ -40,7 +40,11 @@ final class CompetitionEntryData extends Data
         return [
             'competitionId' => ['required', 'ulid', 'distinct'],
             'trackId' => ['nullable', 'ulid'],
-            'position' => ['required', 'integer', 'min:0'],
+            // The column is `unsignedSmallInteger`, which Postgres stores as a
+            // plain `smallint` (no unsigned form): 2^15 - 1 = 32767 is the
+            // real ceiling, not 65535. Past it the insert would fail as a
+            // 500 instead of this field error.
+            'position' => ['required', 'integer', 'min:0', 'max:32767'],
         ];
     }
 }

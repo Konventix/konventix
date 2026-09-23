@@ -41,7 +41,9 @@ final class LocationData extends Data
             'id' => ['nullable', 'ulid'],
             'name' => ['required', 'string', 'max:80', 'distinct:ignore_case'],
             'venueId' => ['nullable', 'ulid'],
-            'position' => ['required', 'integer', 'min:0'],
+            // `unsignedSmallInteger` is a signed `smallint` on Postgres, so
+            // 32767 is the real ceiling; past it the save was a 500.
+            'position' => ['required', 'integer', 'min:0', 'max:32767'],
         ];
     }
 
