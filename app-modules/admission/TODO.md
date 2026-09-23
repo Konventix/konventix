@@ -41,6 +41,15 @@
       admission or event, or an event with no summary, reads 404 (#329 final
       review I2).
 
+- [x] The event day is the event's local date (#329 final review I1):
+      `EntranceEventProfile::dayCovering()` converts the moment into the
+      event's zone (`eventTimezone()`, from `EventSummary`, UTC without one)
+      before reading its date. It read the UTC date before, so on an
+      overnight event every scan from local midnight to 02:00 (CEST) landed
+      on the previous day: the list flipped at 02:00, and `once_per_day`
+      admitted a second entry of one local day. This changes the server
+      door's day on purpose, to the one the device and the hub already read.
+
 - [ ] **Per-brand console desk roles** (ADR-0029): a console capability is
       resolved against the operator's team, so a brand's own door staff
       cannot be given the attendee list without operator-wide reach. Tracked

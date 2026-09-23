@@ -207,7 +207,13 @@ reading either.
 - **`EntranceEventProfile`** — this module's *read model* of the two Event
   facts a door needs with no network: the event-day calendar and the re-entry
   policy. Projected from `EventDaysChanged` and `EventReentryPolicyChanged`
-  (ADR-0004 forbids reading Event's models).
+  (ADR-0004 forbids reading Event's models). The calendar's dates are the
+  event's local dates (ADR-0027), so `dayCovering()` reads a moment's date in
+  the event's zone, taken from `EventSummary` (UTC until one is projected):
+  00:30 in Berlin in summer belongs to the new local day although it is
+  22:30 UTC the evening before. The door device and `PresenceWindow` read the
+  same local date, so the core, the console, the attendee list, the device
+  and the hub agree on the day (#329 final review I1).
 - **`EventPresence`** (`admission_event_presence`) — one person's standing at
   one event (D-HUB-01/02): when they were first admitted, where they last
   scanned (`last_direction`), and whether the live hub is open to them

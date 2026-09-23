@@ -23,8 +23,10 @@ use Konventix\Admission\Support\LatestAcceptedCheckIn;
  *
  * The event has two calendar days, 2026-10-16 (day 1) and 2026-10-17
  * (day 2), under `unlimited` re-entry. Time is frozen at 18:00 UTC on the day
- * each step happens on; `dayCovering()` compares the moment's own Y-m-d, so
- * 2026-10-16 18:00 UTC is day 1 and 2026-10-17 18:00 UTC is day 2.
+ * each step happens on. The event has no summary, so `dayCovering()` reads
+ * the date in UTC (its fallback zone; `EventLocalDayTest` covers the event's
+ * own zone), and 2026-10-16 18:00 UTC is day 1 and 2026-10-17 18:00 UTC is
+ * day 2.
  */
 function consoleCheckInDayEvent(): array
 {

@@ -83,14 +83,21 @@ class EntranceEventProfile extends Model
      *
      * Dates are compared as plain Y-m-d strings in the event's own local
      * frame; ADR-0027 keeps event time as wall-clock local plus a timezone,
-     * so converting through UTC here would reintroduce exactly the drift that
-     * ADR avoids.
+     * so the calendar's dates are local dates. The moment is therefore
+     * converted into the event's zone (`eventTimezone()`) before its date is
+     * read: a scan at 00:30 in Berlin in summer is 22:30 UTC the evening
+     * before, and belongs to the new local day, not to the UTC one (#329
+     * final review I1). That is the date the door device reads off its own
+     * clock (`resources/js/entrance/lib/evaluate.ts`) and the one the hub's
+     * `PresenceWindow` reads, so the core, the console, the attendee list,
+     * the device and the hub resolve the same day. A moment already in the
+     * event's zone converts to itself.
      *
      * @return array{day_id: string, date: string, sequence: int, label: string|null, day_ends_at?: string|null}|null
      */
     public function dayCovering(CarbonInterface $moment): ?array
     {
-        $date = $moment->format('Y-m-d');
+        $date = $moment->toImmutable()->setTimezone($this->eventTimezone())->format('Y-m-d');
 
         foreach ($this->days ?? [] as $day) {
             if ($day['date'] === $date) {
@@ -99,6 +106,24 @@ class EntranceEventProfile extends Model
         }
 
         return null;
+    }
+
+    /**
+     * The event's IANA zone, from Admission's own event summary (the read
+     * model of Event's `timezone`, ADR-0004). UTC while no summary has been
+     * projected yet, the fallback `PresenceWindow` takes too. Read by the
+     * profile's own brand, so it works on the admin host, where `BrandScope`
+     * reads nothing, and asked afresh on every call rather than kept on the
+     * model.
+     */
+    public function eventTimezone(): string
+    {
+        $timezone = EventSummary::withoutBrandScope()
+            ->where('brand_id', $this->brand_id)
+            ->where('event_id', $this->event_id)
+            ->value('timezone');
+
+        return is_string($timezone) && $timezone !== '' ? $timezone : 'UTC';
     }
 
     /**
