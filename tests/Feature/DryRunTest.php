@@ -19,7 +19,11 @@ use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Community\Models\CommunityMember;
 use Konventix\Community\Models\CommunityProfile;
 use Konventix\Competition\Models\Competition;
+use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\Discipline;
+use Konventix\Competition\Models\Entrant;
+use Konventix\Competition\Models\EventSummary as CompetitionEventSummary;
+use Konventix\Competition\Models\Stage;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Compliance\Models\Policy;
 use Konventix\Content\Models\ContentEntry;
@@ -416,6 +420,19 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
         return $username === null ? null : ['username' => $username];
     }
 
+    // The public tournament pages (Competition design §10). Every one of
+    // them is addressed by the EVENT's slug — resolved against Competition's
+    // own `competition_event_summaries`, which 404s an event that is not
+    // public — and the competition's SLUG, not its ULID, so the generic
+    // `competition` case below (a model, hence a ULID in the URL) would put
+    // a ULID where the controller reads a slug and walk a 404. A match and a
+    // team are rows of that same competition. `DemoCompetitionSeeder` gives
+    // every LAN event a drawn Main Cup, so a public event of the
+    // brand always has one.
+    if (in_array($name, ['competition.event.tournaments', 'competition.page', 'competition.match.page', 'competition.team.page'], true)) {
+        return dryRunTournamentParameters($name, $brand);
+    }
+
     $resolved = [];
 
     foreach ($route->parameterNames() as $parameter) {
@@ -605,6 +622,62 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
     }
 
     return $resolved;
+}
+
+/**
+ * The four public tournament routes' parameters, all from one competition
+ * whose event's tournament pages are public and which the public may see,
+ * or null when the brand has none (the trade-fair archetype runs no
+ * tournaments, and its module is off, so it never walks these routes).
+ *
+ * @return array<string, string>|null
+ */
+function dryRunTournamentParameters(string $name, Brand $brand): ?array
+{
+    $events = CompetitionEventSummary::withoutBrandScope()
+        ->where('brand_id', $brand->getKey())
+        ->whereIn('state', ['published', 'running', 'concluded'])
+        ->pluck('slug', 'event_id');
+
+    $competition = Competition::withoutBrandScope()
+        ->where('brand_id', $brand->getKey())
+        ->whereIn('event_id', $events->keys())
+        ->where('status', '!=', 'draft')
+        ->whereIn('id', Stage::withoutBrandScope()->whereNotNull('generated_at')->select('competition_id'))
+        ->orderBy('created_at')
+        ->first();
+
+    if ($competition === null) {
+        return null;
+    }
+
+    $parameters = ['slug' => (string) $events[$competition->event_id]];
+
+    if ($name === 'competition.event.tournaments') {
+        return $parameters;
+    }
+
+    $parameters['competition'] = $competition->slug;
+
+    if ($name === 'competition.match.page') {
+        $match = CompetitionMatch::withoutBrandScope()
+            ->where('competition_id', $competition->getKey())
+            ->orderBy('round')
+            ->orderBy('position')
+            ->value('id');
+
+        return $match === null ? null : [...$parameters, 'match' => (string) $match];
+    }
+
+    if ($name === 'competition.team.page') {
+        $team = Entrant::withoutBrandScope()
+            ->where('competition_id', $competition->getKey())
+            ->value('competition_team_id');
+
+        return $team === null ? null : [...$parameters, 'team' => (string) $team];
+    }
+
+    return $parameters;
 }
 
 /**
