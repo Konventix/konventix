@@ -35,6 +35,12 @@ final class PublishCompetition
             ]);
 
             $signupIsOpen = $competition->signupIsOpen();
+
+            // Stamped when this announces the open window, so the tick
+            // (`AnnounceSignupOpened`) does not say it again a minute later.
+            if ($signupIsOpen) {
+                $competition->forceFill(['signup_opened_at' => now()])->save();
+            }
             $entrantCount = Entrant::countSlotHolders($competition->brand_id, $competition->id);
 
             DB::afterCommit(static function () use ($competition, $signupIsOpen, $entrantCount): void {

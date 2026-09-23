@@ -362,7 +362,7 @@ design's §12 and why.
 | `CompetitionPublished` (D-CMP-15) | A competition becomes publicly visible | `competition_id`, `event_id`, `discipline_id`, `brand_id`, `name`, `status`, `starts_at`, `at` |
 | `CompetitionRescheduled` | An announced competition's `starts_at` moves | `competition_id`, `event_id`, `brand_id`, `previous_starts_at`, `starts_at`, `at` |
 | `CompetitionStarted` / `CompetitionFinished` / `CompetitionCancelled` (D-CMP-15) | The lifecycle moves | `competition_id`, `event_id`, `discipline_id`, `brand_id`, `status`, `at` |
-| `SignupOpened` / `SignupClosed` (D-CMP-15) | Publish into an open window or reopen; the organizer closes | `competition_id`, `event_id`, `brand_id`, `entrant_count`, `at` |
+| `SignupOpened` / `SignupClosed` (D-CMP-15) | Publish into an open window, reopen, or the window opening (`competition:signup-tick`, once per window); the organizer closes, or the tick once `signup_closes_at` passes | `competition_id`, `event_id`, `brand_id`, `entrant_count`, `at` |
 | `EntrantRegistered` | A team enters, complete or not | `entrant_id`, `competition_id`, `competition_team_id`, `event_id`, `brand_id`, `registered_at`, `member_user_ids`, `state` (`registered` or `incomplete`) |
 | `EntrantWithdrawn` | An entrant is withdrawn, declined or disqualified | `entrant_id`, `competition_id`, `competition_team_id`, `event_id`, `brand_id`, `member_user_ids`, `reason`, `final_state`, `withdrawn_at` |
 | `EntrantCheckedIn` | The desk or the captain checks a team in | `entrant_id`, `competition_id`, `competition_team_id`, `event_id`, `brand_id`, `member_user_ids`, `checked_in_at`, `via_self_service` |

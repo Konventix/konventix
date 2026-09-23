@@ -318,6 +318,14 @@ projection listens to what they emit:
   names every tournament page and the console's person search show. Without
   it a roster renders with dashes until each person edits their profile.
 
+**The signup clock.** The scheduler runs `competition:signup-tick` every
+minute. It closes signup for every `Published` competition whose
+`signup_closes_at` has passed, exactly as the console's *Close signup* does,
+and announces `SignupOpened` once when a window opens. Brands with
+`competition` off are skipped. A competition reopened without moving its
+close date is therefore closed again within a minute: move the date first.
+Safe to run by hand; a second run changes nothing.
+
 **Enabling Competition in the middle of an event: leave
 `requires_event_check_in` off.** `admission:announce-ownership` restates who
 holds each admission and whether it stands, but it carries no scan time.

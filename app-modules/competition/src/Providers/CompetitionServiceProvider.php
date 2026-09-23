@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Competition\Providers;
 
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -21,6 +22,7 @@ use Konventix\Competition\Brackets\Formats\GroupStageGenerator;
 use Konventix\Competition\Brackets\Formats\RoundRobinGenerator;
 use Konventix\Competition\Brackets\Formats\SingleEliminationGenerator;
 use Konventix\Competition\Brackets\Formats\SwissGenerator;
+use Konventix\Competition\Console\SignupWindowTickCommand;
 use Konventix\Competition\Data\MyCompetitionsCardData;
 use Konventix\Competition\Data\NextGamesCardData;
 use Konventix\Competition\Enums\Permission;
@@ -137,6 +139,32 @@ class CompetitionServiceProvider extends ModuleServiceProvider
 
         $this->configureRateLimiting();
         $this->registerMetrics();
+
+        // The signup clock of design §4, scheduled in registerSchedule() and
+        // runnable by hand from docs/operations.md.
+        $this->commands([
+            SignupWindowTickCommand::class,
+        ]);
+    }
+
+    /**
+     * Design §4: signup closes when `signup_closes_at` passes and
+     * `SignupOpened` goes out when the window opens, and neither is an event
+     * anybody emits — the clock has to notice. Every minute: entries stop at
+     * the close date whatever the state (`Competition::signupIsOpen()`), but
+     * the console's §5.4 prompts and the `SignupClosed` consumers wait on
+     * the state, and a minute is the scheduler's finest grain.
+     * `withoutOverlapping()` like Community's and Resources' sweeps: a run
+     * behind a backlog must not stack a second pass over the same rows.
+     * `callAfterResolving` so the scheduler is only built in the role that
+     * runs it. The module gate is asked per brand inside the command
+     * (ADR-0003), because the scheduler has no brand in context.
+     */
+    protected function registerSchedule(): void
+    {
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+            $schedule->command(SignupWindowTickCommand::class)->everyMinute()->withoutOverlapping();
+        });
     }
 
     /**

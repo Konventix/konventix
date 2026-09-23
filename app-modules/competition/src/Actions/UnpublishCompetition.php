@@ -30,7 +30,9 @@ final class UnpublishCompetition
         return DB::transaction(fn (): Competition => $this->transition(
             $competition,
             CompetitionStatus::Draft,
-            ['published_at' => null],
+            // `signup_opened_at` too: a competition published again is
+            // announced again when its window is open (`AnnounceSignupOpened`).
+            ['published_at' => null, 'signup_opened_at' => null],
         ));
     }
 }

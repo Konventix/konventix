@@ -29,6 +29,12 @@ use Konventix\Competition\Models\Stage;
  * may draw, empty and play": a draw is never made in `Published` for exactly
  * that reason). So it is refused while any stage is drawn, and the desk resets
  * the draw first (final review, part 1, I4).
+ *
+ * **Over a passed `signup_closes_at` the reopen does not last.** The
+ * scheduler tick (`competition:signup-tick`, design §4) closes every
+ * `Published` competition whose close date has passed, so it closes this one
+ * again within a minute. The organizer moves the close date on the same
+ * screen; that is what reopening over a passed window means.
  */
 final class ReopenSignup
 {
@@ -54,7 +60,12 @@ final class ReopenSignup
                 throw IllegalCompetitionStateTransitionException::drawnBracketBlocksReopen((string) $competition->getKey());
             }
 
-            $competition = $this->transition($competition, CompetitionStatus::Published);
+            // Stamped like the tick's announcement (`AnnounceSignupOpened`),
+            // because this emits the same event: the tick must not say it a
+            // second time a minute later.
+            $competition = $this->transition($competition, CompetitionStatus::Published, [
+                'signup_opened_at' => now(),
+            ]);
 
             $entrantCount = Entrant::countSlotHolders($competition->brand_id, $competition->id);
 

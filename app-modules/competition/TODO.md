@@ -156,12 +156,11 @@ ADR-0062). The build order for #32, each item its own merge request:
 
 Found on the way and not built. Each one is still true as of #302.
 
-- [ ] **The signup scheduler tick** (§4): nothing opens signup when
-      `signup_opens_at` arrives or closes it when `signup_closes_at` passes.
-      Signup is derived from the window, so entering works on time, but a
-      competition published ahead of its window emits no `SignupOpened` when
-      it opens, and the status stays `Published` until the organizer closes
-      it.
+- [x] **The signup scheduler tick** (§4, final review fix wave B):
+      `competition:signup-tick` every minute closes a `Published`
+      competition once `signup_closes_at` passes (`CloseSignup`) and
+      announces `SignupOpened` once per window (`AnnounceSignupOpened`,
+      `competitions.signup_opened_at`), gated per brand (design §14).
 - [ ] **`CompetitionUnpublished`** before Agenda's competition half ships
       (design §14; Agenda's `TODO.md` names it as its precondition).
 - [x] **Two notices §12 names** (fix round): `competition.match-disputed`

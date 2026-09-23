@@ -1577,3 +1577,31 @@ for a captain who leaves (`created_at`, then `id`). The erased person's row
 stays as a plain member. A team with nobody else on it keeps no captain, and
 the desk steps in. `CompetitionGdprHandler::delete()` does this for every
 team the person captains, whatever the state of its competitions.
+
+### §4, 2026-09-23 (final review fix wave B) — the signup clock
+
+§4 promised two things a clock does: `SignupClosed` "because
+`signup_closes_at` passed and the scheduler closed it", and `SignupOpened`
+"when a `Published` competition's window opens (scheduler tick)". Task 1's
+review ruled the tick be built. Nothing built it until this wave.
+
+`competition:signup-tick` runs every minute with `withoutOverlapping()`
+(`CompetitionServiceProvider::registerSchedule()`). For every `Published`
+competition of a brand with the module on (ADR-0003, asked per brand because
+the scheduler has none), it:
+
+- runs `CloseSignup` once `signup_closes_at <= now`, the edge
+  `signupIsOpen()` already used;
+- runs the new `AnnounceSignupOpened` when signup is open and this window was
+  not announced yet. Opening writes no state, so the Action records the
+  announcement in the new `competitions.signup_opened_at`. A window counts
+  as announced when that stamp is not earlier than `signup_opens_at`. So
+  moving the opening later re-arms it. `PublishCompetition` and
+  `ReopenSignup` stamp it when they emit the same event, and
+  `UnpublishCompetition` clears it.
+
+Closing runs before announcing, so a window that opened and closed between
+two ticks is never announced as open. A reopen over a passed close date lasts
+until the next tick. The organizer moves the date on the same screen, and
+`docs/operations.md` says so.
+

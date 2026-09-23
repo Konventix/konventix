@@ -17,8 +17,8 @@ use Konventix\Competition\Models\Entrant;
  * The state that exists so an organizer can stop taking entries *without*
  * starting anything — incomplete rosters get resolved here (§5.4), the
  * bracket is seeded and generated here, and only then does the tournament
- * start. Called by the console and, once §4's scheduler tick lands, by the
- * clock when `signup_closes_at` passes.
+ * start. Called by the console and, once `signup_closes_at` passes, by the
+ * scheduler tick (`competition:signup-tick`, design §4).
  *
  * The window itself is deliberately left alone: the state is what closes
  * signup (`Competition::signupIsOpen()` refuses outside `Published`

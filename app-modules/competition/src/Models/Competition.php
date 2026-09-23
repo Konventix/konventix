@@ -49,6 +49,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property ProofPolicy $proof_policy
  * @property Carbon|null $signup_opens_at
  * @property Carbon|null $signup_closes_at
+ * @property Carbon|null $signup_opened_at when `SignupOpened` last went out; written by the lifecycle Actions only
  * @property Carbon|null $starts_at
  * @property Carbon|null $published_at
  * @property Carbon|null $created_at
@@ -193,6 +194,7 @@ class Competition extends Model
             'proof_policy' => ProofPolicy::class,
             'signup_opens_at' => 'datetime',
             'signup_closes_at' => 'datetime',
+            'signup_opened_at' => 'datetime',
             'starts_at' => 'datetime',
             'published_at' => 'datetime',
         ];
