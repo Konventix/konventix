@@ -275,20 +275,20 @@ unlinked. One command fixes that, and it is safe to re-run:
   auditable, and replaying it would write one false "a Steam account was
   linked" entry per identity into the audit trail.
 
-On the cluster it is the fourth of the manual post-rollout backfills, after
-`identity:replay-profiles`, `event:replay-details` and
-`registration:announce-ownership`:
+It joins the manual post-rollout backfills, which are now
+`identity:replay-profiles`, `event:replay-details`,
+`registration:announce-ownership`, `admission:announce-ownership` and
+`identity:announce-social-identities`. On the cluster:
 
     kubectl --context rancher -n konventix exec <web pod> -- php artisan identity:announce-social-identities
 
-Run it once after the deploy that brings the table. Run it again whenever the
-**first** brand of a deployment switches `competition` on: the projection is
-not per brand, but it stores nothing while no brand runs tournaments, so
-links made in that time are missing until the command runs. Until it has run,
-a Steam requirement refuses people who have in fact linked Steam, and the
-refusal sends them to their *Linked accounts* settings page, where they already see
-Steam as linked. Unlinking and re-linking there also repairs a single
-account.
+Run it once after the deploy that brings the table. The projection is not
+per brand and not gated on the module, so a brand that switches
+`competition` on later needs no second run: every link made since the
+deploy is already there. Until the first run, a Steam requirement refuses
+people who have in fact linked Steam, and the refusal sends them to their
+*Linked accounts* settings page, where they already see Steam as linked.
+Unlinking and re-linking there also repairs a single account.
 
 ### Turning tournaments on — what Competition needs after a deploy or an enable
 
@@ -307,8 +307,9 @@ projection listens to what they emit:
   models**).
 - `identity:announce-social-identities` fills
   `competition_linked_identities`, which a discipline's Steam requirement is
-  checked against (see **Backfilling Competition's linked accounts**). Run it
-  again when the first brand of a deployment switches `competition` on.
+  checked against (see **Backfilling Competition's linked accounts**). Once
+  after the deploy that brings the table is enough: the projection is not
+  gated, so enabling the module later needs no second run.
 - `admission:announce-ownership` fills `competition_admission_presence`, the
   door presence that `requires_event_check_in` checks. The door listeners are
   gated on the brand, so admissions issued or claimed while `competition` was

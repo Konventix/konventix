@@ -131,9 +131,9 @@ ADR-0062). The build order for #32, each item its own merge request:
       holds a slot in, answered in German with a link to the account
       settings. Competition keeps `competition_linked_identities`,
       projected from Identity's link, unlink, announcement and merge events.
-      It is global, stores no provider id, and is gated on any brand running
-      the module. The new `identity:announce-social-identities` backfills it
-      as the fourth post-rollout step (docs/operations.md). Nothing is
+      It is global, stores no provider id, and is ungated like the other
+      brand-less projections. The new `identity:announce-social-identities`
+      backfills it once after the deploy (docs/operations.md). Nothing is
       retroactive, and unlinking removes nobody. Left: GameOps' catalogue
       event may suggest the value one day (ADR-0062); check-in does not ask
       for the link.

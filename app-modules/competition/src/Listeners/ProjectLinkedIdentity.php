@@ -10,8 +10,6 @@ use Konventix\Identity\Events\AccountsMerged;
 use Konventix\Identity\Events\SocialIdentityAnnounced;
 use Konventix\Identity\Events\SocialIdentityLinked;
 use Konventix\Identity\Events\SocialIdentityUnlinked;
-use Konventix\Platform\Models\Brand;
-use Konventix\Platform\Modules\ModuleGate;
 
 /**
  * Keeps `competition_linked_identities` current (design §5.6): which
@@ -25,20 +23,18 @@ use Konventix\Platform\Modules\ModuleGate;
  * `identity:announce-social-identities` any number of times converges on the
  * same rows.
  *
- * **The gate (ADR-0003) has no event brand to ask about.** None of these
- * events carries a brand, because the link belongs to the person and not to
- * a brand. So the question is whether *any* brand on the deployment runs
- * tournaments. If none does, the handlers that write a row short-circuit and
- * a deployment without Competition stores nothing. The unlink handler always
- * deletes: removing a row never stores anything, and a stale "linked" row is
- * the worse failure. Links made while the module was off everywhere come
- * back through `identity:announce-social-identities` once a brand switches
- * it on (docs/operations.md).
+ * **Deliberately not gated on the Competition feature flag.** ADR-0003's
+ * listener gate asks about the *event's* brand, and these events carry none:
+ * the link belongs to the person, not to a brand. Competition's other
+ * brand-less projections (`ProjectParticipantProfile`, the eligibility
+ * projection) are ungated for the same reason, and a brand that switches
+ * tournaments on must find the links already there. Otherwise people who did
+ * link Steam would be refused and sent to a settings page that already shows
+ * it linked. Every handler therefore always applies.
  *
  * Registered explicitly in `CompetitionServiceProvider::registerListeners()`,
  * because modular's event discovery is off and must stay off
- * (.ai/rules/listeners.md). `ModuleGate` is resolved inside the handler and
- * never constructor-injected.
+ * (.ai/rules/listeners.md).
  */
 final class ProjectLinkedIdentity
 {
@@ -49,10 +45,6 @@ final class ProjectLinkedIdentity
      */
     public function handleLinked(SocialIdentityLinked $event): void
     {
-        if (! $this->gateIsOpen()) {
-            return;
-        }
-
         LinkedIdentity::query()->firstOrCreate(
             ['user_id' => $event->userId, 'provider' => $event->provider],
             ['linked_at' => now()->utc()],
@@ -65,10 +57,6 @@ final class ProjectLinkedIdentity
      */
     public function handleAnnounced(SocialIdentityAnnounced $event): void
     {
-        if (! $this->gateIsOpen()) {
-            return;
-        }
-
         LinkedIdentity::query()->updateOrCreate(
             ['user_id' => $event->userId, 'provider' => $event->provider],
             // Anchored to UTC before the datetime cast formats it: the cast
@@ -78,7 +66,7 @@ final class ProjectLinkedIdentity
     }
 
     /**
-     * Ungated on purpose (see the class docblock). Unlinking removes nobody
+     * Unlinking removes nobody
      * from a roster in 0.9.0 (design §5.6). The row goes, so the next entry
      * or join sees the account as unlinked.
      */
@@ -101,10 +89,6 @@ final class ProjectLinkedIdentity
      */
     public function handleAccountsMerged(AccountsMerged $event): void
     {
-        if (! $this->gateIsOpen()) {
-            return;
-        }
-
         $survivorProviders = LinkedIdentity::query()
             ->where('user_id', $event->survivingUserId)
             ->pluck('provider')
@@ -118,24 +102,5 @@ final class ProjectLinkedIdentity
         LinkedIdentity::query()
             ->where('user_id', $event->mergedUserId)
             ->update(['user_id' => $event->survivingUserId]);
-    }
-
-    /**
-     * Whether any brand on the deployment has `competition` switched on. Asked
-     * per brand through `ModuleGate::isActiveForBrand()`, which never touches
-     * the ambient brand context, because these events arrive on a social
-     * callback, a console command or a merge, and none of those carries one.
-     */
-    private function gateIsOpen(): bool
-    {
-        $gate = app(ModuleGate::class);
-
-        foreach (Brand::query()->pluck('id') as $brandId) {
-            if ($gate->isActiveForBrand('competition', (string) $brandId)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

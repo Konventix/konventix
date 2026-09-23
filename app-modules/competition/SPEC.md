@@ -396,7 +396,7 @@ maintains from them. Every listener is idempotent and replayable (ADR-0004).
 |---|---|---|
 | `RegistrationSubmitted` / `RegistrationConfirmed` | Registration | Maintains `competition_eligible_registrations`, who may enter (D-CMP-05). Ungated, so a brand switching the module on mid-event finds its registrations there. |
 | `UserRegistered` / `UserProfileUpdated` | Identity | Maintains `ParticipantProfile` (`display_name`, `username`, `visibility`). Ungated for the same reason. `identity:replay-profiles` backfills it. |
-| `SocialIdentityLinked` / `SocialIdentityUnlinked` / `SocialIdentityAnnounced` / `AccountsMerged` | Identity | Maintains `competition_linked_identities`, the providers a person has linked, which a discipline's `requires_linked_provider` is checked against on entry and on every roster join (design §5.6). Global rather than per brand, and it stores no provider account id. It is gated on whether any brand runs `competition`, and the unlink handler always applies. `identity:announce-social-identities` backfills it. |
+| `SocialIdentityLinked` / `SocialIdentityUnlinked` / `SocialIdentityAnnounced` / `AccountsMerged` | Identity | Maintains `competition_linked_identities`, the providers a person has linked, which a discipline's `requires_linked_provider` is checked against on entry and on every roster join (design §5.6). Global rather than per brand, and it stores no provider account id. It is ungated, because the events carry no brand and a brand switching the module on must find the links already there. `identity:announce-social-identities` backfills it. |
 | `EventCreated` / `EventDetailsUpdated` / `EventRescheduled` and the seven lifecycle events | Event | Maintains `competition_event_summaries` — slug, name, time zone and lifecycle state — which the public tournament pages resolve by and are gated on. Ungated. `event:replay-details --with-state` backfills it. |
 | `AdmissionIssued` / `AdmissionHolderAssigned` / `AdmissionHolderUnassigned` / `AdmissionCheckedIn` / `AdmissionRevoked` / `AdmissionOwnershipAnnounced` | Admission | Maintains the **presence read model** — which person the door has seen at which event. Read by check-in when a competition sets `requires_event_check_in` (D-CMP-18). Never a signup gate (D-CMP-05). Gated on the brand the event names; `admission:announce-ownership` backfills it, but cannot restore a scan time. |
 | `MatchSessionLive` *(proposed)* | GameOps | The server is up and the handler has started the match; Competition moves the match to live and can show connection details. It is a lifecycle signal, not a result. |
@@ -450,10 +450,11 @@ per brand (ADR-0003):
   (ADR-0029).
 - **UI slots.** The two hub cards are registered at boot and hidden by the
   hub registry wherever the module is off.
-- **Listeners.** Door presence short-circuits on the brand the event names;
-  the linked-account projection on whether any brand runs the module. The
-  eligibility, name and event-summary projections are ungated on purpose, so a
-  brand switching the module on mid-event finds them filled (design §14).
+- **Listeners.** Door presence short-circuits on the brand the event names.
+  The eligibility, name, event-summary and linked-account projections are
+  ungated on purpose, so a brand switching the module on mid-event finds them
+  filled (design §5.6, §14); the linked-account events carry no brand to gate
+  on at all.
 
 With the feature off a brand runs its event without tournaments: no
 competitions, no signups, no schedule, no standings. GameOps becomes inert for

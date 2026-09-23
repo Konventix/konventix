@@ -13,15 +13,14 @@ use Konventix\Identity\Events\SocialIdentityAnnounced;
 use Konventix\Identity\Events\SocialIdentityLinked;
 use Konventix\Identity\Events\SocialIdentityUnlinked;
 use Konventix\Identity\Models\SocialIdentity;
-use Konventix\Platform\Models\Brand;
 
 /**
  * Competition's read model of linked provider accounts (design §5.6), which
  * the Steam signup rule is checked against. The rows are projected from
  * Identity's contract events and never read from `social_identities`
  * (ADR-0004). They are global rather than per brand, idempotent under
- * replay, backfilled by `identity:announce-social-identities`, and gated on
- * whether any brand runs `competition`.
+ * replay, backfilled by `identity:announce-social-identities`, and ungated,
+ * because the events carry no brand (fix round 1).
  *
  * `Identity\Models\SocialIdentity` appears in this file only to create the
  * row that exists before the projection does. The backfill command reads it,
@@ -38,7 +37,7 @@ function linkedProjectionRows(string $userId): array
 }
 
 it('projects a link and removes it on unlink, and hearing either twice changes nothing', function (): void {
-    $this->activateModule('competition');
+    $this->withBrand();
     $userId = (string) Str::ulid();
 
     event(new SocialIdentityLinked($userId, 'steam', '76561198000000001'));
@@ -61,7 +60,7 @@ it('projects a link and removes it on unlink, and hearing either twice changes n
 it('stores no provider account id and no brand — only that the link exists', function (): void {
     // The column list is the privacy decision: a SteamID64 identifies a
     // person, and the rule only asks whether a link exists.
-    $this->activateModule('competition');
+    $this->withBrand();
     $userId = (string) Str::ulid();
 
     event(new SocialIdentityLinked($userId, 'steam', '76561198000000002'));
@@ -77,7 +76,7 @@ it('backfills a link made before the projection existed through identity:announc
     // The operations.md step: a person linked Steam before the table existed,
     // so no SocialIdentityLinked was ever heard for them. The factory row
     // stands in for that link, since a factory emits no event.
-    $this->activateModule('competition');
+    $this->withBrand();
     $linkedAt = CarbonImmutable::parse('2026-03-01 12:00:00', 'UTC');
     $identity = SocialIdentity::factory()->create(['provider' => 'steam', 'linked_at' => $linkedAt]);
 
@@ -95,7 +94,7 @@ it('backfills a link made before the projection existed through identity:announc
 it('moves the closed account’s links to the survivor when Identity merges two accounts', function (): void {
     // Identity's merge moves `SocialIdentity` rows with an update and emits
     // no SocialIdentityLinked, so the projection has to follow AccountsMerged.
-    $this->activateModule('competition');
+    $this->withBrand();
     $survivor = (string) Str::ulid();
     $closed = (string) Str::ulid();
 
@@ -112,42 +111,54 @@ it('moves the closed account’s links to the survivor when Identity merges two 
         ->and(linkedProjectionRows($closed))->toBe([]);
 });
 
-it('stores nothing while no brand runs competition, but an unlink still removes a row', function (): void {
-    // ADR-0003's listener short circuit. These events carry no brand, so the
-    // question is whether any brand on the deployment has the module on;
-    // here none does (modules default to off).
+it('records links while competition is off for every brand, so enabling it later needs no second backfill', function (): void {
+    // Fix round 1 (I1): the projection is ungated. ADR-0003's listener gate
+    // asks about the brand an event names, and these events name none; like
+    // the name and eligibility projections, a brand switching the module on
+    // must find the links already there. Modules default to off, and no
+    // brand has competition here.
     $this->withBrand();
     $userId = (string) Str::ulid();
+    $announced = (string) Str::ulid();
 
     event(new SocialIdentityLinked($userId, 'steam', '76561198000000004'));
-    event(new SocialIdentityAnnounced($userId, 'steam', now()->toIso8601String()));
+    event(new SocialIdentityAnnounced($announced, 'steam', now()->toIso8601String()));
 
-    expect(linkedProjectionRows($userId))->toBe([]);
-
-    // A row left over from when the module was on still goes on unlink:
-    // removing never stores anything, and a stale "linked" row is the worse
-    // failure.
-    LinkedIdentity::query()->create(['user_id' => $userId, 'provider' => 'steam', 'linked_at' => now()]);
+    expect(linkedProjectionRows($userId))->toBe(['steam'])
+        ->and(linkedProjectionRows($announced))->toBe(['steam']);
 
     event(new SocialIdentityUnlinked($userId, 'steam'));
 
     expect(linkedProjectionRows($userId))->toBe([]);
 });
 
-it('opens the gate when any brand runs competition, whichever brand is in context', function (): void {
-    // The link is the person's, not a brand's: one brand with tournaments
-    // is enough, even when the ambient brand has the module off.
+it('keeps one row for the survivor when both merged accounts had linked the same provider', function (): void {
+    // Identity refuses such a merge itself, but this projection can still
+    // hold a row for each side (a link heard for the survivor, a stale one
+    // for the closed account). The closed account's row is dropped rather
+    // than moved into the unique key's way, and the survivor keeps its own.
     $this->withBrand();
-    $this->activateModule('competition', Brand::factory()->create());
-    $userId = (string) Str::ulid();
+    $survivor = (string) Str::ulid();
+    $closed = (string) Str::ulid();
 
-    event(new SocialIdentityLinked($userId, 'steam', '76561198000000005'));
+    event(new SocialIdentityAnnounced($survivor, 'steam', '2026-01-01T10:00:00+00:00'));
+    event(new SocialIdentityAnnounced($closed, 'steam', '2026-05-01T10:00:00+00:00'));
 
-    expect(linkedProjectionRows($userId))->toBe(['steam']);
+    event(new AccountsMerged(
+        survivingUserId: $survivor,
+        mergedUserId: $closed,
+        performedByUserId: (string) Str::ulid(),
+        mergedAt: now()->toIso8601String(),
+    ));
+
+    $row = LinkedIdentity::query()->where('user_id', $survivor)->sole();
+
+    expect($row->linked_at->equalTo(CarbonImmutable::parse('2026-01-01T10:00:00+00:00')))->toBeTrue()
+        ->and(linkedProjectionRows($closed))->toBe([]);
 });
 
 it('exports the person’s linked accounts and erases them', function (): void {
-    $this->activateModule('competition');
+    $this->withBrand();
     $userId = (string) Str::ulid();
     $other = (string) Str::ulid();
 

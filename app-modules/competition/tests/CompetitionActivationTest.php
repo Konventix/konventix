@@ -268,12 +268,14 @@ describe('with competition off for the brand (§13)', function (): void {
             assignedAt: now()->toIso8601String(),
         ));
 
-        // The linked-account projection is gated on any brand running the
-        // module at all (design §5.6), and none does here.
+        expect(AdmissionPresence::withoutBrandScope()->where('admission_id', $admissionId)->exists())->toBeFalse();
+
+        // The linked-account projection is ungated (design §5.6): its events
+        // carry no brand, and a brand switching the module on must find the
+        // links already there.
         event(new SocialIdentityLinked($userId, 'steam', '76561198000000099'));
 
-        expect(AdmissionPresence::withoutBrandScope()->where('admission_id', $admissionId)->exists())->toBeFalse()
-            ->and(LinkedIdentity::query()->where('user_id', $userId)->exists())->toBeFalse();
+        expect(LinkedIdentity::query()->where('user_id', $userId)->exists())->toBeTrue();
 
         // The eligibility projection is ungated on purpose (design §14): a
         // brand switching the module on mid-event must find its confirmed
@@ -282,7 +284,7 @@ describe('with competition off for the brand (§13)', function (): void {
 
         expect(EligibleRegistration::query()->where('user_id', $eligible)->where('is_confirmed', true)->exists())->toBeTrue();
 
-        // The control: with the module on, the same two events are stored.
+        // The control: with the module on, door presence is stored.
         $this->activateModule('competition', $brand);
 
         event(new AdmissionHolderAssigned(
@@ -294,10 +296,8 @@ describe('with competition off for the brand (§13)', function (): void {
             viaClaimLink: false,
             assignedAt: now()->toIso8601String(),
         ));
-        event(new SocialIdentityLinked($userId, 'steam', '76561198000000099'));
 
-        expect(AdmissionPresence::withoutBrandScope()->where('admission_id', $admissionId)->value('holder_user_id'))->toBe($userId)
-            ->and(LinkedIdentity::query()->where('user_id', $userId)->exists())->toBeTrue();
+        expect(AdmissionPresence::withoutBrandScope()->where('admission_id', $admissionId)->value('holder_user_id'))->toBe($userId);
     });
 
     it('hides the brand from the operator console, where every row answers 404', function (): void {

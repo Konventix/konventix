@@ -267,15 +267,16 @@ the same reason.
 Every handler is an upsert or a delete keyed on `(user_id, provider)`, so
 each one is idempotent and a replay converges on the same rows (ADR-0004).
 
-**The gate (ADR-0003).** None of these events carries a brand, so there is
-no single brand to ask about. The Linked, Announced and Merged handlers
-short-circuit when `competition` is active for **no brand at all** on the
-deployment. A deployment that runs no tournaments then stores none of this.
-The Unlinked handler always deletes, because removing a row never stores
-anything and a stale "linked" row is the worse failure. The cost is the same
-one ADR-0003 always has: links made while the module was off everywhere are
-missing when the first brand switches it on, and the backfill command below
-recovers them.
+**No gate (ADR-0003; amended in fix round 1, 2026-09-23).** ADR-0003's
+listener gate asks about the brand an event names, and none of these events
+names one. The projection is therefore **ungated**, like Competition's other
+brand-less projections (names, eligibility, event summaries). A brand that
+switches `competition` on finds every link already there. The first version
+gated the handlers on "`competition` is on for at least one brand". Review
+rejected that: it refused people who had linked Steam, sent them to a
+settings page that already showed Steam as linked, needed a second backfill
+run whenever the first brand enabled the module, and ran a per-brand query
+inside Identity's link transaction.
 
 **The backfill.** `identity:announce-social-identities` is a new, minimal
 Identity command. For every `social_identities` row it re-emits the narrow
@@ -286,8 +287,7 @@ linked" entry per identity into Compliance's audit trail, and that trail is
 where an account holder looks for a key they did not add.
 `AdmissionOwnershipAnnounced` and `RegistrationOwnershipAnnounced` follow the
 same pattern: only a projection may listen to the event. Run it once after
-the deploy that brings the table, and again whenever the first brand
-switches `competition` on. It is the fourth post-rollout backfill in
+the deploy that brings the table. It joins the post-rollout backfills in
 `docs/operations.md`.
 
 **Enforcement.** The rule is checked in two places, and never on a page
@@ -308,6 +308,12 @@ alone:
   nothing has no requirement yet, so a squad can gather first and enter
   later, as it does for the roster bound.
 
+**The desk is bound too.** An organizer's *add member*, fill-up and move
+go through the same check, and the desk has no per-person override. When
+somebody without the link must play anyway, the organizer switches the
+discipline's requirement off, adds the person, and switches it back on.
+Because the rule is not retroactive, the person stays on the roster.
+
 The join check runs **after** §5.1 and the roster bound. The join form
 answers every other refusal with one sentence, so that it cannot tell a
 guesser whether a code exists. Its separate "link your Steam account"
@@ -318,8 +324,9 @@ trying again.
 **Copy.** Participant copy is German. The competition page's entry panel
 says that the competition needs a linked Steam account and whether the
 viewer has one, with a link to the account's *Linked accounts* settings page
-(`/settings/linked-accounts`). The entry refusal names the teammates who
-still have to link one. The join page shows the same link beside its
+(`/settings/linked-accounts`). A solo discipline says "du"; a team discipline
+says "alle im Team". The entry refusal names the teammates who still have to
+link one. The join page shows the same link beside its
 refusal. Console copy is English.
 
 **Not retroactive.** Switching the requirement on while entrants exist
@@ -1304,15 +1311,16 @@ that has contacts, and it is owed in `TODO.md`.
 
 §13 asks that "every listener short-circuits with `competition` off for the
 brand". Read literally, that contradicts decisions already recorded here. The
-eligibility projection, the name projection and the event summary are
-**ungated on purpose**, so that a brand switching the module on in the
-middle of an event finds its confirmed registrations, names and events
-already there. The linked-account projection is gated on *any* brand running
-the module, because its events carry no brand. `CompetitionActivationTest`
-holds the code to the reading that follows from those decisions. Every
-listener that stores something for the brand (door presence) and the
-linked-account projection store nothing while the module is off, and the
-ungated eligibility projection still writes. The four metric recorders
+eligibility projection, the name projection, the event summary and the
+linked-account projection are **ungated on purpose**, so that a brand
+switching the module on in the middle of an event finds its confirmed
+registrations, names, events and linked accounts already there. The
+linked-account events carry no brand at all. *(Corrected in Task 7c's fix
+round 1: the first version gated the linked-account projection on any brand
+running the module, see §5.6.)* `CompetitionActivationTest` holds the code
+to the reading that follows from those decisions. Every listener that stores
+something for the brand (door presence) stores nothing while the module is
+off, and the ungated projections still write. The four metric recorders
 listen only to Competition's own events, which cannot occur for a brand that
 has the module off.
 
