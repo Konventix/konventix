@@ -29,6 +29,8 @@ use Konventix\Competition\Models\ScoreEntry;
 use Konventix\Competition\Models\Stage;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
+use Konventix\Event\Events\EventPublished;
+use Konventix\Event\Events\EventUnpublished;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 
@@ -65,6 +67,13 @@ function publicPagesEvent(Brand $brand, string $slug = 'sxlan-27', string $name 
         endsAt: '2026-11-22 18:00:00',
         timezone: 'Europe/Berlin',
         predecessorEventId: null,
+    ));
+
+    // Created events are drafts, and a draft event's tournament pages 404.
+    event(new EventPublished(
+        eventId: $eventId,
+        brandId: (string) $brand->getKey(),
+        publishedAt: '2026-10-01T10:00:00+00:00',
     ));
 
     return $eventId;
@@ -142,6 +151,47 @@ it('learns an event\'s slug and name from Event and follows a rename', function 
     expect($rows)->toHaveCount(1)
         ->and($rows->first()->slug)->toBe('sxlan-27-herbst')
         ->and($rows->first()->name)->toBe('SXLan 27 Herbst');
+});
+
+it('keeps a draft event\'s tournaments off the public web, even with a published competition in it', function (): void {
+    // Fix round 1 (I1): Event's own landing page 404s a draft, and so does
+    // Agenda's programme; these pages follow the same rule. Only published,
+    // running and concluded events are public.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+
+    $draftId = (string) Str::ulid();
+    event(new EventCreated(
+        eventId: $draftId,
+        brandId: (string) $brand->getKey(),
+        slug: 'sxlan-28',
+        name: 'SXLan 28',
+        startsAt: '2027-11-20 10:00:00',
+        endsAt: '2027-11-22 18:00:00',
+        timezone: 'Europe/Berlin',
+        predecessorEventId: null,
+    ));
+
+    $competition = Competition::factory()->forEvent($draftId)->create(['slug' => 'main-cup']);
+
+    expect(EventSummary::query()->where('event_id', $draftId)->value('state'))->toBeNull();
+
+    $this->get('/events/sxlan-28/tournaments')->assertNotFound();
+    $this->get('/events/sxlan-28/tournaments/main-cup')->assertNotFound();
+
+    // Published, the same pages open…
+    event(new EventPublished(eventId: $draftId, brandId: (string) $brand->getKey(), publishedAt: '2026-10-01T10:00:00+00:00'));
+
+    $this->get('/events/sxlan-28/tournaments/main-cup')->assertOk();
+
+    // …and unpublished (back to `announced`), they close again.
+    event(new EventUnpublished(eventId: $draftId, brandId: (string) $brand->getKey()));
+
+    expect(EventSummary::query()->where('event_id', $draftId)->value('state'))->toBe('announced');
+
+    $this->app->forgetScopedInstances();
+    $this->get('/events/sxlan-28/tournaments')->assertNotFound();
+    $this->get('/events/sxlan-28/tournaments/'.$competition->slug)->assertNotFound();
 });
 
 /*
@@ -375,20 +425,33 @@ it('asks every page to poll every 30 seconds while the competition runs and not 
  * ---------------------------------------------------------------------------
  */
 
-it('puts every participant write behind auth and the upload\'s throttle', function (): void {
+it('puts every participant write behind auth and the competition\'s own named throttle', function (): void {
+    // Fix round 1 (M1, M2): one NAMED budget for every participant write,
+    // the older signup writes included — not `throttle:6,1`, whose unnamed
+    // key is shared with every other unnamed throttle in the application.
     $names = [
         'competition.entries.store',
         'competition.score-entries.store',
         'competition.matches.report',
         'competition.matches.confirm',
         'competition.matches.dispute',
+        'competition.proofs.store',
+        'competition.my.join.store',
+        'competition.my.teams.store',
+        'competition.my.teams.leave',
+        'competition.my.teams.invite-code',
+        'competition.my.entries.withdraw',
+        'competition.my.entries.check-in',
+        'competition.interest.store',
+        'competition.interest.destroy',
     ];
 
     foreach ($names as $name) {
         $middleware = Route::getRoutes()->getByName($name)?->gatherMiddleware() ?? [];
 
         expect($middleware)->toContain('auth')
-            ->and($middleware)->toContain('throttle:6,1')
+            ->and($middleware)->toContain('throttle:competition-participant')
+            ->and($middleware)->not->toContain('throttle:6,1')
             ->and($middleware)->toContain('ensure-module:competition');
     }
 });
@@ -405,6 +468,28 @@ it('sends a guest to the login for every participant write', function (): void {
     foreach (['/entries', '/score-entries', "/matches/{$match}/report", "/matches/{$match}/confirm", "/matches/{$match}/dispute"] as $path) {
         $this->post($base.$path)->assertRedirect(route('login'));
     }
+});
+
+it('allows ten participant writes a minute per account and counts them apart from other accounts', function (): void {
+    // `competition-participant`: Limit::perMinute(10) keyed on the account.
+    // Interest posts from somebody with no registration are refused by the
+    // Action, and every one of them still spends the budget — so the
+    // eleventh is a 429 and a second account is untouched.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+    $eventId = publicPagesEvent($brand);
+
+    $competition = Competition::factory()->forEvent($eventId)->create(['slug' => 'main-cup']);
+    $first = User::factory()->create();
+    $second = User::factory()->create();
+    $url = '/tournaments/'.$competition->id.'/interest';
+
+    for ($attempt = 1; $attempt <= 10; $attempt++) {
+        $this->actingAs($first)->post($url)->assertSessionHasErrors('note');
+    }
+
+    $this->actingAs($first)->post($url)->assertTooManyRequests();
+    $this->actingAs($second)->post($url)->assertSessionHasErrors('note');
 });
 
 it('lets a member of a side report, the other side confirm, and nobody else speak for either', function (): void {
@@ -569,11 +654,55 @@ it('lets a captain enter their team and nobody enter a team they do not captain'
         ->post('/tournaments/'.$competition->id.'/entries', ['teamId' => $team->id])
         ->assertNotFound();
 
+    // Fix round 1 (I3): §5.1 is checked on the server for the whole roster.
+    // The member holds no confirmed registration yet, so the captain's entry
+    // is refused with one German sentence and nothing is written.
+    $this->actingAs($captain)
+        ->post('/tournaments/'.$competition->id.'/entries', ['teamId' => $team->id])
+        ->assertSessionHasErrors([
+            'teamId' => 'Alle im Team brauchen eine bestätigte Anmeldung zur Veranstaltung, bevor ihr euch anmelden könnt.',
+        ]);
+
+    expect(Entrant::query()->where('competition_id', $competition->id)->exists())->toBeFalse();
+
+    competitionEligibleUser($eventId, (string) $brand->getKey(), (string) $member->getKey());
+
     $this->actingAs($captain)
         ->post('/tournaments/'.$competition->id.'/entries', ['teamId' => $team->id])
         ->assertSessionHasNoErrors();
 
     expect(Entrant::query()->where('competition_id', $competition->id)->where('competition_team_id', $team->id)->exists())->toBeTrue();
+});
+
+it('refuses on the server a captain who holds no confirmed registration, whatever the page showed', function (): void {
+    // The page hides the form for this person (`viewer.eligible` false, no
+    // enterable team); a client that posts anyway is refused all the same.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+    $eventId = publicPagesEvent($brand);
+
+    $competition = Competition::factory()->forEvent($eventId)->create(['slug' => 'main-cup']);
+    $team = CompetitionTeam::factory()->forEvent($eventId)->create(['name' => 'Solo']);
+    $captain = User::factory()->create();
+
+    $row = new CompetitionTeamMember([
+        'competition_team_id' => $team->id,
+        'user_id' => (string) $captain->getKey(),
+        'role' => TeamRole::Captain,
+    ]);
+    $row->forceFill(['brand_id' => $team->brand_id])->save();
+
+    $this->actingAs($captain)
+        ->get(publicPagesUrl($competition))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('page.viewer.eligible', false)
+            ->where('page.viewer.enterableTeams', []));
+
+    $this->actingAs($captain)
+        ->post('/tournaments/'.$competition->id.'/entries', ['teamId' => $team->id])
+        ->assertSessionHasErrors('teamId');
+
+    expect(Entrant::query()->where('competition_id', $competition->id)->exists())->toBeFalse();
 });
 
 it('takes a leaderboard score from a member of the entry and from nobody else', function (): void {
@@ -698,4 +827,66 @@ it('keeps an unknown match of this competition a 404 rather than an error', func
     $this->get(publicPagesUrl($competition, '/teams/'.Str::ulid()))->assertNotFound();
 
     expect(CompetitionMatch::query()->where('competition_id', $competition->id)->count())->toBe(3);
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * Fix round 1: the desk's refusals in German, and no dispute in desk_only
+ * ---------------------------------------------------------------------------
+ */
+
+it('answers a score sent to a finished competition in German, not with the desk\'s English', function (): void {
+    // I2: `SubmitScoreEntry` refuses a finished competition with
+    // `CompetitionLifecycleException::over()` — English, a ULID and enum
+    // values, written for the desk. A participant whose page predates the
+    // finish gets one fixed German sentence on the field instead.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+    $eventId = publicPagesEvent($brand);
+
+    [$competition, [$a]] = competitionFieldWithRosters(2, [
+        'event_id' => $eventId,
+        'slug' => 'trackmania',
+        'status' => CompetitionStatus::Finished,
+        'result_submission_mode' => ResultSubmissionMode::Participants,
+    ]);
+    Stage::factory()->leaderboard()->create(['competition_id' => $competition->id]);
+    $ofA = publicPagesMember($a);
+
+    $this->actingAs($ofA)
+        ->post('/tournaments/'.$competition->id.'/score-entries', ['value' => 42])
+        ->assertSessionHasErrors([
+            'value' => 'Dieses Turnier ist vorbei und nimmt keine Ergebnisse mehr an.',
+        ]);
+
+    expect(ScoreEntry::query()->where('entrant_id', $a->id)->exists())->toBeFalse();
+});
+
+it('offers and takes no dispute in a desk_only competition', function (): void {
+    // M7: in `desk_only` the sides submit nothing (§8.1) — a dispute
+    // included. The page offers none and the Action refuses one.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+    $eventId = publicPagesEvent($brand);
+
+    [$competition, [$a, , , $d], , $stage] = publicPagesBracket($eventId, [
+        'result_submission_mode' => ResultSubmissionMode::DeskOnly,
+    ]);
+    $match = competitionMatchAt($stage, 1, 1);
+    $ofD = publicPagesMember($d);
+
+    // The desk records a against d; d would like to object.
+    app(RecordResultAtDesk::class)->handle($match, [1 => 2, 2 => 0], $a->id, (string) Str::ulid());
+
+    $this->actingAs($ofD)
+        ->get(publicPagesUrl($competition, '/matches/'.$match->id))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('page.viewer.position', 2)
+            ->where('page.viewer.canDispute', false));
+
+    $this->actingAs($ofD)
+        ->post('/tournaments/'.$competition->id.'/matches/'.$match->id.'/dispute', ['reason' => 'Falsch eingetragen.'])
+        ->assertSessionHasErrors('reason');
+
+    expect($match->fresh()->isDisputed())->toBeFalse();
 });

@@ -18,7 +18,12 @@ use RuntimeException;
  * played, or writing a result into one that is over. Named causes, so the
  * desk is told which of the three it ran into.
  *
- * Console-only, so the messages stay English (ADR-0001).
+ * The messages are English and written for the desk, which reads them as
+ * they are. A participant can reach one cause too — `over()`, when a confirm
+ * or a leaderboard score arrives from a page opened before the competition
+ * finished or was called off — and never sees this text:
+ * `Http\Controllers\Concerns\AnswersTheParticipant` answers it with a fixed
+ * German sentence instead (ADR-0001).
  */
 final class CompetitionLifecycleException extends RuntimeException
 {

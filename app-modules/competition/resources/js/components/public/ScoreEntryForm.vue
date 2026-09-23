@@ -54,7 +54,9 @@ function submit(): void {
         <div class="flex flex-wrap gap-3">
             <div class="flex flex-col gap-1">
                 <Label for="score-value"
-                    >Wertung ({{ props.competition.unit }})</Label
+                    >Wertung<template v-if="props.competition.unit">
+                        ({{ props.competition.unit }})</template
+                    ></Label
                 >
                 <Input
                     id="score-value"

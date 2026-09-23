@@ -223,11 +223,16 @@ Two commands, safe to re-run, neither one specific to a single event:
   read models; and it takes `--with-state`, which re-emits each event's
   current lifecycle event — the extra step Agenda's programme needs, and
   nothing the two ticket summaries here care about. See **Programme**.
-  The run's `EventDetailsUpdated` also fills Competition's
-  `competition_event_summaries`, the slug and name the public tournament
-  pages resolve by: until it has run once after the deploy that brings the
-  table, `/events/{slug}/tournaments` and every page under it answer 404 for
-  an event created before that deploy.
+  The run also fills Competition's `competition_event_summaries` — the
+  slug and name the public tournament pages resolve by (`EventDetailsUpdated`)
+  and the lifecycle state that decides whether they are public at all (only
+  `published`, `running` and `concluded` are, Agenda's rule). The state comes
+  only with `--with-state`, so run `event:replay-details --with-state` once
+  after the deploy that brings the table: until then
+  `/events/{slug}/tournaments` and every page under it answer 404 for an event
+  created before that deploy. Competition's handler for the seven lifecycle
+  events is an idempotent upsert of the state column and nothing else, which
+  is what `--with-state` requires of every listener on them.
 - `vendor/bin/sail artisan admission:announce-ownership` — re-emits the
   narrow `AdmissionOwnershipAnnounced` event for every admission (#292), so
   Resources' `resource_admissions` read model — who holds and who bought

@@ -76,7 +76,7 @@ ADR-0062). The build order for #32, each item its own merge request:
       its ULID. §8.7 is explicit that this is a Platform change and not a
       Competition workaround; recorded in the design's §14. The upload route
       (`competition.proofs.store`) is **live ahead of it**, behind `auth` and
-      `throttle:6,1`; the participant screens must not offer an upload
+      `throttle:competition-participant`; the participant screens must not offer an upload
       control until the read half lands.
 - [x] Tournament desk (D-CMP-20, D-CMP-21, #301 first half):
       `…/{competition}/desk` with the open disputes and their resolve dialog,
@@ -99,7 +99,8 @@ ADR-0062). The build order for #32, each item its own merge request:
       the event tournament index, competition, match and team pages under
       `/events/{slug}/tournaments`, polled every 30 s while `Running`; the
       participant writes routed at last — enter a team, report, confirm,
-      dispute, a leaderboard score — `auth` and `throttle:6,1`, the side
+      dispute, a leaderboard score — `auth` and the named
+      `competition-participant` budget, the side
       always derived from the roster; "Meine Turniere" lists the reports
       waiting on the person's side and their score entries.
       `ReportMatchResult` now refuses a report while the other side is still

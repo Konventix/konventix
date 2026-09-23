@@ -6,6 +6,7 @@ namespace Konventix\Competition\Http\Controllers;
 
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Competition\Actions\EnterCompetition;
@@ -15,6 +16,7 @@ use Konventix\Competition\Data\ScoreEntryData;
 use Konventix\Competition\Http\Controllers\Concerns\AnswersTheParticipant;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionTeam;
+use Konventix\Competition\Models\EligibleRegistration;
 use Konventix\Competition\Pages\TournamentPages;
 
 /**
@@ -55,7 +57,23 @@ final class CompetitionPageController
         $team = CompetitionTeam::query()->whereKey($data->teamId)->first();
         abort_if($team === null || ! $team->isCaptain($userId), 404);
 
-        $this->attempt(fn () => $enter->handle($model, $team), 'teamId');
+        // §5.1: everyone who enters holds a confirmed registration for the
+        // event. The roster is handed to the Action as the entering members,
+        // which is what makes `EnterCompetition` check each of them — a
+        // registration cancelled after the team was formed must not still
+        // get the team in. Asked here first only to answer in German with
+        // one sentence rather than the Action's English cause.
+        $roster = $team->memberUserIds();
+
+        foreach ($roster as $memberId) {
+            if (! EligibleRegistration::userMayEnter($model->brand_id, $model->event_id, $memberId)) {
+                throw ValidationException::withMessages([
+                    'teamId' => __('Alle im Team brauchen eine bestätigte Anmeldung zur Veranstaltung, bevor ihr euch anmelden könnt.'),
+                ]);
+            }
+        }
+
+        $this->attempt(fn () => $enter->handle($model, $team, $roster), 'teamId');
 
         return $this->done(__('Euer Team ist angemeldet.'));
     }

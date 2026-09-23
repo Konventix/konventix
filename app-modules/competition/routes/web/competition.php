@@ -76,45 +76,53 @@ Route::middleware(['auth'])->group(function (): void {
 
     Route::get('/my/tournaments/join', [TeamJoinController::class, 'show'])
         ->name('competition.my.join');
-    Route::post('/my/tournaments/join', [TeamJoinController::class, 'store'])
-        ->name('competition.my.join.store');
-
-    Route::post('/my/tournaments/teams', [MyTournamentsController::class, 'storeTeam'])
-        ->name('competition.my.teams.store');
-
-    Route::delete('/my/tournaments/teams/{team}/members/me', [MyTournamentsController::class, 'leave'])
-        ->whereUlid('team')
-        ->name('competition.my.teams.leave');
-
-    Route::post('/my/tournaments/teams/{team}/invite-code', [MyTournamentsController::class, 'regenerateCode'])
-        ->whereUlid('team')
-        ->name('competition.my.teams.invite-code');
-
-    Route::delete('/my/tournaments/entries/{entrant}', [MyTournamentsController::class, 'withdraw'])
-        ->whereUlid('entrant')
-        ->name('competition.my.entries.withdraw');
 
     /*
-     * Self-service check-in (design §6): the captain, inside the window of
-     * `check_in_opens_minutes_before` minutes before `starts_at`. There is no
-     * undo here on purpose — §6 gives the captain one direction and the desk
-     * both.
+     * Every participant write, on one named budget: `competition-participant`
+     * (CompetitionServiceProvider::configureRateLimiting()), ten a minute per
+     * account. Named rather than `throttle:6,1`, whose unprefixed key is the
+     * account alone and is therefore one counter shared with every other
+     * unnamed throttle in the application. Ten leaves room for a whole
+     * match — enter, report, confirm — and for a leaderboard player filing
+     * several heats with a typo or two, and still bounds code guessing on
+     * join-by-code and the 8 MB proof upload.
      */
-    Route::post('/my/tournaments/entries/{entrant}/check-in', [MyTournamentsController::class, 'checkIn'])
-        ->whereUlid('entrant')
-        ->name('competition.my.entries.check-in');
+    Route::middleware('throttle:competition-participant')->group(function (): void {
+        Route::post('/my/tournaments/join', [TeamJoinController::class, 'store'])
+            ->name('competition.my.join.store');
 
-    /*
-     * The participant writes of §10's pages: entering a team (§5.2), a match
-     * report, its confirmation and a dispute (§8.2, §8.4), and a leaderboard
-     * score (§8.3). `auth` like the rest of this file, and throttled like the
-     * proof upload below — `throttle:6,1` — because each one writes rows,
-     * history and, for a report, a notification to the other roster, and
-     * nothing else bounds how often. Who may speak for a side is membership,
-     * which the controllers derive from the roster rather than from the
-     * request (§11).
-     */
-    Route::middleware('throttle:6,1')->group(function (): void {
+        Route::post('/my/tournaments/teams', [MyTournamentsController::class, 'storeTeam'])
+            ->name('competition.my.teams.store');
+
+        Route::delete('/my/tournaments/teams/{team}/members/me', [MyTournamentsController::class, 'leave'])
+            ->whereUlid('team')
+            ->name('competition.my.teams.leave');
+
+        Route::post('/my/tournaments/teams/{team}/invite-code', [MyTournamentsController::class, 'regenerateCode'])
+            ->whereUlid('team')
+            ->name('competition.my.teams.invite-code');
+
+        Route::delete('/my/tournaments/entries/{entrant}', [MyTournamentsController::class, 'withdraw'])
+            ->whereUlid('entrant')
+            ->name('competition.my.entries.withdraw');
+
+        /*
+         * Self-service check-in (design §6): the captain, inside the window
+         * of `check_in_opens_minutes_before` minutes before `starts_at`.
+         * There is no undo here on purpose — §6 gives the captain one
+         * direction and the desk both.
+         */
+        Route::post('/my/tournaments/entries/{entrant}/check-in', [MyTournamentsController::class, 'checkIn'])
+            ->whereUlid('entrant')
+            ->name('competition.my.entries.check-in');
+
+        /*
+         * The participant writes of §10's pages: entering a team (§5.2), a
+         * match report, its confirmation and a dispute (§8.2, §8.4), and a
+         * leaderboard score (§8.3). Who may speak for a side is membership,
+         * which the controllers derive from the roster rather than from the
+         * request (§11).
+         */
         Route::post('/tournaments/{competition}/entries', [CompetitionPageController::class, 'enter'])
             ->whereUlid('competition')
             ->name('competition.entries.store');
@@ -134,37 +142,31 @@ Route::middleware(['auth'])->group(function (): void {
         Route::post('/tournaments/{competition}/matches/{match}/dispute', [MatchPageController::class, 'dispute'])
             ->whereUlid(['competition', 'match'])
             ->name('competition.matches.dispute');
+
+        Route::post('/tournaments/{competition}/interest', [InterestController::class, 'store'])
+            ->whereUlid('competition')
+            ->name('competition.interest.store');
+        Route::delete('/tournaments/{competition}/interest', [InterestController::class, 'destroy'])
+            ->whereUlid('competition')
+            ->name('competition.interest.destroy');
+
+        /*
+         * A proof image for a reported result or a score entry (design §8.7).
+         *
+         * Its own endpoint rather than a file field on the report, because
+         * the competition's `proof_policy` has to be able to refuse
+         * **before** the file is stored: `proof_media_id` is a ULID, so a
+         * policy of `none` checked only at submission time would accept the
+         * upload, reject the whole result over the attachment, and leave the
+         * object behind. Who may attach a proof is membership in the side,
+         * which the Action checks (§11).
+         *
+         * Live ahead of #322: a proof stored here is readable by anyone
+         * holding its ULID until Platform's per-object read authorization
+         * lands (§8.7). No screen offers an upload until then.
+         */
+        Route::post('/tournaments/{competition}/proofs', [ProofUploadController::class, 'store'])
+            ->whereUlid('competition')
+            ->name('competition.proofs.store');
     });
-
-    Route::post('/tournaments/{competition}/interest', [InterestController::class, 'store'])
-        ->whereUlid('competition')
-        ->name('competition.interest.store');
-    Route::delete('/tournaments/{competition}/interest', [InterestController::class, 'destroy'])
-        ->whereUlid('competition')
-        ->name('competition.interest.destroy');
-
-    /*
-     * A proof image for a reported result or a score entry (design §8.7).
-     *
-     * Its own endpoint rather than a file field on the report, because the
-     * competition's `proof_policy` has to be able to refuse **before** the
-     * file is stored: `proof_media_id` is a ULID, so a policy of `none`
-     * checked only at submission time would accept the upload, reject the
-     * whole result over the attachment, and leave the object behind.
-     *
-     * `auth` like the rest of this file: who may attach a proof is
-     * membership in the side, which the Action checks (§11). Throttled on top,
-     * because it takes up to 8 MB per request onto the brand's media disk and
-     * nothing else bounds how often: `throttle:6,1`, the repo's tightest
-     * per-route budget for a signed-in write (Identity's `account-email.store`
-     * and `user-password.update`).
-     *
-     * Live ahead of #322: a proof stored here is readable by anyone holding
-     * its ULID until Platform's per-object read authorization lands (§8.7;
-     * recorded in this module's TODO with what the screens owe meanwhile).
-     */
-    Route::post('/tournaments/{competition}/proofs', [ProofUploadController::class, 'store'])
-        ->whereUlid('competition')
-        ->middleware('throttle:6,1')
-        ->name('competition.proofs.store');
 });

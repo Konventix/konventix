@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Konventix\Competition\Providers;
 
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
 use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Admission\Events\AdmissionHolderAssigned;
 use Konventix\Admission\Events\AdmissionHolderUnassigned;
@@ -38,8 +41,15 @@ use Konventix\Competition\Standings\Calculators\SingleEliminationStandingsCalcul
 use Konventix\Competition\Standings\Calculators\SwissStandingsCalculator;
 use Konventix\Competition\Standings\StandingsCalculatorRegistry;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Event\Events\EventAnnounced;
+use Konventix\Event\Events\EventArchived;
+use Konventix\Event\Events\EventCancelled;
+use Konventix\Event\Events\EventConcluded;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
+use Konventix\Event\Events\EventPublished;
+use Konventix\Event\Events\EventStarted;
+use Konventix\Event\Events\EventUnpublished;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Templates\MessageTemplate;
@@ -85,6 +95,27 @@ class CompetitionServiceProvider extends ModuleServiceProvider
      * and LanBrackets' `race_heat`/`final_stage` stubs can arrive without
      * touching anything that already works.
      */
+    public function boot(): void
+    {
+        parent::boot();
+
+        $this->configureRateLimiting();
+    }
+
+    /**
+     * The one budget every participant write spends (routes/web): ten a
+     * minute per account. Named, so it is Competition's own counter rather
+     * than the one every unnamed `throttle:x,y` in the application shares
+     * (an unnamed throttle keys on the account alone). Keyed on the account,
+     * so a LAN hall behind one address does not share it; every route on it
+     * is `auth`, so there always is one.
+     */
+    private function configureRateLimiting(): void
+    {
+        RateLimiter::for('competition-participant', fn (Request $request): Limit => Limit::perMinute(10)
+            ->by('competition-participant:'.($request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown')));
+    }
+
     protected function registerBindings(): void
     {
         $this->app->singleton(FormatRegistry::class, function (): FormatRegistry {
@@ -221,6 +252,18 @@ class CompetitionServiceProvider extends ModuleServiceProvider
         // `event:replay-details` backfills it.
         Event::listen(EventCreated::class, [ProjectEventSummary::class, 'handleCreated']);
         Event::listen(EventDetailsUpdated::class, [ProjectEventSummary::class, 'handleDetailsUpdated']);
+
+        // …and its lifecycle state, which decides whether those pages are
+        // public at all: a draft event's tournaments must not be reachable
+        // by guessing a slug (Event's own landing page 404s it). Backfilled
+        // by `event:replay-details --with-state`.
+        Event::listen(EventAnnounced::class, [ProjectEventSummary::class, 'handleLifecycle']);
+        Event::listen(EventPublished::class, [ProjectEventSummary::class, 'handleLifecycle']);
+        Event::listen(EventUnpublished::class, [ProjectEventSummary::class, 'handleLifecycle']);
+        Event::listen(EventStarted::class, [ProjectEventSummary::class, 'handleLifecycle']);
+        Event::listen(EventConcluded::class, [ProjectEventSummary::class, 'handleLifecycle']);
+        Event::listen(EventCancelled::class, [ProjectEventSummary::class, 'handleLifecycle']);
+        Event::listen(EventArchived::class, [ProjectEventSummary::class, 'handleLifecycle']);
 
         // What the door has seen (design §6). A competition may require that
         // every roster member was scanned at the event entrance before the

@@ -76,7 +76,10 @@ final class TournamentPages
         /** @var EventSummary|null $event */
         $event = EventSummary::query()->where('slug', $slug)->first();
 
-        abort_if($event === null || $event->name === null, 404);
+        // A draft (or announced, cancelled, archived) event is not public,
+        // whatever its competitions say — the Event module's own rule for
+        // its landing page, and Agenda's for its programme.
+        abort_if($event === null || $event->name === null || ! $event->isPublic(), 404);
 
         return $event;
     }

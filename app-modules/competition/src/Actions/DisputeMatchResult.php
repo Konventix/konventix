@@ -34,7 +34,8 @@ use Konventix\Competition\Models\Entrant;
  * the matches with the first set and the second not.
  *
  * A reason is mandatory. A dispute with no reason is a stalled match and an
- * organizer with nothing to go on.
+ * organizer with nothing to go on. And a `desk_only` competition takes none:
+ * there the sides submit nothing (§8.1), so an objection is made at the desk.
  *
  * **A recorded result can be disputed too.** `ReportMatchResult` refuses a
  * *report* on a finished match (§8.2, point 4) — from there only the desk
@@ -59,6 +60,10 @@ final class DisputeMatchResult
         string $disputedByUserId,
     ): CompetitionMatch {
         return DB::transaction(function () use ($match, $entrant, $reason, $disputedByUserId): CompetitionMatch {
+            // §8.1: in `desk_only` the sides do not submit anything, a
+            // dispute included — the desk records, and an objection goes to
+            // the desk in person. The same refusal a report gets.
+            $this->guardParticipantsMayReport($this->competitionOf($match));
             $this->guardMatchIsDisputable($match);
             $this->guardIsASideOf($match, $entrant);
             $this->guardIsOnTheRoster($entrant, $disputedByUserId);

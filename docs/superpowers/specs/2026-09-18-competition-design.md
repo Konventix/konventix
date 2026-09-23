@@ -983,3 +983,41 @@ collects the result and the proof. Confirm and dispute stay.
 §8.6 shows a match's history "to the sides and the desk": the public match
 page sends it only to a member of a side.
 
+
+### §10, 2026-09-23 (fix round) — a draft event's tournaments are not public; one named budget; §5.1 and `desk_only` enforced on the server
+
+**The event's own state gates the pages.** A published competition at a
+draft event was reachable under `/events/{slug}/tournaments`, and the index
+answered 200 with a draft event's name. Event's landing page 404s a draft,
+and Agenda's programme serves only `published`, `running` and `concluded`.
+`competition_event_summaries` now carries the event's lifecycle `state`,
+projected from Event's seven lifecycle events with Agenda's mapping, and the
+pages serve Agenda's set — `draft` and `announced` are the organizer's
+workbench, `cancelled` and `archived` are over, and `concluded` stays up as a
+record. A null state (not yet told) is refused; `event:replay-details
+--with-state` backfills it.
+
+**One named budget for every participant write.** The earlier entry's
+`throttle:6,1` has an unprefixed key — the account alone — so it was one
+counter shared with every other unnamed throttle in the application. All
+fourteen participant writes of this module, the older signup ones (join by
+code, create team, leave, invite code, withdraw, check-in, interest) and the
+proof upload included, now spend `throttle:competition-participant`: ten a
+minute per account, named in `CompetitionServiceProvider`.
+
+**§5.1 on entering is checked on the server.** `EnterCompetition` checks
+eligibility only for the members it is handed, and the entry route handed
+none, so only the page hid the form. The route now hands it the whole roster,
+so every member's confirmed registration is checked, and it answers a refusal
+with one German sentence.
+
+**No dispute in `desk_only`.** §8.1's `desk_only` means the sides submit
+nothing. `DisputeMatchResult` now refuses there, as a report is refused, and
+the match page offers no dispute. An objection to a desk-recorded result is
+made at the desk.
+
+**The desk's exceptions never reach a participant in English.** A
+participant can reach `CompetitionLifecycleException::over()` from a page
+opened before the competition finished, and `IllegalMatchStateTransitionException`
+when a match moved on under them. Each is answered with one fixed German
+sentence on the form's field.

@@ -63,8 +63,11 @@ final readonly class MatchPowers
             canConfirm: $participants && $open && ! $match->isDisputed() && $opposing !== null && $own === null,
             // A dispute is the one thing a side may still raise once a result
             // stands (§8.4) — against the other side's claim, or against the
-            // recorded result. Never a second one while the desk has the first.
-            canDispute: ! $match->isDisputed()
+            // recorded result. Never a second one while the desk has the first,
+            // and never in `desk_only`: there the desk records and the sides
+            // take their objection to the desk in person (§8.1).
+            canDispute: $participants
+                && ! $match->isDisputed()
                 && $match->state !== MatchState::Cancelled
                 && ! $competitionOver
                 && ($opposing !== null || $match->state === MatchState::Finished),

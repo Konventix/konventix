@@ -56,7 +56,13 @@ final class MyOpenResults
             ->keyBy('id');
 
         $competitions = Competition::query()->whereIn('id', $matches->pluck('competition_id')->unique())->get()->keyBy('id');
-        $slugs = EventSummary::query()->whereIn('event_id', $competitions->pluck('event_id')->unique())->pluck('slug', 'event_id');
+        // Only an event whose tournament pages are public gets a link; the
+        // rest would be a link to a 404.
+        $slugs = EventSummary::query()
+            ->whereIn('event_id', $competitions->pluck('event_id')->unique())
+            ->get()
+            ->filter(fn (EventSummary $event): bool => $event->isPublic())
+            ->pluck('slug', 'event_id');
         $teamIds = Entrant::query()->whereIn('id', $theirs->pluck('entrant_id'))->pluck('competition_team_id', 'id');
         $teamNames = CompetitionTeam::query()->whereIn('id', $teamIds->unique())->pluck('name', 'id');
 

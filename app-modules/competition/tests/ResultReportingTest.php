@@ -908,12 +908,14 @@ describe('the proof upload route (§8.7)', function (): void {
         expect(Storage::disk('media')->allFiles())->toBe([]);
     });
 
-    it('throttles the upload at six a minute', function (): void {
-        // `throttle:6,1`: six requests inside the minute reach the
-        // controller, the seventh is turned away by the middleware. The
-        // limiter counts a hit before the request is handled, so the six
-        // refusals below count as much as six uploads would — which is the
-        // point: nothing about the answer makes a request free.
+    it('throttles the upload at ten a minute', function (): void {
+        // `throttle:competition-participant` (Task 7 fix round: the named
+        // budget every participant write of this module spends, ten a minute
+        // per account): ten requests inside the minute reach the controller,
+        // the eleventh is turned away by the middleware. The limiter counts a
+        // hit before the request is handled, so the ten refusals below count
+        // as much as ten uploads would — which is the point: nothing about
+        // the answer makes a request free.
         $brand = $this->withBrand();
         $this->activateModule('competition', $brand);
 
@@ -922,7 +924,7 @@ describe('the proof upload route (§8.7)', function (): void {
         [$competition, $field] = competitionFieldWithRosters(1, ['proof_policy' => ProofPolicy::None]);
         $user = User::factory()->create();
 
-        for ($attempt = 1; $attempt <= 6; $attempt++) {
+        for ($attempt = 1; $attempt <= 10; $attempt++) {
             $this->actingAs($user)
                 ->withHeader('Accept', 'application/json')
                 ->post('/tournaments/'.$competition->getKey().'/proofs', [
