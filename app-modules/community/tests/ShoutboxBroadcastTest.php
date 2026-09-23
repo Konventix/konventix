@@ -27,8 +27,11 @@ use Konventix\Community\Models\Room;
 use Konventix\Community\Presence\ConnectionState;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Brands\BrandContext;
+use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
+use Konventix\Platform\Realtime\BrandBroadcasting;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
@@ -63,7 +66,7 @@ use Spatie\Permission\PermissionRegistrar;
  */
 final class ShoutboxBroadcastSpyBroadcaster implements Broadcaster
 {
-    /** @var list<array{channels: list<string>, event: string, payload: array<string, mixed>}> */
+    /** @var list<array{channels: list<string>, event: string, payload: array<string, mixed>, appId: mixed, key: mixed}> */
     public array $sent = [];
 
     /** Stands in for Reverb being down — what `BroadcastToRoom` has to absorb. */
@@ -85,6 +88,12 @@ final class ShoutboxBroadcastSpyBroadcaster implements Broadcaster
      * does the same), so the `private-` prefix only appears once they are
      * cast to strings here. That cast is the assertion's whole point: it is
      * what proves the channel is private and per-room.
+     *
+     * `appId` and `key` are the Reverb credentials the request held at the
+     * moment of sending — what a real `PusherBroadcaster` would have signed
+     * with (ADR-0025). This spy stands in for the transport only; the
+     * credentials are read from the same config the Reverb connection is
+     * built from.
      */
     public function broadcast(array $channels, $event, array $payload = []): void
     {
@@ -96,6 +105,8 @@ final class ShoutboxBroadcastSpyBroadcaster implements Broadcaster
             'channels' => array_map(fn ($channel): string => (string) $channel, $channels),
             'event' => (string) $event,
             'payload' => $payload,
+            'appId' => config('broadcasting.connections.reverb.app_id'),
+            'key' => config('broadcasting.connections.reverb.key'),
         ];
     }
 }
@@ -387,6 +398,56 @@ it('broadcasts a removal as a bare tombstone, without the reason or the organize
         ->and($payload)->not->toContain('Spam')
         ->and($payload)->not->toContain($moderatorId)
         ->and($payload)->not->toContain('Bitte entfernen.');
+});
+
+// C1 (final review): the desk removes on the operator admin host, where
+// `ResolveBrand` resolves no brand and so never points broadcasting at one.
+// The credentials before the request are deliberately ANOTHER brand's —
+// what an Octane worker holds after serving that brand (the review's case
+// b); production's empty `REVERB_APP_*` (case a) fails the same assertion.
+// Without `BroadcastToRoom`'s own `useBrand()` the tombstone is signed for
+// `$stale` and lands in an app nobody in this room is subscribed to.
+it('signs a removal made at the admin-host desk with the room brand\'s reverb app', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('community', $brand);
+
+    $eventId = (string) Str::ulid();
+    $room = Room::factory()->create(['subject_id' => $eventId]);
+    $line = app(PostMessage::class)->handle($room, (string) Str::ulid(), new PostMessageData('Weg damit.'));
+
+    $operator = Operator::query()->findOrFail($brand->operator_id);
+    $operator->forceFill(['admin_host' => 'admin.shoutbox-broadcast.test'])->save();
+
+    $registrar = app(PermissionRegistrar::class);
+    $registrar->setPermissionsTeamId($operator->getKey());
+
+    foreach (['platform.access-admin', Permission::ModerateCommunity->value] as $name) {
+        PermissionModel::query()->firstOrCreate(['name' => $name, 'guard_name' => 'web']);
+    }
+
+    $role = Role::query()->create(['name' => 'Shoutbox Desk', 'guard_name' => 'web', 'brand_id' => $operator->getKey()]);
+    $role->givePermissionTo(['platform.access-admin', Permission::ModerateCommunity->value]);
+
+    $organizer = User::factory()->create();
+    $organizer->assignRole($role);
+    $registrar->setPermissionsTeamId(null);
+
+    $stale = Brand::factory()->create();
+    app(BrandBroadcasting::class)->useBrand($stale);
+
+    expect(config('broadcasting.connections.reverb.app_id'))->toBe($stale->getKey());
+
+    // Installed after the post, so only the removal can land in it.
+    $spy = shoutboxBroadcastSpy();
+
+    $this->actingAs($organizer)
+        ->delete("http://admin.shoutbox-broadcast.test/admin/events/{$eventId}/shoutbox/messages/{$line->id}", ['reason' => 'Spam'])
+        ->assertRedirect("http://admin.shoutbox-broadcast.test/admin/events/{$eventId}/shoutbox");
+
+    expect($spy->sent)->toHaveCount(1)
+        ->and($spy->sent[0]['event'])->toBe('shoutbox.message.removed')
+        ->and($spy->sent[0]['appId'])->toBe($brand->getKey())
+        ->and($spy->sent[0]['key'])->toBe($brand->reverb_app_key);
 });
 
 // The broadcast leaves *after* the commit (`PostMessage`), so by the time
