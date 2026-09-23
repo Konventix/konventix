@@ -95,7 +95,7 @@ final class ConsoleCheckInController
 
         if ($row->result === CheckInResult::Rejected) {
             throw ValidationException::withMessages([
-                'check_in' => CheckInRejectionReason::tryFrom((string) $row->reason_code)?->consoleSentence()
+                'check_in' => CheckInRejectionReason::tryFrom((string) $row->reason_code)?->consoleSentence($direction)
                     ?? 'The check-in was refused.',
             ]);
         }

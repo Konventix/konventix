@@ -314,21 +314,21 @@ it('answers outside every event day with the core\'s sentence, never "already in
 
     // 2026-10-18 18:00 UTC: the calendar has no day for it.
     $this->travelTo(CarbonImmutable::parse('2026-10-18 18:00:00', 'UTC'));
-    $sentence = CheckInRejectionReason::OutsideEventDay->consoleSentence();
-
     // Derivation: read across every day, $wasIn is in (a check-in would have
     // been "already in") and $neverIn is not (a check-out would have been
     // "not in"). Outside every day both pre-checks are skipped, and the core
-    // rejects each as outside_event_day, with that sentence.
+    // rejects each as outside_event_day, with that reason's sentence for the
+    // row's direction (#329 final review M2): a refused check-out says
+    // "checked out", never "checked in".
     $this->actingAs($admin)
         ->post(attendeeTicketUrl($operator, $wasIn->id, 'check-in'))
-        ->assertSessionHasErrors(['check_in' => $sentence]);
+        ->assertSessionHasErrors(['check_in' => 'There is no event day today, so nobody can be checked in right now.']);
 
     $this->app->forgetScopedInstances();
 
     $this->actingAs($admin)
         ->post(attendeeTicketUrl($operator, $neverIn->id, 'check-out'))
-        ->assertSessionHasErrors(['check_in' => $sentence]);
+        ->assertSessionHasErrors(['check_in' => 'There is no event day today, so nobody can be checked out right now.']);
 
     // Derivation: $wasIn has its accepted in plus one rejected row; $neverIn
     // has the one rejected row.

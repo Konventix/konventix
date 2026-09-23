@@ -162,3 +162,36 @@ it('is 404 for a ticket that does not exist', function (): void {
         ->get(attendeeTicketUrl($operator, (string) Str::ulid()))
         ->assertNotFound();
 });
+
+it('words an outside-event-day refusal in the history by the row\'s direction', function (): void {
+    $brand = $this->withBrand();
+    $event = attendeeFixture($brand);
+    $ticket = attendeeTicket($brand, $event['eventId'], holder: ticketPerson(), overrides: ['state' => 'assigned']);
+
+    // Two rejected rows with no day, as the core writes outside every day: a
+    // check-in at 15:00 and a check-out at 16:00.
+    CheckIn::factory()->rejected(CheckInRejectionReason::OutsideEventDay->value)->create([
+        'admission_id' => $ticket->id,
+        'direction' => 'in',
+        'scanned_at' => CarbonImmutable::parse('2026-10-16 15:00:00', 'UTC'),
+    ]);
+    CheckIn::factory()->rejected(CheckInRejectionReason::OutsideEventDay->value)->create([
+        'admission_id' => $ticket->id,
+        'direction' => 'out',
+        'scanned_at' => CarbonImmutable::parse('2026-10-16 16:00:00', 'UTC'),
+    ]);
+
+    [$operator, $admin] = attendeeConsoleOperator($brand);
+
+    // Derivation: by scanned_at, the refused check-in then the refused
+    // check-out; each reads its own direction (#329 final review M2).
+    $this->actingAs($admin)
+        ->get(attendeeTicketUrl($operator, $ticket->id))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('ticket.history', 2)
+            ->where('ticket.history.0.direction', 'in')
+            ->where('ticket.history.0.reason', 'There is no event day today, so nobody can be checked in right now.')
+            ->where('ticket.history.1.direction', 'out')
+            ->where('ticket.history.1.reason', 'There is no event day today, so nobody can be checked out right now.'));
+});

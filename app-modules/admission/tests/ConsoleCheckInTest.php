@@ -364,9 +364,11 @@ it('writes a rejected row for a revoked ticket, exactly as the door does, with a
         ->and($sentence)->not->toBe('admission_not_valid')
         ->and($sentence)->toEndWith('.');
 
-    // Every reason has one, so the dialog never shows a code.
+    // Every reason has one in both directions, so the dialog never shows a
+    // code.
     foreach (CheckInRejectionReason::cases() as $reason) {
-        expect($reason->consoleSentence())->not->toBe('')->toEndWith('.');
+        expect($reason->consoleSentence('in'))->not->toBe('')->toEndWith('.')
+            ->and($reason->consoleSentence('out'))->not->toBe('')->toEndWith('.');
     }
 });
 

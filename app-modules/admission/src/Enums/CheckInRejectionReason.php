@@ -32,8 +32,12 @@ enum CheckInRejectionReason: string
      * English, as all console copy is (ADR-0001). The token-level reasons
      * cannot come from the console, which never handles a token, but every
      * case has a sentence so a caller never has to guess.
+     *
+     * `$direction` is the refused row's (`in` or `out`): the core refuses a
+     * check-out outside every event day too, and that must not read as a
+     * check-in (#329 final review M2).
      */
-    public function consoleSentence(): string
+    public function consoleSentence(string $direction = 'in'): string
     {
         return match ($this) {
             self::UnknownAdmission => 'This ticket does not exist.',
@@ -41,7 +45,9 @@ enum CheckInRejectionReason: string
             self::TokenExpired => 'The ticket code has expired.',
             self::NonceSuperseded => 'This ticket code has been replaced by a newer one.',
             self::AdmissionNotValid => 'This ticket is not valid: it has been revoked or is outside its validity period.',
-            self::OutsideEventDay => 'There is no event day today, so nobody can be checked in right now.',
+            self::OutsideEventDay => $direction === 'out'
+                ? 'There is no event day today, so nobody can be checked out right now.'
+                : 'There is no event day today, so nobody can be checked in right now.',
             self::NotValidOnThisDay => 'This ticket is not valid on this event day.',
             self::ReentryNotPermitted => 'This event does not permit re-entry, and this ticket has already been used to enter.',
             self::WrongEvent => 'This ticket belongs to a different event.',

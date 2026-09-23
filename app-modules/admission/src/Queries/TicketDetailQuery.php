@@ -167,14 +167,15 @@ final class TicketDetailQuery
         $device = $row->device_id === null ? null : $devices->get($row->device_id);
         $actor = $row->actor_user_id === null ? null : $people->get($row->actor_user_id);
         $rejected = $row->result === CheckInResult::Rejected;
+        $direction = $row->direction === 'out' ? 'out' : 'in';
 
         return new CheckInHistoryRowData(
             id: $row->id,
             scannedAt: $row->scanned_at->toIso8601String(),
-            direction: $row->direction === 'out' ? 'out' : 'in',
+            direction: $direction,
             result: $row->result->value,
             reason: $rejected
-                ? (CheckInRejectionReason::tryFrom((string) $row->reason_code)?->consoleSentence() ?? $row->reason_code)
+                ? (CheckInRejectionReason::tryFrom((string) $row->reason_code)?->consoleSentence($direction) ?? $row->reason_code)
                 : null,
             source: $checkpoint?->kind === CheckpointKind::Console ? 'console' : 'door',
             checkpointName: $checkpoint?->name,
