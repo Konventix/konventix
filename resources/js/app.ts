@@ -9,7 +9,7 @@ import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { configureDateTime } from '@/lib/datetime';
 import { initializeFlashToast } from '@/lib/flashToast';
-import { installI18n, loadCatalogs } from '@/lib/i18n';
+import { followLocale, installI18n, loadCatalogs } from '@/lib/i18n';
 import { resolveReverbEndpoint } from '@/lib/reverbEndpoint';
 
 /**
@@ -178,12 +178,19 @@ createInertiaApp({
             throw new Error(`Inertia page not found: ${name}`);
         }
 
+        const localeChain = visit?.props?.localeChain ?? ['en'];
+
         // The catalogs ride along with the page chunk, so `installI18n` can
-        // hand them to the plugin synchronously (see `loadCatalogs`).
+        // hand them to the plugin synchronously (see `loadCatalogs`). A
+        // catalog chunk that fails to load leaves the page in English
+        // rather than rejecting the visit into a blank page.
         const [component] = await Promise.all([
             loader(),
-            loadCatalogs(visit?.props?.localeChain ?? ['en']),
+            loadCatalogs(localeChain).catch(() => undefined),
         ]);
+
+        // A client-side visit may arrive in another language (ADR-0068 §4).
+        followLocale(localeChain);
 
         // Last, with no await after it: see `applyDateTimeSettings`.
         applyDateTimeSettings(visit?.props);

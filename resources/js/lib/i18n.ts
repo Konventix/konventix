@@ -99,6 +99,18 @@ export async function loadCatalogs(chain: string[]): Promise<void> {
 }
 
 /**
+ * The chain the plugin's `resolve` answers from. It is not captured at
+ * install: a client-side visit may carry another chain (ADR-0068 §4, a
+ * locale saved in the profile), and a captured `de_formal` chain would drop
+ * the `de` base when the plugin later resolves on its own. Under SSR it is
+ * set per request in `installI18n`, synchronously before the render.
+ */
+let currentChain: string[] = [SOURCE_LOCALE];
+
+/** Browser only: whether `installI18n` has run, so `followLocale` may. */
+let installedInBrowser = false;
+
+/**
  * Installed from `createInertiaApp`'s `withApp` hook, once per Vue app.
  * The plugin's shared I18n instance is module state under SSR, exactly
  * like `configureDateTime` in app.ts: it is set here, synchronously, with
@@ -111,20 +123,55 @@ export function installI18n(
     const { chain, ssr } = options;
     const lang = chain[0] ?? SOURCE_LOCALE;
 
+    currentChain = chain;
+
     app.use(i18nVue, {
         lang,
         fallbackLang: SOURCE_LOCALE,
         fallbackMissingTranslations: true,
         resolve: (requested: string) =>
-            catalogFor(chainFrom(chain, requested), loadedFiles),
+            catalogFor(chainFrom(currentChain, requested), loadedFiles),
     });
 
     if (!ssr) {
+        installedInBrowser = true;
         // Hydrate with the messages now; the plugin's own load applies the
         // same ones a microtask later.
-        I18n.getSharedInstance().setLanguage({
-            lang,
-            messages: catalogFor(chain, loadedFiles),
-        });
+        setMessages(chain, loadedFiles);
     }
+}
+
+/**
+ * Switch the active language to the page's chain on a client-side visit.
+ * `app.ts` calls it from the page `resolve`, after `loadCatalogs` for the
+ * same chain and before Inertia swaps the page in — the one hook every swap
+ * passes through; the `navigate` event skips a redirect back to the same
+ * URL, which is what saving a locale in the profile is. A no-op before the
+ * app is installed (the first page) and when the chain has not changed.
+ */
+export function followLocale(
+    chain: string[],
+    files: Record<string, Catalog> = loadedFiles,
+): void {
+    if (!installedInBrowser || chain.join() === currentChain.join()) {
+        return;
+    }
+
+    currentChain = chain;
+    setMessages(chain, files);
+}
+
+/**
+ * `I18n#setLanguage` is the plugin's low-level setter, not its documented
+ * API: it replaces the active messages, sets `<html lang>` in the browser,
+ * and is synchronous, which neither `loadLanguageAsync` nor the plugin's own
+ * client load is. Written against laravel-vue-i18n 2.9
+ * (`node_modules/laravel-vue-i18n/dist/index.mjs:249`) — check it there on
+ * a version bump.
+ */
+function setMessages(chain: string[], files: Record<string, Catalog>): void {
+    I18n.getSharedInstance().setLanguage({
+        lang: chain[0] ?? SOURCE_LOCALE,
+        messages: catalogFor(chain, files),
+    });
 }
