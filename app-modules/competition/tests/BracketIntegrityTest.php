@@ -5,21 +5,31 @@ declare(strict_types=1);
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+use Konventix\Competition\Actions\CheckInEntrant;
 use Konventix\Competition\Actions\ConfirmMatchResult;
 use Konventix\Competition\Actions\CorrectMatchResult;
 use Konventix\Competition\Actions\DisqualifyEntrant;
 use Konventix\Competition\Actions\RecordMatchResult;
 use Konventix\Competition\Actions\RecordResultAtDesk;
+use Konventix\Competition\Actions\RegenerateBracket;
+use Konventix\Competition\Actions\ReopenSignup;
 use Konventix\Competition\Actions\ReportMatchResult;
+use Konventix\Competition\Actions\ResetStage;
 use Konventix\Competition\Actions\ResolveDispute;
 use Konventix\Competition\Actions\ScheduleMatch;
+use Konventix\Competition\Actions\StartCompetition;
+use Konventix\Competition\Actions\WithdrawEntrant;
 use Konventix\Competition\Data\MatchReportData;
+use Konventix\Competition\Enums\CheckInMode;
+use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Enums\MatchHistoryKind;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Enums\ResultSubmissionMode;
+use Konventix\Competition\Enums\WithdrawalReason;
 use Konventix\Competition\Events\MatchDisputeResolved;
 use Konventix\Competition\Events\MatchFinished;
+use Konventix\Competition\Exceptions\IllegalCompetitionStateTransitionException;
 use Konventix\Competition\Exceptions\IllegalMatchStateTransitionException;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
 use Konventix\Competition\Models\CompetitionMatch;
@@ -561,5 +571,100 @@ describe('a second submit on a stale copy (part 1, I3)', function (): void {
 
         expect($final->fresh()->winner_entrant_id)->toBeNull()
             ->and(competitionSidesOf($final->fresh()))->toBe([1 => $b, 2 => $c]);
+    });
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * I4 — the drawn bracket cannot drift from the field (final review, part 1)
+ * ---------------------------------------------------------------------------
+ */
+
+describe('the drawn field and the field (part 1, I4)', function (): void {
+    it('refuses to reopen signup over a drawn bracket, and reopens once the draw is reset', function (): void {
+        $this->withBrand();
+
+        [$competition] = competitionFieldWithRosters(4);
+        $stage = competitionGeneratedStage($competition);
+
+        // Back in `Published`, signup could add an entry the bracket never
+        // draws. Before the fix this went through.
+        expect(fn () => app(ReopenSignup::class)->handle($competition->refresh()))
+            ->toThrow(IllegalCompetitionStateTransitionException::class, 'reset the draw first');
+
+        expect($competition->refresh()->status)->toBe(CompetitionStatus::SignupClosed);
+
+        app(ResetStage::class)->handle($stage->refresh());
+        app(ReopenSignup::class)->handle($competition->refresh());
+
+        expect($competition->refresh()->status)->toBe(CompetitionStatus::Published);
+    });
+
+    it('refuses to start after a withdrawal changed the drawn field, and starts once it is drawn again', function (): void {
+        $this->withBrand();
+
+        [$competition, [, , , $fourth]] = competitionFieldWithRosters(4);
+        $stage = competitionGeneratedStage($competition);
+
+        expect($stage->drawn_entrant_ids)->toHaveCount(4);
+
+        app(WithdrawEntrant::class)->handle($fourth, WithdrawalReason::OrganizerWithdrew);
+
+        // Drawn {1, 2, 3, 4}; the field is now {1, 2, 3}: one drawn entrant is
+        // no longer in it, and it is not disqualified. Before the fix the
+        // tournament started with the withdrawn team still in its slots.
+        expect(fn () => app(StartCompetition::class)->handle($competition->refresh()))
+            ->toThrow(IllegalCompetitionStateTransitionException::class, '0 in the field but not drawn, 1 drawn but no longer in the field');
+
+        expect($competition->refresh()->status)->toBe(CompetitionStatus::SignupClosed);
+
+        // Drawn again from {1, 2, 3}: the two sets agree.
+        app(RegenerateBracket::class)->handle($stage->refresh());
+        app(StartCompetition::class)->handle($competition->refresh());
+
+        expect($competition->refresh()->status)->toBe(CompetitionStatus::Running);
+    });
+
+    it('refuses to start after a late check-in joined a field that checks in', function (): void {
+        $this->withBrand();
+
+        [$competition, $field] = competitionFieldWithRosters(4, [
+            'check_in_mode' => CheckInMode::Desk,
+            'requires_event_check_in' => false,
+        ]);
+
+        // Three teams are checked in when the desk draws; the fourth is not,
+        // and a field that checks in draws the checked-in only (`SignupField`).
+        foreach (array_slice($field, 0, 3) as $entrant) {
+            app(CheckInEntrant::class)->handle($entrant);
+        }
+
+        $stage = competitionGeneratedStage($competition);
+
+        expect($stage->drawn_entrant_ids)->toHaveCount(3);
+
+        // The fourth arrives late and the desk checks it in: the field is
+        // {1, 2, 3, 4} against a drawn {1, 2, 3}.
+        app(CheckInEntrant::class)->handle($field[3]->refresh());
+
+        expect(fn () => app(StartCompetition::class)->handle($competition->refresh()))
+            ->toThrow(IllegalCompetitionStateTransitionException::class, '1 in the field but not drawn, 0 drawn but no longer in the field');
+    });
+
+    it('starts over a disqualification, whose forfeits already dealt with the bracket', function (): void {
+        $this->withBrand();
+
+        [$competition, [$first]] = competitionFieldWithRosters(4);
+        competitionGeneratedStage($competition);
+
+        // Disqualified before the start: its round-1 match is forfeited, a
+        // recorded result, so the desk could not draw again even if it had
+        // to. Drawn {1, 2, 3, 4}, field {2, 3, 4}, disqualified {1}: nothing
+        // is missing from the field and nothing gone from it but the
+        // disqualified entrant.
+        app(DisqualifyEntrant::class)->handle($first);
+        app(StartCompetition::class)->handle($competition->refresh());
+
+        expect($competition->refresh()->status)->toBe(CompetitionStatus::Running);
     });
 });

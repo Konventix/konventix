@@ -1468,3 +1468,40 @@ entrant leaves the table.
 
 Emptying the slot writes no history row. §8.6 has no kind for it, and the
 disqualification itself is on the entrant.
+
+### §4, 2026-09-23 (final review fix wave A) — the bracket is started on the field it was drawn from
+
+§4 has the bracket drawn in `SignupClosed` and started with `start`. Several
+legal moves change the field in between: a withdrawal (a captain's is allowed
+until `Running`), a declined incomplete roster, a roster change that makes an
+entrant incomplete, and, where the competition checks in, a late check-in or
+an undone one. None of them touched the bracket, and `start` asked only
+whether a stage was drawn. The withdrawn team kept its slots; the late
+arrival was never drawn.
+
+Two rules close it:
+
+- **`ReopenSignup` refuses while any stage is drawn.** A reopen goes back to
+  `Published`, where signup adds entries a bracket would never draw — the
+  reason the draw is never made there (the §4/§7.5 entry above). The desk
+  resets the draw first.
+- **`StartCompetition` compares the fields.** `GenerateBracket` keeps the
+  field it drew from on the stage (`competition_stages.drawn_entrant_ids`),
+  and `start` refuses when the first stage's drawn field and
+  `SignupField::entrantIds()` differ as sets, naming how many entrants are
+  missing on each side. The desk draws again, which is free before the first
+  result. The field is kept rather than read back from the slots because an
+  odd Swiss round one leaves its bye entrant out of every match. A
+  **disqualified** entrant does not count as a difference: its matches were
+  forfeited, which is how the bracket already deals with it, and a forfeit is
+  a recorded result that would forbid the redraw. A leaderboard, drawn from
+  nobody, is not compared.
+
+The migration fills the column for stages drawn before it from their slots.
+An odd Swiss round one drawn before the migration and not yet started is
+therefore refused at `start` once, and drawn again.
+
+What is not closed: results recorded before `start` (play is allowed in any
+non-terminal state) followed by a withdrawal leave a competition that can
+neither redraw nor start, and only cancelling ends it. A desk that records
+results before the start has to disqualify a leaving team, not withdraw it.

@@ -53,7 +53,7 @@ trait ClearsTheDraw
 
         Standing::withoutBrandScope()->where('stage_id', $stage->id)->delete();
 
-        $stage->forceFill(['generated_at' => null])->save();
+        $stage->forceFill(['generated_at' => null, 'drawn_entrant_ids' => null])->save();
 
         return $stage;
     }

@@ -62,14 +62,20 @@ final class GenerateBracket
             // rules that decide it (design §6, §7.5) so that this and the
             // seed sources that *order* the same field cannot disagree about
             // who is in it.
+            $field = $this->field->entrantIds($stage);
+
             $plan = $generator->generate(
-                $this->field->entrantIds($stage),
+                $field,
                 array_merge($generator->defaults(), $stage->settings ?? []),
             );
 
             $this->writer->write($stage, $plan);
 
-            $stage->forceFill(['generated_at' => now()])->save();
+            // The field the bracket was drawn from, kept whole: `start`
+            // compares it with the field as it is then and refuses a drift
+            // (final review, part 1, I4). The slots alone would not do — an
+            // odd Swiss round one leaves its bye entrant out of every match.
+            $stage->forceFill(['generated_at' => now(), 'drawn_entrant_ids' => $field])->save();
 
             return $plan;
         });

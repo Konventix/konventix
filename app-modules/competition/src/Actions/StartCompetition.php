@@ -14,6 +14,7 @@ use Konventix\Competition\Exceptions\IllegalCompetitionStateTransitionException;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\Stage;
+use Konventix\Competition\Seeding\SignupField;
 
 /**
  * Starts the tournament: `SignupClosed → Running` (D-CMP-15, design §4).
@@ -34,18 +35,41 @@ use Konventix\Competition\Models\Stage;
  *   Starting over one would either seed a team that cannot field itself or
  *   silently drop it — bracket generation never seeds one either.
  *
- * Both are refusals, not warnings: they are the two ways a tournament gets
- * started on a field that is not the field that will play it.
+ * - **The drawn field is the field.** The bracket is drawn in `SignupClosed`,
+ *   and several legal moves change the field after that: a withdrawal, a
+ *   declined incomplete roster, a roster change that makes an entrant
+ *   incomplete, a late check-in or an undone one. The stage keeps the field
+ *   it was drawn from (`drawn_entrant_ids`), and a start over a different
+ *   field is refused — the desk draws again first, which costs nothing
+ *   before the first result (final review, part 1, I4). A **disqualified**
+ *   entrant is the one exception: its matches were forfeited, which is how
+ *   the bracket already deals with it, and a forfeit is a recorded result
+ *   that would forbid the redraw.
+ *
+ * All of them are refusals, not warnings: they are the ways a tournament gets
+ * started on a field that is not the field that will play it. They are asked
+ * under the competition's row lock, which every draw Action takes as well,
+ * so a draw cannot slip in between the checks and the transition.
  */
 final class StartCompetition
 {
     use TransitionsCompetitionStatus;
 
+    public function __construct(
+        private readonly SignupField $field,
+    ) {}
+
     public function handle(Competition $competition): Competition
     {
         return DB::transaction(function () use ($competition): Competition {
-            $this->guardGeneratedStage($competition);
+            Competition::withoutBrandScope()->whereKey($competition->getKey())->lockForUpdate()->firstOrFail();
+            $competition->refresh();
+
+            $first = $this->guardGeneratedStage($competition);
+            // An incomplete roster first: filling it puts the entrant back in
+            // the field and needs no redraw, so it is the refusal to act on.
             $this->guardCompleteRosters($competition);
+            $this->guardDrawnFieldIsTheField($competition, $first);
 
             $competition = $this->transition($competition, CompetitionStatus::Running);
 
@@ -70,7 +94,7 @@ final class StartCompetition
      * later leaderboard stage behind an undrawn bracket does not (review
      * fix round, M1).
      */
-    private function guardGeneratedStage(Competition $competition): void
+    private function guardGeneratedStage(Competition $competition): Stage
     {
         /** @var Stage|null $first */
         $first = Stage::withoutBrandScope()
@@ -86,6 +110,46 @@ final class StartCompetition
             throw IllegalCompetitionStateTransitionException::forPrecondition(
                 $competition->id,
                 'no stage has been generated yet — draw the bracket first.',
+            );
+        }
+
+        return $first;
+    }
+
+    /**
+     * The first stage's drawn field against the field as it stands now, both
+     * as sets. A leaderboard is drawn from nobody (its field is whoever signed
+     * up), and a stage drawn by a path that kept no field — a test fixture
+     * stamping `generated_at` — has nothing to compare, so both pass.
+     */
+    private function guardDrawnFieldIsTheField(Competition $competition, Stage $first): void
+    {
+        $drawn = $first->drawn_entrant_ids;
+
+        if ($first->format === StageFormat::Leaderboard->value || $drawn === null) {
+            return;
+        }
+
+        $field = $this->field->entrantIds($first);
+
+        $disqualified = array_map(strval(...), Entrant::withoutBrandScope()
+            ->where('brand_id', $competition->brand_id)
+            ->where('competition_id', $competition->id)
+            ->where('state', EntrantState::Disqualified->value)
+            ->pluck('id')
+            ->all());
+
+        $undrawn = array_diff($field, $drawn);
+        $gone = array_diff($drawn, $field, $disqualified);
+
+        if ($undrawn !== [] || $gone !== []) {
+            throw IllegalCompetitionStateTransitionException::forPrecondition(
+                $competition->id,
+                sprintf(
+                    'the field changed after the bracket was drawn (%d in the field but not drawn, %d drawn but no longer in the field) — draw the bracket again first.',
+                    count($undrawn),
+                    count($gone),
+                ),
             );
         }
     }

@@ -45,6 +45,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property int|null $advance_count
  * @property array<string, mixed>|null $settings
  * @property Carbon|null $generated_at
+ * @property list<string>|null $drawn_entrant_ids the field the stage was drawn from; null while undrawn
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -121,6 +122,7 @@ class Stage extends Model
     {
         return [
             'settings' => 'array',
+            'drawn_entrant_ids' => 'array',
             'sequence' => 'integer',
             'entry_source' => StageEntrySource::class,
             'advance_count' => 'integer',

@@ -38,4 +38,16 @@ final class IllegalCompetitionStateTransitionException extends RuntimeException
     {
         return new self(sprintf('Competition [%s] cannot start: %s', $competitionId, $reason));
     }
+
+    /**
+     * Signup reopened over a drawn bracket would take entries the bracket
+     * never draws (design §4, §14; final review, part 1, I4).
+     */
+    public static function drawnBracketBlocksReopen(string $competitionId): self
+    {
+        return new self(sprintf(
+            'Competition [%s] cannot reopen signup: its bracket is drawn, and new entries would never be drawn into it — reset the draw first.',
+            $competitionId,
+        ));
+    }
 }
