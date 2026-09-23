@@ -86,12 +86,34 @@ class CompetitionServiceProvider extends ModuleServiceProvider
     }
 
     /**
+     * The two default roles of design §11 (D-CMP-23, ADR-0045, #135).
+     *
+     * **Tournament Admin** holds all nine capabilities. **Tournament Desk**
+     * runs a tournament on the day: it sees the competitions, checks teams
+     * in, draws and times the matches, and records results. It does not
+     * correct a recorded result or change a roster, because those are the two
+     * operations with a blast radius. A correction cascades through the
+     * bracket (§8.5), and a roster change moves people between sides. Both
+     * stay with the admin.
+     *
+     * Everything a participant does (enter, join, report, confirm, check in
+     * during the window) is not a capability at all. It follows from
+     * membership in a side, captaincy and the §5.1 gate.
+     *
      * @return list<DefaultRole>
      */
     public function defaultRoles(): array
     {
         return [
             DefaultRole::of('competition.tournament-admin', 'Tournament Admin', ...Permission::cases()),
+            DefaultRole::of(
+                'competition.tournament-desk',
+                'Tournament Desk',
+                Permission::ViewCompetitions,
+                Permission::CheckInEntrants,
+                Permission::RecordResults,
+                Permission::ManageSchedule,
+            ),
         ];
     }
 
