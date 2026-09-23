@@ -86,7 +86,9 @@ final class LeaderboardStandingsCalculator
                 // A leaderboard has no matches, so there is nothing true to
                 // put in wins, losses, draws or points — the number the table
                 // ranks on is a decimal and `tiebreaker` is the float column.
-                tiebreaker: $row['aggregate'] ?? 0.0,
+                // No verified entry, no number: null, never a zero that the
+                // public board would print as "0 s" (final review, I6).
+                tiebreaker: $row['aggregate'],
             );
         }
 

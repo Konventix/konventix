@@ -12,6 +12,7 @@ use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\ScoreEntry;
 use Konventix\Competition\Models\Stage;
 use Konventix\Competition\Models\Standing;
+use Konventix\Competition\Seeding\SignupField;
 use Konventix\Competition\Standings\LeaderboardStandingsCalculator;
 use Konventix\Competition\Standings\MatchOutcome;
 use Konventix\Competition\Standings\MatchSide;
@@ -50,6 +51,7 @@ final class CalculateStandings
     public function __construct(
         private readonly StandingsCalculatorRegistry $calculators,
         private readonly LeaderboardStandingsCalculator $leaderboard,
+        private readonly SignupField $field,
     ) {}
 
     /**
@@ -154,17 +156,31 @@ final class CalculateStandings
     }
 
     /**
+     * Who is ranked.
+     *
+     * A leaderboard has no draw, so its field is `SignupField`'s: where the
+     * competition checks in, the checked-in only. Ranking every registered
+     * entrant put the no-shows of a check-in competition on the public board
+     * at a shared last place (final review, part 1, I6). A bracket keeps the
+     * wider field — its calculators rank from the matches, and an entrant who
+     * played is in them whatever its check-in says.
+     *
      * @return list<StandingsEntrant>
      */
     private function entrants(Stage $stage): array
     {
+        $states = $stage->isLeaderboard()
+            ? $this->field->seedableStates($stage)
+            : [EntrantState::Registered->value, EntrantState::CheckedIn->value];
+
         return array_values(Entrant::withoutBrandScope()
             ->where('brand_id', $stage->brand_id)
             ->where('competition_id', $stage->competition_id)
-            ->whereIn('state', [EntrantState::Registered->value, EntrantState::CheckedIn->value])
+            ->whereIn('state', $states)
             ->orderByRaw('seed IS NULL')
             ->orderBy('seed')
             ->orderBy('created_at')
+            ->orderBy('id')
             ->get()
             ->map(fn (Entrant $entrant): StandingsEntrant => new StandingsEntrant($entrant->id, $entrant->seed))
             ->all());

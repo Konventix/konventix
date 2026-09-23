@@ -1527,3 +1527,19 @@ A re-report that still disagrees on a match that is already disputed replaces
 the side's claim and writes its `reported` row, and the one open dispute stays
 where it is. It used to be refused as "already disputed", which threw the
 side's edit away.
+
+### §7.2, 2026-09-23 (final review fix wave A) — an entrant with no score has no value on the board
+
+`LeaderboardStandingsCalculator` stored `0.0` as the tiebreaker of an entrant
+with no verified entry, because `competition_standings.tiebreaker` was not
+nullable. The public board prints `tiebreaker ?? '—'`, so it showed "0 s",
+which on a `lower` board reads as the best time in the field beside a last
+place. A new migration makes the column nullable, and a leaderboard writes
+null for an entrant without an aggregate. Bracket formats always write a
+number.
+
+A leaderboard's standings now rank `SignupField`'s field: where the
+competition checks in, the checked-in only. Every registered entrant used to
+be ranked, so the no-shows of a check-in competition sat on the public board
+at a shared last place. Bracket standings keep the wider field, because their
+calculators rank from matches that were played.

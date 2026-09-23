@@ -9,10 +9,13 @@ use Inertia\Testing\AssertableInertia;
 use Konventix\Competition\Actions\ExpressInterest;
 use Konventix\Competition\Actions\RecordResultAtDesk;
 use Konventix\Competition\Actions\ReportMatchResult;
+use Konventix\Competition\Actions\SubmitScoreEntry;
 use Konventix\Competition\Data\LeaderboardSettings;
 use Konventix\Competition\Data\MatchReportData;
+use Konventix\Competition\Data\ScoreEntryData;
 use Konventix\Competition\Desk\TournamentDesk;
 use Konventix\Competition\Enums\CompetitionStatus;
+use Konventix\Competition\Enums\LeaderboardDirection;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Enums\ProofPolicy;
 use Konventix\Competition\Enums\ResultSubmissionMode;
@@ -373,6 +376,31 @@ it('sends no bracket before one is drawn, and a leaderboard its standings instea
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('page.bracket', null)
             ->where('page.competition.format', 'leaderboard'));
+});
+
+it('shows no value, not "0 s", for a team on the public leaderboard that has not scored', function (): void {
+    // Final review, part 1, I6: `Standings.vue` prints `tiebreaker ?? '—'`.
+    // A zero was printed as "0 s" — on a `lower` board, the best time in the
+    // field beside a last place.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+    $eventId = publicPagesEvent($brand);
+
+    [$board, [$driver]] = competitionFieldWithRosters(2, ['event_id' => $eventId, 'slug' => 'trackmania']);
+    $stage = Stage::factory()->leaderboard(new LeaderboardSettings(direction: LeaderboardDirection::Lower, unit: 's', decimals: 3))
+        ->create(['competition_id' => $board->id]);
+
+    // One driver sets 41.9; the other sets nothing. The desk's entry is
+    // verified on creation and recomputes the board.
+    app(SubmitScoreEntry::class)->handle($stage, $driver, new ScoreEntryData(value: 41.9), (string) Str::ulid(), asOrganizer: true);
+
+    $this->get('/events/sxlan-27/tournaments/trackmania')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('page.standings', 2)
+            ->where('page.standings.0.entrantId', $driver->id)
+            ->where('page.standings.0.tiebreaker', 41.9)
+            ->where('page.standings.1.placement', 2)
+            ->where('page.standings.1.tiebreaker', null));
 });
 
 /*

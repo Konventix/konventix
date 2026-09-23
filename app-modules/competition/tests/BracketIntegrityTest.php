@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+use Konventix\Competition\Actions\CalculateStandings;
 use Konventix\Competition\Actions\CheckInEntrant;
 use Konventix\Competition\Actions\ConfirmMatchResult;
 use Konventix\Competition\Actions\CorrectMatchResult;
@@ -19,11 +20,16 @@ use Konventix\Competition\Actions\ResetStage;
 use Konventix\Competition\Actions\ResolveDispute;
 use Konventix\Competition\Actions\ScheduleMatch;
 use Konventix\Competition\Actions\StartCompetition;
+use Konventix\Competition\Actions\SubmitScoreEntry;
 use Konventix\Competition\Actions\WithdrawEntrant;
+use Konventix\Competition\Data\LeaderboardSettings;
 use Konventix\Competition\Data\MatchReportData;
+use Konventix\Competition\Data\ScoreEntryData;
 use Konventix\Competition\Enums\CheckInMode;
 use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
+use Konventix\Competition\Enums\LeaderboardAggregate;
+use Konventix\Competition\Enums\LeaderboardDirection;
 use Konventix\Competition\Enums\MatchHistoryKind;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Enums\ResultSubmissionMode;
@@ -41,6 +47,9 @@ use Konventix\Competition\Models\MatchResultReport;
 use Konventix\Competition\Models\MatchSlot;
 use Konventix\Competition\Models\Stage;
 use Konventix\Competition\Models\Standing;
+use Konventix\Competition\Standings\LeaderboardStandingsCalculator;
+use Konventix\Competition\Standings\ScoredEntry;
+use Konventix\Competition\Standings\StandingsEntrant;
 
 /**
  * Bracket and result correctness: the defects the Competition final review
@@ -766,5 +775,65 @@ describe('a dispute ends when its match is settled (part 1, I5)', function (): v
         expect($corrected->winner_entrant_id)->toBe($sides[2])
             ->and($corrected->isDisputed())->toBeFalse()
             ->and($resolved->payload['note'] ?? null)->toBe('Die Turnierleitung hat das Ergebnis korrigiert.');
+    });
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * I6 — a leaderboard shows no value for an entrant with none (final review,
+ * part 1)
+ * ---------------------------------------------------------------------------
+ */
+
+describe('the leaderboard of a field that did not all score (part 1, I6)', function (): void {
+    it('gives an entrant with no verified entry no tiebreaker rather than a zero', function (): void {
+        // Lower wins (a lap time). E1 drove 41.9; E2 drove nothing. E2 has
+        // no aggregate, so its tiebreaker is null, and it ranks behind every
+        // entrant who scored. Before the fix it was 0.0 — on a `lower` board
+        // the best "time" in the field, printed "0 s".
+        $ranked = (new LeaderboardStandingsCalculator)->calculate(
+            [new StandingsEntrant('E1', 1), new StandingsEntrant('E2', 2)],
+            [new ScoredEntry(entrantId: 'E1', value: 41.9, heat: null, verified: true)],
+            new LeaderboardSettings(direction: LeaderboardDirection::Lower, aggregate: LeaderboardAggregate::Best, unit: 's', decimals: 3),
+        );
+
+        expect(array_map(static fn ($entry): array => [$entry->entrantId, $entry->placement, $entry->tiebreaker], $ranked))
+            ->toBe([['E1', 1, 41.9], ['E2', 2, null]]);
+    });
+
+    it('stores the empty tiebreaker and leaves an undrawn no-show off a check-in board', function (): void {
+        $this->withBrand();
+
+        [$competition, [$first, $second, $noShow]] = competitionFieldWithRosters(3, [
+            'check_in_mode' => CheckInMode::Desk,
+            'requires_event_check_in' => false,
+        ]);
+        $stage = Stage::factory()->leaderboard(new LeaderboardSettings(
+            direction: LeaderboardDirection::Lower,
+            aggregate: LeaderboardAggregate::Best,
+            unit: 's',
+            decimals: 3,
+        ))->create(['competition_id' => $competition->getKey()]);
+
+        // The first two are checked in; the third never came.
+        app(CheckInEntrant::class)->handle($first);
+        app(CheckInEntrant::class)->handle($second);
+
+        app(SubmitScoreEntry::class)->handle($stage, $first->refresh(), new ScoreEntryData(value: 41.9), (string) Str::ulid(), asOrganizer: true);
+
+        app(CalculateStandings::class)->handle($stage->fresh());
+
+        // The field is the checked-in pair (`SignupField` under check-in).
+        // First: 41.9, placed 1st. Second: no entry, so no value, placed 2nd.
+        // The registered no-show is not ranked at all; before the fix it
+        // shared the last place with "0 s".
+        $table = Standing::query()->where('stage_id', $stage->getKey())->get()->keyBy('entrant_id');
+
+        expect($table->keys()->sort()->values()->all())->toBe(collect([$first->id, $second->id])->sort()->values()->all())
+            ->and($table[$first->id]->placement)->toBe(1)
+            ->and($table[$first->id]->tiebreaker)->toBe(41.9)
+            ->and($table[$second->id]->placement)->toBe(2)
+            ->and($table[$second->id]->tiebreaker)->toBeNull()
+            ->and($table->has($noShow->id))->toBeFalse();
     });
 });

@@ -32,7 +32,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property int $losses
  * @property int $draws
  * @property int $points
- * @property float $tiebreaker
+ * @property float|null $tiebreaker null on a leaderboard for an entrant with no verified entry
  * @property Carbon $computed_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at

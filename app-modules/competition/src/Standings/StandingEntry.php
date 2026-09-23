@@ -27,7 +27,12 @@ final readonly class StandingEntry
         public int $losses = 0,
         public int $draws = 0,
         public int $points = 0,
-        public float $tiebreaker = 0.0,
+        /**
+         * What the format ranks on after points. Null only on a leaderboard,
+         * for an entrant with no verified entry: there is no aggregate, and
+         * a zero would read as a result (final review, part 1, I6).
+         */
+        public ?float $tiebreaker = 0.0,
         public ?string $group = null,
     ) {}
 
