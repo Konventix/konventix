@@ -9,11 +9,12 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Konventix\Competition\Actions\AdvanceBracket;
 use Konventix\Competition\Actions\CalculateStandings;
+use Konventix\Competition\Actions\CloseSignup;
 use Konventix\Competition\Actions\EnterCompetition;
 use Konventix\Competition\Actions\GenerateBracket;
 use Konventix\Competition\Actions\RecordMatchResult;
 use Konventix\Competition\Actions\ScheduleMatch;
-use Konventix\Competition\Enums\CompetitionStatus;
+use Konventix\Competition\Actions\StartCompetition;
 use Konventix\Competition\Enums\DisciplineKind;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Models\Competition;
@@ -57,6 +58,8 @@ final class DemoCompetitionSeeder
         private readonly RecordMatchResult $recordResult,
         private readonly AdvanceBracket $advanceBracket,
         private readonly CalculateStandings $calculateStandings,
+        private readonly CloseSignup $closeSignup,
+        private readonly StartCompetition $startCompetition,
     ) {}
 
     /**
@@ -152,6 +155,15 @@ final class DemoCompetitionSeeder
             return null;
         }
 
+        // The organizer's order of work (design §4): entering needs an open
+        // signup (`EnterCompetition`), so the field is assembled while the
+        // competition is `Published`; the bracket is drawn once signup is
+        // closed (`GuardsCompetitionLifecycle`), and results are recorded
+        // once it is `Running`, which in turn needs a drawn stage. Through
+        // the lifecycle Actions rather than a status write, so the demo walks
+        // the transitions — and their guards — the product walks.
+        $competition = $this->closeSignup->handle($competition);
+
         $stage = Stage::factory()->format('single_elimination')->create([
             'competition_id' => $competition->getKey(),
             'name' => 'Playoffs',
@@ -159,12 +171,7 @@ final class DemoCompetitionSeeder
 
         $this->generateBracket->handle($stage);
 
-        // Entering needs an open signup (`EnterCompetition`), so the field
-        // is assembled while the competition is still `Published` and the
-        // state follows the bracket rather than leading it (design §4). The
-        // demo writes it directly: the lifecycle Actions would emit contract
-        // events for a tournament that is being fabricated, not run.
-        $competition->forceFill(['status' => CompetitionStatus::Running])->save();
+        $this->startCompetition->handle($competition->refresh());
 
         return $stage;
     }
