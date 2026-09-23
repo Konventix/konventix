@@ -48,6 +48,10 @@ final class SignupField
             ->orderByRaw('seed IS NULL')
             ->orderBy('seed')
             ->orderBy('created_at')
+            // `created_at` is whole seconds, and entrants made in the same
+            // second tie; ULIDs are monotonic, so the id settles it the same
+            // way every time (final review, T4 M2).
+            ->orderBy('id')
             ->pluck('id')
             ->all()));
     }

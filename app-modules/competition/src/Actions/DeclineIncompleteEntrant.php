@@ -52,7 +52,9 @@ final class DeclineIncompleteEntrant
                 WithdrawalReason::IncompleteRoster,
             );
 
-            $this->notifyRoster(
+            // After the commit and only where the brand has the module on,
+            // like every other roster notice (final review, part 1).
+            $this->notifyRosterAfterCommit(
                 $roster,
                 $competition->brand_id,
                 'competition.entry-declined',

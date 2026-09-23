@@ -5,12 +5,15 @@ declare(strict_types=1);
 use Illuminate\Support\Str;
 use Konventix\Competition\Actions\CheckInEntrant;
 use Konventix\Competition\Actions\CreateTeam;
+use Konventix\Competition\Actions\DeclineIncompleteEntrant;
 use Konventix\Competition\Actions\DisputeMatchResult;
 use Konventix\Competition\Actions\EnterCompetition;
+use Konventix\Competition\Actions\FillIncompleteEntrant;
 use Konventix\Competition\Actions\JoinTeamByCode;
 use Konventix\Competition\Actions\ReportMatchResult;
 use Konventix\Competition\Data\MatchReportData;
 use Konventix\Competition\Enums\CheckInMode;
+use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Enums\ResultSubmissionMode;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionMatch;
@@ -90,6 +93,29 @@ function noticesTestMatch(): array
     $match = competitionMatchAt($stage, 1, 1);
 
     return [$competition, $match, competitionSidesOf($match), $members];
+}
+
+/**
+ * Two entries of a two-a-side competition whose rosters hold only their
+ * captain: incomplete, for the desk to fill or decline (§5.4). Returns the
+ * two entrants, entrant ULID => its captain, and somebody eligible to fill a
+ * roster with.
+ *
+ * @return array{0: Entrant, 1: Entrant, 2: array<string, string>, 3: string}
+ */
+function noticesTestIncompletePair(): array
+{
+    [$competition, [$short, $shorter], $members] = competitionFieldWithRosters(2, [
+        'discipline_id' => Discipline::factory()->teamSize(2)->create()->getKey(),
+    ]);
+
+    foreach ([$short, $shorter] as $entrant) {
+        $entrant->forceFill(['state' => EntrantState::Incomplete])->save();
+    }
+
+    $filler = competitionEligibleUser($competition->event_id, (string) $competition->brand_id);
+
+    return [$short->refresh(), $shorter->refresh(), $members, $filler];
 }
 
 function noticesTestEntrant(string $entrantId): Entrant
@@ -183,11 +209,33 @@ it('leaves out the captain who checked the team in themselves', function (): voi
     expect(noticesTestRecipients($sent, 'competition.checked-in'))->toBe([$mate]);
 });
 
-it('sends neither notice for a brand that has the module off', function (): void {
-    $this->withBrand();
-    [$competition, $match, $sides, $members] = noticesTestMatch();
+it('tells the picked person of a fill-up and the roster of a decline, once each, after the commit', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+    [$short, $shorter, $members, $filler] = noticesTestIncompletePair();
 
     $sent = noticesTestRecorder();
+
+    app(FillIncompleteEntrant::class)->handle($short, [$filler]);
+    app(DeclineIncompleteEntrant::class)->handle($shorter);
+
+    // The fill-up tells the person picked, not the captain who was already
+    // there; the decline tells the roster it drops, which is its captain.
+    expect(noticesTestRecipients($sent, 'competition.roster-filled'))->toBe([$filler])
+        ->and(noticesTestRecipients($sent, 'competition.entry-declined'))->toBe([$members[$shorter->id]]);
+});
+
+it('sends no notice at all for a brand that has the module off', function (): void {
+    $this->withBrand();
+    [$competition, $match, $sides, $members] = noticesTestMatch();
+    [$short, $shorter, , $filler] = noticesTestIncompletePair();
+
+    $sent = noticesTestRecorder();
+
+    // The three older notices went out inline and ungated before the final
+    // review's fix wave: the fill-up, the decline and the reported result.
+    app(FillIncompleteEntrant::class)->handle($short, [$filler]);
+    app(DeclineIncompleteEntrant::class)->handle($shorter);
 
     app(ReportMatchResult::class)->handle($match, noticesTestEntrant($sides[1]), new MatchReportData(scores: [1 => 16, 2 => 9]), $members[$sides[1]]);
     app(DisputeMatchResult::class)->handle($match->fresh(), noticesTestEntrant($sides[2]), 'Das war 9:16.', $members[$sides[2]]);
@@ -198,7 +246,10 @@ it('sends neither notice for a brand that has the module off', function (): void
     expect($match->fresh()->isDisputed())->toBeTrue()
         ->and(noticesTestEntrant($sides[1])->checked_in_at)->not->toBeNull()
         ->and(noticesTestRecipients($sent, 'competition.match-disputed'))->toBe([])
-        ->and(noticesTestRecipients($sent, 'competition.checked-in'))->toBe([]);
+        ->and(noticesTestRecipients($sent, 'competition.checked-in'))->toBe([])
+        ->and($short->refresh()->state)->toBe(EntrantState::Registered)
+        ->and($shorter->refresh()->state)->toBe(EntrantState::Withdrawn)
+        ->and($sent->count())->toBe(0);
 
     expect($competition->exists)->toBeTrue();
 });

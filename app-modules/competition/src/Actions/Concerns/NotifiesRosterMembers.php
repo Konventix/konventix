@@ -42,11 +42,13 @@ use Throwable;
 trait NotifiesRosterMembers
 {
     /**
-     * The same send, deferred to the commit and skipped for a brand that has
-     * `competition` switched off (ADR-0003). The two §12 notices use it: a
-     * dispute and a check-in (design §14, "§12 reconciled", fix round). A
-     * refusal later in the caller's transaction then sends nothing, and the
-     * brand is stated because the desk runs where no brand is in context.
+     * The send every roster notice goes through: deferred to the commit and
+     * skipped for a brand that has `competition` switched off (ADR-0003). The
+     * two §12 notices (a dispute, a check-in) used it first; the fill-up, the
+     * decline and the reported result followed in the final review's fix
+     * wave. A refusal later in the caller's transaction then sends nothing,
+     * and the brand is stated because the desk runs where no brand is in
+     * context.
      *
      * @param  list<string>  $userIds
      */

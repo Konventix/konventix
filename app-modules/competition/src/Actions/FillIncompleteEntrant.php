@@ -67,7 +67,9 @@ final class FillIncompleteEntrant
                 // competition the team holds a slot in, this one included.
             }
 
-            $this->notifyRoster(
+            // After the commit and only where the brand has the module on,
+            // like every other roster notice (final review, part 1).
+            $this->notifyRosterAfterCommit(
                 $userIds,
                 $competition->brand_id,
                 'competition.roster-filled',

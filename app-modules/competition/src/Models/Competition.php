@@ -62,7 +62,9 @@ class Competition extends Model
     use HasFactory, HasUlids;
 
     protected $fillable = [
-        'discipline_id', 'event_id', 'name', 'slug', 'status', 'description', 'rules',
+        // No `status`: the lifecycle Actions are its only writer, through
+        // `TransitionsCompetitionStatus` and `forceFill()` (final review, M7).
+        'discipline_id', 'event_id', 'name', 'slug', 'description', 'rules',
         'max_entrants', 'signup_opens_at', 'signup_closes_at', 'starts_at', 'published_at',
         'check_in_mode', 'check_in_opens_minutes_before', 'requires_event_check_in',
         'result_submission_mode', 'proof_policy',

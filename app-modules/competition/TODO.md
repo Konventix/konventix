@@ -188,9 +188,20 @@ Found on the way and not built. Each one is still true as of #302.
       match page and the hub card use the event's (§10a).
 - [ ] A knocked-out entrant keeps polling *Nächste Spiele* until the
       competition ends: there is no eliminated state.
-- [ ] Deferred review minors, each small: `status` is in `Competition`'s
-      `$fillable`, a second door into the state machine; `StartCompetition`
-      runs its guards before the row lock; the invite-code retry loop cannot
+- [x] **Final review, fix wave A** (bracket and result correctness): every
+      settle and correction path checks the winner and refuses an impossible
+      draw; a disqualification never dead-ends the bracket; the match is
+      re-read under the lock on every write; signup does not reopen over a
+      draw and `start` refuses a drifted field; settling a disputed match
+      closes the dispute; a leaderboard's non-scorer shows no value; a
+      correction drops the claims of a re-paired match; erasing a captain
+      hands the team on (design §14, the fix-wave entries).
+- [ ] A disqualified entrant's emptied slot is a bye the desk settles by
+      hand once the opponent arrives, like every bye (design §14); nothing
+      prompts the desk for it. And a later correction that makes a
+      disqualified entrant the winner of a match it lost routes it on again:
+      `AdvanceBracket` does not look at entrant states.
+- [ ] Deferred review minors, each small: the invite-code retry loop cannot
       retry under Postgres (a unique violation aborts the transaction) though
       its docblock says it does; `ExpressInterest::enteredTeamOf()` is N+1;
       `my/Tournaments.vue` declares a `brandId` prop it never uses; decline
@@ -198,11 +209,9 @@ Found on the way and not built. Each one is still true as of #302.
       for a round with no open match; the default time on the desk's round
       form is set for the first round only; `window.confirm` where the dialog
       primitive belongs; the console scope test walks a hand-written route
-      list; `LeaderboardStandingsCalculator` falls back to a `0.0`
-      tiebreaker; `SignupField` breaks `created_at` ties without a final key;
-      a replayed `AdmissionIssued` out of order can null an existing holder;
-      the deferred `afterCommit()` dispatches do not restore the brand
-      context a later listener might read.
+      list; a replayed `AdmissionIssued` out of order can null an existing
+      holder; the deferred `afterCommit()` dispatches do not restore the
+      brand context a later listener might read.
 
 ## Backlog
 

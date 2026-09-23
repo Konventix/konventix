@@ -277,7 +277,7 @@ final class ReportMatchResult
         /** @var CompetitionTeam|null $team */
         $team = CompetitionTeam::withoutBrandScope()->whereKey($entrant->competition_team_id)->first();
 
-        $this->notifyRoster(
+        $this->notifyRosterAfterCommit(
             $recipients,
             $match->brand_id,
             'competition.result-reported',

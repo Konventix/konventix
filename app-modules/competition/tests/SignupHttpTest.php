@@ -14,6 +14,7 @@ use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionInterest;
 use Konventix\Competition\Models\Discipline;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Models\Brand;
 
 /**
  * The HTTP layer of signup (design §5, §10): the capability gate on the
@@ -479,16 +480,34 @@ it('caps the interest note at the 140 characters §5.3 allows', function (): voi
 it('answers a competition of another brand with a 404', function (): void {
     // The brand host resolves a brand and `BrandScope` does the rest: a
     // competition of somebody else's brand is simply not there, and the
-    // reader learns nothing about whether it exists.
+    // reader learns nothing about whether it exists. A real competition of
+    // another brand, at the same event ULID, rather than a random id — which
+    // proved only that a missing row is missing (final review, part 4, M2).
     $brand = $this->withBrand();
     $this->activateModule('competition', $brand);
 
     $eventId = (string) Str::ulid();
+
+    $foreign = Brand::factory()->withDomain('other-brand.test')->create();
+    $this->withBrand($foreign);
+    $theirs = signupHttpCompetition(teamSize: 5, eventId: $eventId);
+
+    $this->withBrand($brand);
+    $ours = signupHttpCompetition(teamSize: 5, eventId: $eventId);
     $player = signupHttpPlayer($eventId, $brand->id);
 
     $this->actingAs($player)
-        ->post('/tournaments/'.Str::ulid().'/interest', ['note' => null])
+        ->post('/tournaments/'.$theirs->getKey().'/interest', ['note' => null])
         ->assertNotFound();
+
+    // The control: the same person, the same request, this brand's own
+    // competition at the same event — taken.
+    $this->actingAs($player)
+        ->post('/tournaments/'.$ours->getKey().'/interest', ['note' => null])
+        ->assertSessionHasNoErrors();
+
+    expect(CompetitionInterest::withoutBrandScope()->where('competition_id', $theirs->getKey())->count())->toBe(0)
+        ->and(CompetitionInterest::withoutBrandScope()->where('competition_id', $ours->getKey())->count())->toBe(1);
 });
 
 it('sends the teams of the signed-in person and nobody else', function (): void {

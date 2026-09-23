@@ -7,14 +7,17 @@ use Inertia\Testing\AssertableInertia;
 use Konventix\Admission\Events\AdmissionHolderAssigned;
 use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\Permission;
+use Konventix\Competition\Enums\TeamRole;
 use Konventix\Competition\Models\AdmissionPresence;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\CompetitionTeam;
+use Konventix\Competition\Models\CompetitionTeamMember;
 use Konventix\Competition\Models\Discipline;
 use Konventix\Competition\Models\EligibleRegistration;
 use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\LinkedIdentity;
+use Konventix\Competition\Models\MatchSlot;
 use Konventix\Competition\Models\Stage;
 use Konventix\Competition\Providers\CompetitionServiceProvider;
 use Konventix\Event\Events\EventCreated;
@@ -210,6 +213,26 @@ describe('with competition off for the brand (§13)', function (): void {
         $competitionId = (string) $world['competition']->getKey();
         $matchId = (string) $world['match']->getKey();
 
+        // The user is on the entrant's roster and the entrant stands in the
+        // match, so with the module on the confirm reaches the Action: the
+        // 404 below is the gate's, not a missing side's (final review,
+        // part 4, M1). `/live/next-games` is left to `HubCardsTest`, whose
+        // gate test has a real control: here it would 404 anyway for a user
+        // with no admission.
+        $member = new CompetitionTeamMember([
+            'competition_team_id' => $world['entrant']->competition_team_id,
+            'user_id' => (string) $user->getKey(),
+            'role' => TeamRole::Captain,
+        ]);
+        $member->forceFill(['brand_id' => $brand->getKey()])->save();
+
+        $slot = new MatchSlot([
+            'competition_match_id' => $matchId,
+            'entrant_id' => $world['entrant']->getKey(),
+            'position' => 1,
+        ]);
+        $slot->forceFill(['brand_id' => $brand->getKey()])->save();
+
         // The public pages, then the signed-in ones, then a write: all behind
         // `ensure-module:competition`, which the base provider adds (ADR-0003).
         $this->get('/events/sxlan-off/tournaments')->assertNotFound();
@@ -217,14 +240,16 @@ describe('with competition off for the brand (§13)', function (): void {
 
         $this->actingAs($user)->get('/my/tournaments')->assertNotFound();
         $this->actingAs($user)->get('/my/tournaments/join')->assertNotFound();
-        $this->actingAs($user)->get('/live/next-games')->assertNotFound();
         $this->actingAs($user)->post('/tournaments/'.$competitionId.'/interest', ['note' => null])->assertNotFound();
         $this->actingAs($user)->post('/tournaments/'.$competitionId.'/matches/'.$matchId.'/confirm')->assertNotFound();
 
-        // The control: the same index answers once the brand switches it on.
+        // The control: the same index answers once the brand switches it on,
+        // and the same confirm reaches the Action, which answers with a form
+        // error of its own rather than a 404.
         $this->activateModule('competition', $brand);
 
         $this->get('/events/sxlan-off/tournaments')->assertOk();
+        $this->actingAs($user)->post('/tournaments/'.$competitionId.'/matches/'.$matchId.'/confirm')->assertSessionHasErrors('result');
     });
 
     it('contributes no brand navigation and no hub card', function (): void {

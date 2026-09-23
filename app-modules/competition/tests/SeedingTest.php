@@ -63,6 +63,9 @@ function seedingTestEntrantIds(Stage $stage): array
     return array_values(array_map(strval(...), Entrant::query()
         ->where('competition_id', $stage->competition_id)
         ->orderBy('created_at')
+        // The same tiebreak `SignupField` uses: `created_at` is whole
+        // seconds, and the id breaks a tie inside one.
+        ->orderBy('id')
         ->pluck('id')
         ->all()));
 }
