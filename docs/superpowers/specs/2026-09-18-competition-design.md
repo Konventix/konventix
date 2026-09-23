@@ -111,6 +111,7 @@ participant routes in `routes/web/` behind `ensure-module:competition`.
 | D-CMP-23 | Capabilities gain `ManageSchedule`, `CheckInEntrants`, `ViewEntrantContacts`; the default role set splits into **Tournament Admin** and **Tournament Desk**. | §11 |
 | D-CMP-24 | **Swiss stays available** with the absorbed greedy pairing; blossom remains a later decision (closes the first half of #33). | §7 |
 | D-CMP-25 | **No Eventula tournament import.** | §2 |
+| D-CMP-05 (amended 2026-09-23) | **A confirmed registration or a non-revoked admission held in one's own name opens the signup gate; losing either later removes nobody.** | §5.1 |
 | D-GOP-04 (amended) | **`Discipline` is the source of record for contest defaults**; GameOps' catalogue event carries identity and operational fields only. | ADR-0062 |
 
 ---
@@ -162,6 +163,69 @@ Unchanged from D-CMP-05: a person may enter, join a team, or register
 interest when the `competition_eligible_registrations` read model holds a
 **confirmed** registration for them at the competition's event. Nothing
 else — admission is §6's business.
+
+#### Addendum, 2026-09-23 — a ticket in your name also opens the gate (#330)
+
+**The rule.** A person passes the gate when Competition's read models hold,
+for the competition's brand and event, **either** a confirmed registration
+of theirs (`competition_eligible_registrations`, unchanged) **or** an
+admission whose holder they are and which has not been revoked
+(`competition_admission_presence` with `holder_user_id` = them). The
+paragraph above said "Nothing else — admission is §6's business". That
+sentence is superseded for this second leg only. Possession is still not
+*checked at the door* at signup: whether a person was scanned in stays §6's
+question, asked through `requires_event_check_in`. Holding the admission is
+enough here, and `checked_in_at` is not read.
+
+**Why.** Someone who claimed a ticket from another person's group booking
+has no registration of their own, so under the unamended rule they could
+not sign up for anything.
+
+**Where the fact comes from.** The ticket leg reads §6's presence
+projection and adds no projection of its own. That projection already
+names the holder on `AdmissionIssued` (a crew badge), on
+`AdmissionHolderAssigned` (a claim or an organizer's assignment) and on
+`AdmissionOwnershipAnnounced` (the backfill). It clears the holder on
+`AdmissionHolderUnassigned` and deletes the row on `AdmissionRevoked` or on
+an announcement whose state is `revoked`. No table of Admission's is read
+(ADR-0004).
+
+**Losing it.** When the holder is removed from the ticket or the ticket is
+revoked, the person loses eligibility **unless they have a confirmed
+registration of their own**. A revoked registration-derived ticket usually
+means that the registration was cancelled, and then both legs go together.
+**Existing rosters, entries and interest rows are not changed
+retroactively.** The next enter, join, create-team or interest write is
+refused, exactly as §5.6 *Not retroactive* and the cancelled-registration
+handling (§14, *the gate hears a refund*) behave. The desk deals with a
+player who should no longer be on a roster, by withdrawing the team or
+removing the member.
+
+**Crew badges count.** An admission is an admission, so a crew member who
+holds a badge for the event passes the gate. The operator's rule names no
+role, and `AdmissionOwnershipAnnounced` carries none, so a role filter
+could not be backfilled anyway.
+
+**The gate asymmetry.** The two legs are not gated alike. The registration
+leg is ungated, like the other eligibility projections. The ticket leg is
+**not**: it inherits the module gate on the presence listeners (§14, *what
+the module gate on door presence costs*, #298). A brand that switches
+`competition` on therefore finds its registrants eligible at once, but its
+ticket holders only after `admission:announce-ownership` has run. The same
+holds when a brand switches the module off and on again: a revocation or an
+unassignment heard while it was off never reached the table, and the stale
+row keeps the gate open. Run the command **after every enable**, not only
+the first. It is idempotent, and an announced `revoked` deletes the stale
+row. This is recorded as the price of the gate and not as a defect: the
+presence listeners stay gated, because #298's second acceptance criterion
+requires it.
+
+**`expired`.** `AdmissionState::Expired` has no producing Action today. An
+announced `expired` admission keeps its holder and therefore keeps the gate
+open. Whoever builds expiry owes this leg a listen.
+
+**Backfill.** `admission:announce-ownership` covers the tickets claimed
+before this deploy. No new command is needed.
 
 ### 5.2 Teams, captains, invite codes
 

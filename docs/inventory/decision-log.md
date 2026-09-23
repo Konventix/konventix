@@ -212,7 +212,7 @@ per-module modelling questions that gate the remaining Phase 2 slices.
 | D-CMP-11 | Result authority | **Handler results record directly and advance the bracket; the desk holds a correction capability.** | spec (Competition) |
 | D-CMP-12 | Result corrections | **Distinct `MatchResultCorrected` event; `MatchFinished` fires exactly once per match.** | spec (Competition, GameOps) |
 | D-CMP-13 | Solo entrants | **A team of size one; the roster UI hides itself for size-1 teams.** | spec (Competition) |
-| D-CMP-05 | Competition entry gate | **Confirmed Registration suffices to enter; admission possession is verified at check-in / match start.** | spec (Competition) |
+| D-CMP-05 | Competition entry gate | **Confirmed Registration suffices to enter; admission possession is verified at check-in / match start.** (amended 2026-09-23, #330: a non-revoked admission held in one's own name also opens the gate, read from Competition's door-presence projection; losing either later removes nobody from a roster. See the competition design, §5.1 addendum.) | spec (Competition) |
 | D-GOP-01 | Pool reuse | **Configurable per server pool** (user decision); fresh-per-match is the default mode, reuse mode requires a MatchHandler reset hook. | adr → ADR-0012 (updated) |
 | D-GOP-02 | Provisioning fallback | **Bounded retries with backoff, then hand to the tournament desk via event. No static-pool rescue tier.** | adr → ADR-0012 (updated) |
 | D-GOP-03 | Session liveness | **Provider status + handler heartbeats; loss past threshold emits `SessionUnhealthy` for the desk; never automatic mid-match teardown.** | adr → ADR-0012 (updated) |
