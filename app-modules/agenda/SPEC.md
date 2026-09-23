@@ -129,6 +129,12 @@ moving it to another event. No contract event carries those, so the block
 keeps the old name, or a dead link, until `competition:announce-competitions`
 runs again (#332).
 
+**The backfill can race a live change.** `competition:announce-competitions`
+reads a chunk of competitions before it emits, so a publish, unpublish or
+reschedule landing in between can be overwritten by the stale
+`CompetitionAnnounced` that follows it. A second run heals it; the command is
+safe to repeat.
+
 ## Capabilities
 
 Declared in `src/Enums/Permission.php`; roles that grant them are per-brand
